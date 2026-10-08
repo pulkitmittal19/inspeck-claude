@@ -134,7 +134,10 @@ export function add(input: NewComment): Comment {
       createdAt: new Date().toISOString(),
       element: input.element,
       ...(input.at ? { at: input.at } : {}),
+      ...(input.rect ? { rect: input.rect } : {}),
       measured: input.measured ?? [],
+      ...(input.css?.length ? { css: input.css } : {}),
+      ...(input.client ? { client: input.client } : {}),
       thread: [],
     }
     if (input.screenshot) {

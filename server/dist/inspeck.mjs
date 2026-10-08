@@ -36501,6 +36501,11 @@ var Measurement = external_exports.object({
       "no token of yours matches". */
   note: external_exports.string().max(200).optional()
 });
+var CssLine = external_exports.object({
+  property: external_exports.string().max(60),
+  value: external_exports.string().max(300),
+  resolved: external_exports.string().max(160).optional()
+});
 var NewComment = external_exports.object({
   kind: external_exports.enum(KINDS).optional(),
   note: external_exports.string().max(4e3),
@@ -36510,11 +36515,19 @@ var NewComment = external_exports.object({
     tag: external_exports.string().max(40).optional(),
     text: external_exports.string().max(300).optional(),
     /** React component names, outermost first. */
-    trail: external_exports.array(external_exports.string().max(120)).max(12).optional()
+    trail: external_exports.array(external_exports.string().max(120)).max(12).optional(),
+    /** How the widget labels it, e.g. `button.btn-primary`. */
+    name: external_exports.string().max(200).optional()
   }),
   /** Document coordinates of the badge, so every page draws it in the same place. */
   at: external_exports.object({ x: external_exports.number(), y: external_exports.number() }).optional(),
+  /** The element's box in document coordinates when the note was placed. */
+  rect: external_exports.object({ x: external_exports.number(), y: external_exports.number(), w: external_exports.number(), h: external_exports.number() }).optional(),
   measured: external_exports.array(Measurement).max(40).optional(),
+  /** The element's key declarations as the code writes them, with the resolved value. */
+  css: external_exports.array(CssLine).max(16).optional(),
+  /** What sent it: the in-page widget or the extension, and its version. */
+  client: external_exports.object({ name: external_exports.string().max(40), version: external_exports.string().max(20) }).optional(),
   /** A data URL. The server writes it to disk and keeps only the path. */
   screenshot: external_exports.string().max(45e5).optional()
 });
@@ -36575,10 +36588,13 @@ function heading(c) {
 }
 function render(c) {
   const lines = [heading(c), c.note.trim() || "(no note)", ""];
-  const where = [c.element.selector];
+  const where = [c.element.name && c.element.name !== c.element.selector ? `${c.element.name}  (${c.element.selector})` : c.element.selector];
   if (c.element.text) where.push(`"${c.element.text}"`);
   lines.push(row("where", where.join(" \xB7 ")));
   if (c.element.trail?.length) lines.push(row("source", c.element.trail.join(" \u203A ")));
+  for (const l of c.css ?? []) {
+    lines.push(row("css", `${l.property}: ${l.value};${l.resolved ? `   ${l.resolved}` : ""}`));
+  }
   for (const group of GROUPS) {
     for (const m of c.measured.filter((x) => x.group === group)) lines.push(measuredLine(m, c.kind));
   }
@@ -36690,7 +36706,10 @@ function add(input2) {
       createdAt: (/* @__PURE__ */ new Date()).toISOString(),
       element: input2.element,
       ...input2.at ? { at: input2.at } : {},
+      ...input2.rect ? { rect: input2.rect } : {},
       measured: input2.measured ?? [],
+      ...input2.css?.length ? { css: input2.css } : {},
+      ...input2.client ? { client: input2.client } : {},
       thread: []
     };
     if (input2.screenshot) {

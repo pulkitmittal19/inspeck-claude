@@ -116,6 +116,30 @@ test('the dev test page only exists with INSPECK_DEV=1', async () => {
   assert.equal(r.status, 404)
 })
 
+test('a note from the widget carries its CSS, and Claude reads it as written', async () => {
+  const note = {
+    note: 'Feels cramped next to Cancel',
+    page: 'http://localhost:5173/settings',
+    element: { selector: '#save', tag: 'button', text: 'Save changes', name: 'button.btn-primary' },
+    at: { x: 843, y: 340 },
+    rect: { x: 734, y: 340, w: 109, h: 30 },
+    css: [
+      { property: 'padding', value: '8px 14px' },
+      { property: 'border-radius', value: 'var(--radius-200)', resolved: '8px' },
+    ],
+    client: { name: 'widget', version: '0.2.0' },
+  }
+  const r = await page(s.port, 'POST', '/comments', { body: note })
+  assert.equal(r.status, 201)
+  assert.deepEqual(r.json.comment.rect, note.rect)
+  const got = await s.client.callTool({ name: 'get', arguments: { id: r.json.comment.id } })
+  const text = got.content[0].text
+  assert.match(text, /button\.btn-primary  \(#save\)/)
+  assert.match(text, /css +border-radius: var\(--radius-200\);   8px/)
+  assert.match(text, /css +padding: 8px 14px;/)
+  await page(s.port, 'DELETE', `/comments/${r.json.comment.id}`)
+})
+
 test('Claude sees the six actions, by the names people see', async () => {
   const { tools } = await s.client.listTools()
   const byName = Object.fromEntries(tools.map(t => [t.name, t.title]))

@@ -38,6 +38,13 @@ const Measurement = z.object({
 })
 export type Measurement = z.infer<typeof Measurement>
 
+const CssLine = z.object({
+  property: z.string().max(60),
+  value: z.string().max(300),
+  resolved: z.string().max(160).optional(),
+})
+export type CssLine = z.infer<typeof CssLine>
+
 /** What a page sends when someone places a comment. */
 export const NewComment = z.object({
   kind: z.enum(KINDS).optional(),
@@ -49,10 +56,18 @@ export const NewComment = z.object({
     text: z.string().max(300).optional(),
     /** React component names, outermost first. */
     trail: z.array(z.string().max(120)).max(12).optional(),
+    /** How the widget labels it, e.g. `button.btn-primary`. */
+    name: z.string().max(200).optional(),
   }),
   /** Document coordinates of the badge, so every page draws it in the same place. */
   at: z.object({ x: z.number(), y: z.number() }).optional(),
+  /** The element's box in document coordinates when the note was placed. */
+  rect: z.object({ x: z.number(), y: z.number(), w: z.number(), h: z.number() }).optional(),
   measured: z.array(Measurement).max(40).optional(),
+  /** The element's key declarations as the code writes them, with the resolved value. */
+  css: z.array(CssLine).max(16).optional(),
+  /** What sent it: the in-page widget or the extension, and its version. */
+  client: z.object({ name: z.string().max(40), version: z.string().max(20) }).optional(),
   /** A data URL. The server writes it to disk and keeps only the path. */
   screenshot: z.string().max(4_500_000).optional(),
 })
@@ -75,7 +90,10 @@ export interface Comment {
   createdAt: string
   element: NewComment['element']
   at?: { x: number; y: number }
+  rect?: { x: number; y: number; w: number; h: number }
   measured: Measurement[]
+  css?: CssLine[]
+  client?: { name: string; version: string }
   /** Absolute path to the PNG on this machine. */
   screenshot?: string
   thread: Message[]
@@ -182,10 +200,13 @@ export function heading(c: Comment): string {
 export function render(c: Comment): string {
   const lines: string[] = [heading(c), c.note.trim() || '(no note)', '']
 
-  const where = [c.element.selector]
+  const where = [c.element.name && c.element.name !== c.element.selector ? `${c.element.name}  (${c.element.selector})` : c.element.selector]
   if (c.element.text) where.push(`"${c.element.text}"`)
   lines.push(row('where', where.join(' · ')))
   if (c.element.trail?.length) lines.push(row('source', c.element.trail.join(' › ')))
+  for (const l of c.css ?? []) {
+    lines.push(row('css', `${l.property}: ${l.value};${l.resolved ? `   ${l.resolved}` : ''}`))
+  }
 
   for (const group of GROUPS) {
     for (const m of c.measured.filter(x => x.group === group)) lines.push(measuredLine(m, c.kind))

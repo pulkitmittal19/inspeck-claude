@@ -126,6 +126,52 @@ button { appearance: none; background: none; border: 0; padding: 0; cursor: poin
   box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.35);
 }
 
+/* pinned: tools, the fold line, the note */
+.card .tools { display: flex; gap: 2px; margin-left: 4px; }
+.card .num { font: 700 10.5px/1 var(--ix-sans); color: var(--ix-dim); }
+.tool {
+  width: 22px; height: 22px; border-radius: 6px; color: var(--ix-dim);
+  display: flex; align-items: center; justify-content: center;
+}
+.tool:hover { background: var(--ix-bg-2); color: var(--ix-text); }
+.fold {
+  display: flex; align-items: center; gap: 6px; width: 100%; padding: 3px 0 1px; text-align: left;
+  font: 11px/1.4 var(--ix-mono); color: var(--ix-dim); white-space: nowrap; overflow: hidden;
+}
+.fold:hover { color: var(--ix-text); }
+.fold-peek { margin-left: auto; overflow: hidden; text-overflow: ellipsis; color: var(--ix-faint); }
+.note {
+  display: flex; align-items: flex-end; gap: 8px; margin-top: 8px; padding: 6px 6px 6px 9px;
+  border-radius: 9px; background: rgba(255, 255, 255, 0.05);
+  box-shadow: 0 0 0 1.5px rgba(255, 255, 255, 0.12) inset; color: var(--ix-dim);
+  transition: box-shadow 140ms ease;
+}
+.note:focus-within { box-shadow: 0 0 0 1.5px var(--ix-accent) inset; }
+.note > svg { flex-shrink: 0; margin-bottom: 4px; }
+.note-input {
+  flex: 1; min-width: 220px; height: 20px; resize: none; border: 0; outline: 0; background: transparent; padding: 0;
+  font: 12.5px/20px var(--ix-sans); color: var(--ix-text); overflow-y: auto;
+}
+.note-input::placeholder { color: var(--ix-faint); }
+.send {
+  width: 24px; height: 24px; flex-shrink: 0; border-radius: 7px; background: rgba(255, 255, 255, 0.1);
+  color: var(--ix-dim); display: flex; align-items: center; justify-content: center; transition: background 140ms ease, color 140ms ease;
+}
+.send[data-ready] { background: var(--ix-accent-ink); color: #fff; }
+.send:disabled { cursor: default; }
+.status {
+  display: flex; align-items: center; gap: 7px; margin-top: 8px; padding: 7px 9px; border-radius: 8px;
+  background: var(--ix-bg-2); font: 12px/1.35 var(--ix-sans); color: var(--ix-text);
+}
+.status[data-kind="error"] { color: #FFB4C9; }
+.keys { display: flex; gap: 12px; margin-top: 7px; font: 10.5px/1 var(--ix-sans); color: var(--ix-dim); }
+.keys .kbd { margin-right: 3px; }
+.note-actions { display: flex; margin-top: 6px; }
+.link { display: flex; align-items: center; gap: 5px; padding: 4px 6px; border-radius: 6px; font: 500 11px/1 var(--ix-sans); color: var(--ix-dim); }
+.link:hover { color: var(--ix-text); background: var(--ix-bg-2); }
+@keyframes ix-pulse { 0%, 100% { transform: none } 30% { transform: translateX(-4px) } 60% { transform: translateX(3px) } }
+.card[data-pulse] { animation: ix-pulse 260ms ease; }
+
 /* small label that appears above a toolbar button on hover */
 .tip {
   position: fixed; pointer-events: none; padding: 5px 8px; border-radius: 7px;
