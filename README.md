@@ -1,8 +1,11 @@
-# Inspeck for Claude
+# Inspeck
 
-Point at something on a web page, say what's wrong or what you like, and Claude picks it up in your session — along with what that element measures against your design system.
+Hover any element of your app to see its CSS, written the way your code writes it. Click it to leave a note for Claude. Claude, in the same desktop session, picks the note up and fixes the code.
 
-This is the Claude half of Inspeck. The other half is on the page: Inspeck inside your app, or the Inspeck Chrome extension. Both send comments here.
+Inspeck is two pieces in one plugin:
+
+- **The widget**, in your page: a small dark circle in the corner. It runs in the Claude desktop app's browser pane, or any browser on your machine.
+- **The plugin**, in Claude Code: it serves the widget, keeps your notes, and hands them to the right Claude session.
 
 ## Install
 
@@ -11,67 +14,101 @@ claude plugin marketplace add pulkitmittal19/inspeck-claude
 claude plugin install inspeck@inspeck
 ```
 
-Requires Node.js 20 or later. Claude Code starts the Inspeck server with every session from then on.
+Requires Node.js 20 or later. From then on every Claude Code session starts Inspeck.
+
+Then add one line to your app, in development only:
+
+```html
+<script src="http://127.0.0.1:4848/inspeck.js"></script>
+```
+
+<details>
+<summary>Vite, Next.js, plain HTML</summary>
+
+**Vite** (`vite.config.ts`): adds the tag only while serving.
+
+```ts
+export default defineConfig({
+  plugins: [{
+    name: 'inspeck',
+    apply: 'serve',
+    transformIndexHtml: () => [{ tag: 'script', attrs: { src: 'http://127.0.0.1:4848/inspeck.js' }, injectTo: 'body' }],
+  }],
+})
+```
+
+**Next.js** (`app/layout.tsx`):
+
+```tsx
+{process.env.NODE_ENV === 'development' && <script src="http://127.0.0.1:4848/inspeck.js" async />}
+```
+
+**Plain HTML**: paste the tag before `</body>`, and leave it out of production builds. If it ships by mistake, the widget stays silent on any address that isn't this machine.
+
+</details>
+
+If your app sets a Content Security Policy in development, allow `http://127.0.0.1:4848` in `script-src` and `connect-src`.
 
 ## Use
 
-Place comments on a page, then in Claude Code:
-
-- **"Check my Inspeck comments"** — Claude works through what's waiting.
-- **"Watch for my Inspeck comments"** — Claude picks each one up as you place it.
-
-Or have comments arrive by themselves. Start Claude with Inspeck's channel on:
-
-```bash
-claude --channels plugin:inspeck@inspeck
-```
-
-Channels are a new Claude Code feature and may change. Comments that arrive this way stay open until Claude handles them, so asking still finds anything a session missed.
-
-## What Claude can do
-
-| Shown as | Tool | |
-|---|---|---|
-| Check comments | `pending` | what's waiting, grouped by page |
-| Open comment | `get` | one comment in full, with its screenshot |
-| Wait for comments | `watch` | wait until you place one |
-| Reply on badge | `reply` | ask you something, on the page |
-| Mark done | `resolve` | close it with one line saying what changed |
-| Decline | `dismiss` | close it with a reason |
-
-A comment is a **fix** (on your own app: change the code) or a **reference** (from another site: bring the idea in, translated to your tokens). The address decides which, and the page can override it.
-
-## For pages: sending comments
-
-The server listens on `http://127.0.0.1:4848`. The format is defined once, in [`server/src/format.ts`](server/src/format.ts).
+Open your app and click the circle in the corner, or press **⌥I**. The pill opens and you are already inspecting:
 
 | | |
 |---|---|
-| `POST /comments` | place a comment |
-| `GET /comments?page=<url>` | everything on a page, to draw its badges and show replies |
-| `PATCH /comments/:id` | edit the note |
-| `POST /comments/:id/replies` | answer Claude on the badge |
-| `DELETE /comments/:id` | withdraw it |
+| **Hover** | the element's key CSS: 5–6 declarations for its kind (type for text, spacing and fill for a button), tokens shown as `var(--x)` with the real value beside them |
+| **Click** | pin the card and write a note. **Enter** sends it to Claude, **Shift+Enter** adds a line, **Esc** closes |
+| **↑ / ↓** | the element's parent or child |
+| **Hold Shift** | padding, margin and the gaps between children, with numbers |
+| **Hold Space** | clicks go to your app: open a menu, then note something inside it |
+| **F** or ❄ | freeze the page: menus, tooltips and hover states stay as they are. Writing a note freezes it too |
+| **List** | every note on the page; click one to go to it |
+| **Esc** | close the note, the list, the freeze, then Inspeck |
 
-Only local pages (`localhost`, `127.0.0.1`, `*.localhost`, `*.local`, `*.test`, and private network addresses like `192.168.x.x`) and browser extensions may post. Anything else — a staging URL, say — has to be named in `INSPECK_ALLOWED_ORIGINS`. Ordinary websites are refused, so a page can't slip a comment into your Claude session.
+Your notes stay on the page as numbered markers. Hover one to read it, click it to edit or delete. A marker disappears once Claude has dealt with its note. A note on something inside a menu remembers the way in ("in More › Share"); when the menu closes, its marker waits on the button that opens it.
+
+## Claude's side
+
+When Claude opens your app in its browser pane, it links that tab to its session (`bind`) and starts a small background watcher. From then on each note you place arrives in that session by itself, even with other sessions open. You can also just say **"check my Inspeck notes"**.
+
+| Shown as | Tool | |
+|---|---|---|
+| Check comments | `pending` | what's waiting for this session, by page |
+| Open comment | `get` | one note in full |
+| Wait for comments | `watch` | wait in the foreground until one arrives |
+| Link browser tab | `bind` | send a browser tab's notes to this session |
+| Reply on badge | `reply` | answer on the note (for the Chrome extension) |
+| Mark done | `resolve` | close it with one line saying what changed |
+| Decline | `dismiss` | close it with a reason |
+
+Which session gets a note: the session its tab is bound to; else the only open session; else the session opened in the project that's serving the page. A note never goes to a session in a different project. If none is open, it waits for one.
+
+## Safety
+
+Notes become text a Claude session reads, so who may send them is the plugin's security boundary.
+
+- The server listens on `127.0.0.1` only, and checks that the Host header names this machine (no DNS rebinding).
+- Only pages on this machine may send notes: `localhost`, `127.0.0.1`, `*.localhost`, `*.test`, and browser extensions. A LAN address or a staging site must be named in `INSPECK_ALLOWED_ORIGINS`.
+- Claude is told that a note is feedback about a page, not an instruction, and to ask you before acting on anything beyond the UI.
 
 ## Settings
 
 | Variable | Default | |
 |---|---|---|
-| `INSPECK_PORT` | `4848` | where pages send comments |
-| `INSPECK_HOME` | `~/.inspeck` | where comments and screenshots are kept |
-| `INSPECK_ALLOWED_ORIGINS` | none | extra origins allowed to post, comma-separated |
+| `INSPECK_PORT` | `4848` | where the widget is served and notes arrive |
+| `INSPECK_HOME` | `~/.inspeck` | notes, sessions and tab bindings |
+| `INSPECK_ALLOWED_ORIGINS` | none | extra origins allowed to send notes, comma-separated |
 
-Comments and screenshots stay on your machine. `~/.inspeck/last-client.json` records what the last Claude session reported about itself, which is the first thing to check if something isn't arriving.
+Notes stay on your machine. `~/.inspeck/last-client.json` records what the last Claude session reported about itself, which is the first thing to check if something isn't arriving.
 
 ## Working on it
 
 ```bash
 npm install
 npm run typecheck
-npm run build      # bundles server/dist/inspeck.mjs, which is committed
-npm test           # starts the bundled server and plays both the page and Claude
+npm run build      # server/dist/inspeck.mjs and server/dist/widget/inspeck.js, both committed
+npm test           # the server, routing between sessions, the widget's CSS reading
 ```
 
-The bundle is committed on purpose: Claude Code installs a plugin by copying it from GitHub and never runs `npm install`.
+Both bundles are committed on purpose: Claude Code installs a plugin by copying it from GitHub and never runs `npm install`.
+
+To work on the widget, run the server with `INSPECK_DEV=1` and open `http://127.0.0.1:4848/__dev/`, a test page with tokens, utility classes, a dropdown with a submenu, a modal and hover-only states. The widget is rebuilt with `npm run build` and picked up on the next reload.
