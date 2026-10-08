@@ -49,8 +49,9 @@ export function renderCss(d: Description): HTMLDivElement {
   return box
 }
 
-function renderHead(d: Description, extra: Array<Node | null> = []): HTMLDivElement {
+function renderHead(d: Description, extra: Array<Node | null> = [], num?: number): HTMLDivElement {
   return h('div', { class: 'card-head' },
+    num ? h('span', { class: 'num' }, `#${num}`) : null,
     h('span', { class: 'label' }, d.label),
     d.component ? h('span', { class: 'comp' }, d.component) : null,
     h('span', { class: 'size' }, d.size),
@@ -153,8 +154,7 @@ export function createCard(ui: HTMLElement): Card {
       busy = false
       clear(el)
       el.setAttribute('data-pinned', '')
-      const n = o.existing ? h('span', { class: 'num' }, `#${o.existing.n}`) : null
-      const head = renderHead(desc, [n, h('span', { class: 'tools' }, tool('copy', 'copy', 'Copy CSS'), tool('close-card', 'close', 'Close'))])
+      const head = renderHead(desc, [h('span', { class: 'tools' }, tool('copy', 'copy', 'Copy CSS'), tool('close-card', 'close', 'Close'))], o.existing?.n)
       const css = renderCss(desc)
       const first = desc.lines[0]
       const fold = h('button', { type: 'button', class: 'fold', 'data-action': 'unfold', hidden: true },

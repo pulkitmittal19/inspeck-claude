@@ -172,6 +172,37 @@ button { appearance: none; background: none; border: 0; padding: 0; cursor: poin
 @keyframes ix-pulse { 0%, 100% { transform: none } 30% { transform: translateX(-4px) } 60% { transform: translateX(3px) } }
 .card[data-pulse] { animation: ix-pulse 260ms ease; }
 
+/* ---------- markers, their preview, and the list ---------- */
+.marker {
+  position: fixed; left: 0; top: 0; width: 20px; height: 20px; border-radius: 10px; pointer-events: auto;
+  background: #17171C; color: #fff; font: 700 10.5px/1 var(--ix-sans);
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 0 0 1.5px #fff, 0 2px 6px rgba(0, 0, 0, 0.28);
+  transition: transform 140ms var(--ix-ease), opacity 140ms ease;
+}
+.marker:hover { transform: scale(1.12); }
+.marker[data-lost] { opacity: 0.45; box-shadow: 0 0 0 1.5px #fff, 0 0 0 3px rgba(23, 23, 28, 0.25); }
+.preview {
+  position: fixed; left: 0; top: 0; width: max-content; max-width: 280px; pointer-events: none;
+  padding: 8px 10px; border-radius: 10px; background: var(--ix-bg); box-shadow: var(--ix-shadow);
+}
+.preview-head { font: 600 10.5px/1.3 var(--ix-sans); color: var(--ix-dim); margin-bottom: 3px; }
+.preview-head span { font-family: var(--ix-mono); font-weight: 500; }
+.preview-text { font: 12px/1.45 var(--ix-sans); color: var(--ix-text); white-space: pre-wrap; overflow-wrap: anywhere; }
+.preview-lost { margin-top: 5px; font: 11px/1.3 var(--ix-sans); color: var(--ix-faint); }
+.list {
+  position: fixed; right: 20px; bottom: 70px; width: 300px; max-height: min(420px, calc(100vh - 100px)); overflow-y: auto;
+  pointer-events: auto; padding: 6px; border-radius: 12px; background: var(--ix-bg); box-shadow: var(--ix-shadow);
+}
+.list .row { display: flex; align-items: flex-start; gap: 9px; width: 100%; padding: 7px 6px; border-radius: 8px; text-align: left; }
+.list .row:hover { background: var(--ix-bg-2); }
+.row-num { width: 18px; height: 18px; flex-shrink: 0; border-radius: 9px; background: #F4F4F5; color: #17171C; font: 700 10px/18px var(--ix-sans); text-align: center; }
+.row-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.row-note { font: 12px/1.3 var(--ix-sans); color: var(--ix-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.row-where { font: 10.5px/1.2 var(--ix-mono); color: var(--ix-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.list-foot { display: flex; justify-content: space-between; padding: 6px 2px 2px; margin-top: 4px; border-top: 1px solid var(--ix-line); }
+.list-empty { padding: 14px 10px; font: 12px/1.45 var(--ix-sans); color: var(--ix-dim); }
+
 /* small label that appears above a toolbar button on hover */
 .tip {
   position: fixed; pointer-events: none; padding: 5px 8px; border-radius: 7px;

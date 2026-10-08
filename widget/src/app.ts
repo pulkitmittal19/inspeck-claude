@@ -6,6 +6,7 @@ import { warmUp } from './css/cascade'
 import { isEditable } from './dom'
 import { tabStore } from './env'
 import { createHost, type Host } from './host'
+import { anchorOf, createNotes, type Notes } from './notes'
 import { createOutline, type Outline } from './outline'
 import { childToward, elementAt, parentOf, pickable, snap } from './pick'
 import { createRouter } from './router'
@@ -21,6 +22,7 @@ export class App {
   readonly toolbar: Toolbar
   readonly outline: Outline
   readonly card: Card
+  readonly notes: Notes
   open = false
   /** Held Space: presses go to the app, so you can open a menu to comment inside it. */
   through = false
@@ -33,14 +35,13 @@ export class App {
   private stepped = false
   private pickFrame = 0
   private unroute: () => void
-  /** Called when a note has been sent (markers listen here). */
-  onNote: (note: Note, el: Element) => void = () => {}
 
   constructor() {
     this.host = createHost()
     this.toolbar = createToolbar(this.host.ui)
     this.card = createCard(this.host.ui)
     this.outline = createOutline(this.host.ui, (_el, r) => this.card.place(r))
+    this.notes = createNotes(this.host.ui, (note, el) => this.openNote(note, el))
     this.unroute = createRouter(this.host, {
       ui: e => this.onUi(e),
       page: e => this.onPage(e),
@@ -66,7 +67,16 @@ export class App {
     switch (action) {
       case 'open': this.setOpen(true); break
       case 'close': this.setOpen(false); break
+      case 'list': this.notes.toggleList(); break
     }
+  }
+
+  /** A marker or a list row was clicked: open that note on its element. */
+  private openNote(note: Note, el: Element): void {
+    if (!this.open) this.setOpen(true)
+    this.unpin()
+    this.target = el
+    this.pin(el, note)
   }
 
   /* ---------- picking ---------- */
@@ -132,14 +142,15 @@ export class App {
       onSend: async text => {
         if (existing) {
           await api.edit(existing.id, text)
+          void this.notes.refresh()
           return
         }
         const note = await api.add(this.noteFor(el, text))
-        this.onNote(note, el)
+        this.notes.added(note, el)
         return { n: note.n }
       },
       onClose: () => this.unpin(),
-      onDelete: existing ? () => api.remove(existing.id) : undefined,
+      onDelete: existing ? async () => { await api.remove(existing.id); await this.notes.refresh() } : undefined,
     })
   }
 
@@ -167,8 +178,8 @@ export class App {
         ...(d?.component ? { trail: [d.component] } : {}),
         ...(d ? { name: d.label } : {}),
       },
-      /* The marker sits on the element's top-right corner. */
-      at: { x: Math.round(r.right + scrollX), y: Math.round(r.top + scrollY) },
+      /* Where the marker sits: the top-right corner, or the end of a line of text. */
+      at: (({ x, y }) => ({ x: Math.round(x + scrollX), y: Math.round(y + scrollY) }))(anchorOf(el)),
       rect: { x: Math.round(r.left + scrollX), y: Math.round(r.top + scrollY), w: Math.round(r.width), h: Math.round(r.height) },
       css: (d?.lines ?? []).map(l => ({ property: l.prop, value: l.value, ...(l.resolved ? { resolved: l.resolved } : {}) })),
     }
@@ -179,6 +190,7 @@ export class App {
   /** Events inside Inspeck's own UI. */
   private onUi(e: Event): void {
     if (this.card.handle(e)) return
+    if (this.notes.handle(e)) return
     const action = this.toolbar.handle(e)
     if (action) this.act(action)
     if (e.type === 'keydown') this.onKey(e as KeyboardEvent, true)
@@ -239,7 +251,7 @@ export class App {
     switch (e.key) {
       case 'Escape':
         if (this.pinned) this.unpin()
-        else this.setOpen(false)
+        else if (!this.notes.closeList()) this.setOpen(false)
         return 'swallow'
       case 'ArrowUp':
       case 'ArrowDown':
@@ -265,6 +277,7 @@ export class App {
   }
 
   destroy(): void {
+    this.notes.destroy()
     this.unroute()
     this.host.destroy()
   }
