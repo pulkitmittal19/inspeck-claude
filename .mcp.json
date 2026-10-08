@@ -12,7 +12,6 @@
           "pending": "Check comments",
           "get": "Open comment",
           "watch": "Wait for comments",
-          "reply": "Reply on badge",
           "resolve": "Mark done",
           "dismiss": "Decline",
           "bind": "Link browser tab"

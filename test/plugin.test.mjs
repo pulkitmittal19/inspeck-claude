@@ -158,12 +158,12 @@ test('a note inside a menu tells Claude how to open it again', async () => {
   await page(s.port, 'DELETE', `/comments/${r.json.comment.id}`)
 })
 
-test('Claude sees the seven actions, by the names people see', async () => {
+test('Claude sees six actions, by the names people see, and none that writes on the page', async () => {
   const { tools } = await s.client.listTools()
   const byName = Object.fromEntries(tools.map(t => [t.name, t.title]))
   assert.deepEqual(byName, {
     pending: 'Check comments', get: 'Open comment', watch: 'Wait for comments', bind: 'Link browser tab',
-    reply: 'Reply on badge', resolve: 'Mark done', dismiss: 'Decline',
+    resolve: 'Mark done', dismiss: 'Decline',
   })
 })
 
@@ -261,14 +261,12 @@ test('Wait for comments picks up one placed while it waits', async () => {
   assert.match(r.content[0].text, /Avatar is 2px off centre/)
 })
 
-test('reply, mark done and decline all show up on the page', async () => {
+test('mark done and decline both close the note on the page', async () => {
   const { json } = await page(s.port, 'GET', '/comments?page=' + encodeURIComponent(fix.page))
   const [a, b] = json.comments
-  await s.client.callTool({ name: 'reply', arguments: { id: a.id, text: 'Do you mean the left or right padding?' } })
   await s.client.callTool({ name: 'resolve', arguments: { id: a.id, summary: 'padding-left is now --space-3' } })
   await s.client.callTool({ name: 'dismiss', arguments: { id: b.id, reason: 'The baseline follows the type scale' } })
   const now = (await page(s.port, 'GET', '/comments?page=' + encodeURIComponent(fix.page))).json.comments
-  assert.equal(now[0].thread[0].from, 'claude')
   assert.equal(now[0].status, 'resolved')
   assert.equal(now[0].outcome.summary, 'padding-left is now --space-3')
   assert.equal(now[1].status, 'dismissed')
@@ -339,17 +337,18 @@ test('two sessions writing at once never lose each other\'s changes', async () =
   const first = await start({ home: shared, port })
   const second = await start({ home: shared, port })
   try {
-    const target = (await page(port, 'POST', '/comments', { body: { ...fix, screenshot: undefined } })).json.comment.id
     const N = 40
+    const targets = []
+    for (let i = 0; i < N; i++) targets.push((await page(port, 'POST', '/comments', { body: { ...fix, note: `to close ${i}`, screenshot: undefined } })).json.comment.id)
     /* Comments land through the first session's port while the second
-       session writes replies to the same file. */
+       session closes others in the same file. */
     await Promise.all([
       ...Array.from({ length: N }, (_, i) => page(port, 'POST', '/comments', { body: { ...fix, note: `race ${i}`, screenshot: undefined } })),
-      ...Array.from({ length: N }, (_, i) => second.client.callTool({ name: 'reply', arguments: { id: target, text: `reply ${i}` } })),
+      ...targets.map(id => second.client.callTool({ name: 'resolve', arguments: { id, summary: 'done' } })),
     ])
     const all = (await page(port, 'GET', `/comments?page=${encodeURIComponent(fix.page)}`)).json.comments
     assert.equal(all.filter(c => c.note.startsWith('race ')).length, N, 'every comment kept')
-    assert.equal(all.find(c => c.id === target).thread.length, N, 'every reply kept')
+    assert.equal(all.filter(c => c.note.startsWith('to close ') && c.status === 'resolved').length, N, 'every close kept')
   } finally {
     await second.stop()
     await first.stop()

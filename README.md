@@ -76,9 +76,10 @@ When Claude opens your app in its browser pane, it links that tab to its session
 | Open comment | `get` | one note in full |
 | Wait for comments | `watch` | wait in the foreground until one arrives |
 | Link browser tab | `bind` | send a browser tab's notes to this session |
-| Reply on badge | `reply` | answer on the note (for the Chrome extension) |
 | Mark done | `resolve` | close it with one line saying what changed |
 | Decline | `dismiss` | close it with a reason |
+
+Claude talks to you only in the chat. The page shows your notes, never Claude's answers.
 
 Which session gets a note: the session its tab is bound to; else the only open session; else the session opened in the project that's serving the page. A note never goes to a session in a different project. If none is open, it waits for one.
 
