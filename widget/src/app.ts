@@ -41,6 +41,8 @@ export class App {
   private pointer = { x: -1, y: -1 }
   private raw: Element | null = null
   private stepped = false
+  /** The element under the pointer when a note closed: it stays quiet until the pointer moves off it. */
+  private rest: Element | null = null
   private pickFrame = 0
   private unroute: () => void
 
@@ -53,6 +55,7 @@ export class App {
     this.freeze = createFreeze(this.host.el, (active, manual) => {
       this.frost.hidden = !active
       this.toolbar.setPressed('freeze', manual)
+      this.toolbar.setFrozen(manual)
     })
     /* Markers first, so the card is drawn above them. */
     this.notes = createNotes(this.host.ui, (note, el) => this.openNote(note, el))
@@ -88,7 +91,6 @@ export class App {
     switch (action) {
       case 'open': this.setOpen(true); break
       case 'close': this.setOpen(false); break
-      case 'list': this.notes.toggleList(); break
       case 'freeze': this.toggleFreeze(); break
     }
   }
@@ -116,6 +118,8 @@ export class App {
       const raw = elementAt(this.pointer.x, this.pointer.y, this.host.el)
       /* ↑/↓ choices hold until the pointer moves onto a different element. */
       if (this.stepped && raw === this.raw) return
+      if (raw && raw === this.rest) return
+      this.rest = null
       this.raw = raw
       this.stepped = false
       this.setTarget(raw ? snap(raw) : null)
@@ -193,6 +197,8 @@ export class App {
     this.outline.hide()
     this.target = null
     this.stepped = false
+    /* The card just bowed out; don't bring the hover card straight back over the same spot. */
+    this.rest = elementAt(this.pointer.x, this.pointer.y, this.host.el)
     if (this.open) this.schedulePick()
   }
 
@@ -276,6 +282,7 @@ export class App {
     /* Pick fresh at the press point: the pointer may not have moved since the last frame. */
     this.pointer = { x: p.clientX, y: p.clientY }
     const raw = elementAt(p.clientX, p.clientY, this.host.el)
+    this.rest = null
     if (!this.pinned) {
       if (!this.stepped || raw !== this.raw) { this.raw = raw; this.stepped = false; this.setTarget(raw ? snap(raw) : null) }
     } else {
@@ -304,7 +311,6 @@ export class App {
     switch (e.key) {
       case 'Escape':
         if (this.pinned) this.unpin()
-        else if (this.notes.closeList()) { /* closed the list */ }
         else if (this.freeze.manual) this.freeze.unfreeze(true)
         else this.setOpen(false)
         return 'swallow'

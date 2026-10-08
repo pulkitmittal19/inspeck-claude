@@ -1,5 +1,6 @@
 /* Hold Shift: the hovered element's padding (tinted bands), margin (outlined
    bands outside it) and the gaps between its children, each with its number. */
+import { enter, leave } from './anim'
 import { clear, h } from './dom'
 
 export interface Spacing {
@@ -32,7 +33,7 @@ export function createSpacing(ui: HTMLElement): Spacing {
     get on() { return on },
     draw(el) {
       on = true
-      layer.hidden = false
+      if (layer.hidden || layer.dataset.state === 'out') enter(layer)
       clear(layer)
       const r = el.getBoundingClientRect()
       const cs = getComputedStyle(el)
@@ -81,8 +82,7 @@ export function createSpacing(ui: HTMLElement): Spacing {
     },
     hide() {
       on = false
-      layer.hidden = true
-      clear(layer)
+      leave(layer, 90, () => { if (!on) clear(layer) })
     },
   }
 }

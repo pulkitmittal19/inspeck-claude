@@ -1,6 +1,9 @@
 /* The pink outline that follows the element under the pointer. It reads the
-   element's rect every frame while visible, so it stays glued through scrolling,
-   inner scroll areas, sticky headers and layout shifts. */
+   element's rect every frame while visible, so it stays glued through
+   scrolling, inner scroll areas, sticky headers and layout shifts. Moving to a
+   different element it glides there; following the same element it never
+   lags, because only a change of element turns the glide on. */
+import { enter, leave } from './anim'
 import { h } from './dom'
 
 export interface Outline {
@@ -9,11 +12,14 @@ export interface Outline {
   readonly target: Element | null
 }
 
-export function createOutline(ui: HTMLElement, onFrame?: (el: Element, r: DOMRect) => void): Outline {
+const GLIDE_MS = 160
+
+export function createOutline(ui: HTMLElement, onFrame?: (el: Element, r: DOMRect, moved: boolean) => void): Outline {
   const box = h('div', { class: 'outline', hidden: true })
   ui.appendChild(box)
   let target: Element | null = null
   let raf = 0
+  let glide = 0
 
   const frame = () => {
     raf = 0
@@ -23,13 +29,13 @@ export function createOutline(ui: HTMLElement, onFrame?: (el: Element, r: DOMRec
     box.style.transform = `translate(${r.left - 2}px, ${r.top - 2}px)`
     box.style.width = `${r.width + 4}px`
     box.style.height = `${r.height + 4}px`
-    onFrame?.(target, r)
+    onFrame?.(target, r, box.hasAttribute('data-glide'))
     raf = requestAnimationFrame(frame)
   }
 
   function hide() {
     target = null
-    box.hidden = true
+    leave(box, 90)
     if (raf) cancelAnimationFrame(raf)
     raf = 0
   }
@@ -37,12 +43,21 @@ export function createOutline(ui: HTMLElement, onFrame?: (el: Element, r: DOMRec
   return {
     show(el) {
       if (el !== target) {
+        const wasShowing = !!target && !box.hidden
         target = el
         const radius = getComputedStyle(el).borderTopLeftRadius
         box.style.borderRadius = radius && radius !== '0px' ? `calc(${radius} + 2px)` : '3px'
+        /* From one element to the next: glide. From nothing: appear in place. */
+        if (wasShowing) {
+          box.setAttribute('data-glide', '')
+          clearTimeout(glide)
+          glide = window.setTimeout(() => box.removeAttribute('data-glide'), GLIDE_MS)
+        } else {
+          box.removeAttribute('data-glide')
+        }
       }
-      box.hidden = false
       if (!raf) frame()
+      enter(box)
     },
     hide,
     get target() { return target },

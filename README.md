@@ -51,7 +51,7 @@ If your app sets a Content Security Policy in development, allow `http://127.0.0
 
 ## Use
 
-Open your app and click the circle in the corner, or press **⌥I**. The pill opens and you are already inspecting:
+Open your app and click the circle in the corner, or press **⌥I**. The pill opens to two buttons, Freeze and Close, and you are already inspecting:
 
 | | |
 |---|---|
@@ -61,8 +61,7 @@ Open your app and click the circle in the corner, or press **⌥I**. The pill op
 | **Hold Shift** | padding, margin and the gaps between children, with numbers |
 | **Hold Space** | clicks go to your app: open a menu, then note something inside it |
 | **F** or ❄ | freeze the page: menus, tooltips and hover states stay as they are. Writing a note freezes it too |
-| **List** | every note on the page; click one to go to it |
-| **Esc** | close the note, the list, the freeze, then Inspeck |
+| **Esc** | close the note, then the freeze, then Inspeck |
 
 Your notes stay on the page as numbered markers. Hover one to read it, click it to edit or delete. A marker disappears once Claude has dealt with its note. A note on something inside a menu remembers the way in ("in More › Share"); when the menu closes, its marker waits on the button that opens it.
 

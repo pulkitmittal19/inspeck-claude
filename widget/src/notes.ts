@@ -1,5 +1,5 @@
-/* Your notes on this page: a numbered marker on each element, a hover preview,
- * and the list behind the pill's list icon.
+/* Your notes on this page: a numbered marker on each element, and a preview
+ * of the note when you hover it.
  *
  * Markers stay glued to their element through scrolling, resizing and layout
  * shifts. After a reload or a re-render the element is found again by its
@@ -10,8 +10,8 @@
  * A note disappears once Claude has dealt with it (resolved or declined).
  */
 import { api, type Note } from './api'
+import { enter, leave } from './anim'
 import { clear, h } from './dom'
-import { tabStore } from './env'
 import { actionOf } from './router'
 
 const POLL_MS = 4000
@@ -36,10 +36,8 @@ export interface Notes {
   /** A note was just sent: show its marker straight away. */
   added(note: Note, el: Element): void
   refresh(): Promise<void>
-  /** Events inside the widget that belong to markers or the list. */
+  /** Events inside the widget that belong to the markers. */
   handle(e: Event): boolean
-  toggleList(): void
-  closeList(): boolean
   find(note: Note): Element | null
   destroy(): void
 }
@@ -47,16 +45,15 @@ export interface Notes {
 export function createNotes(ui: HTMLElement, onOpen: (note: Note, el: Element) => void): Notes {
   const layer = h('div', { class: 'markers' })
   const preview = h('div', { class: 'preview', hidden: true, role: 'tooltip' })
-  const list = h('div', { class: 'list', hidden: true, role: 'dialog', 'aria-label': 'Your notes on this page' })
-  ui.append(layer, preview, list)
+  ui.append(layer, preview)
 
   let notes: Note[] = []
   const els = new Map<string, WeakRef<Element>>()
   const markers = new Map<string, HTMLButtonElement>()
-  let hidden = tabStore.get('markers-hidden') === '1'
   let raf = 0
   let timer = 0
-  let confirmClear = 0
+  /* Notes sent from this tab pop in; ones already there on load just appear. */
+  const born = new Set<string>()
 
   /* ---------- finding the element again ---------- */
 
@@ -81,18 +78,24 @@ export function createNotes(ui: HTMLElement, onOpen: (note: Note, el: Element) =
   /* ---------- markers ---------- */
 
   function render() {
-    const shown = hidden ? [] : notes
     for (const [id, m] of markers) {
-      if (!shown.some(n => n.id === id)) { m.remove(); markers.delete(id) }
+      if (notes.some(n => n.id === id)) continue
+      /* Claude closed it (or you deleted it): shrink away, then go. */
+      markers.delete(id)
+      m.setAttribute('data-gone', '')
+      setTimeout(() => m.remove(), 220)
     }
-    for (const n of shown) {
+    for (const n of notes) {
       if (markers.has(n.id)) continue
       const m = h('button', { type: 'button', class: 'marker', 'data-action': 'marker', 'data-id': n.id, 'aria-label': `Note ${n.n}: ${n.note}` }, String(n.n))
+      if (born.delete(n.id)) {
+        m.setAttribute('data-born', '')
+        setTimeout(() => m.removeAttribute('data-born'), 500)
+      }
       markers.set(n.id, m)
       layer.appendChild(m)
     }
     if (markers.size && !raf) raf = requestAnimationFrame(frame)
-    renderList()
   }
 
   function frame() {
@@ -138,35 +141,13 @@ export function createNotes(ui: HTMLElement, onOpen: (note: Note, el: Element) =
       ...(n.element.within ? [h('div', { class: 'preview-lost' }, `in ${n.element.within}`)] : []),
       ...(find(n) || (n.element.within && findAnchor(n)) ? [] : [h('div', { class: 'preview-lost' }, 'Can’t find this element on the page right now')]),
     )
-    preview.hidden = false
+    enter(preview)
     const r = m.getBoundingClientRect()
     const w = preview.offsetWidth, hh = preview.offsetHeight
     const left = Math.min(innerWidth - 8 - w, Math.max(8, r.left + r.width / 2 - w / 2))
     const top = r.top - hh - 8 >= 8 ? r.top - hh - 8 : r.bottom + 8
     preview.style.left = `${Math.round(left)}px`
     preview.style.top = `${Math.round(top)}px`
-  }
-
-  /* ---------- the list ---------- */
-
-  function renderList() {
-    if (list.hidden) return
-    clear(list)
-    if (!notes.length) {
-      list.append(h('div', { class: 'list-empty' }, 'No notes on this page yet. Click any element to add one.'))
-      return
-    }
-    for (const n of notes) {
-      list.appendChild(h('button', { type: 'button', class: 'row', 'data-action': 'jump', 'data-id': n.id },
-        h('span', { class: 'row-num' }, String(n.n)),
-        h('span', { class: 'row-body' },
-          h('span', { class: 'row-note' }, n.note),
-          h('span', { class: 'row-where' }, n.element.within ? `in ${n.element.within}` : (n.element.name ?? n.element.selector)))))
-    }
-    list.appendChild(h('div', { class: 'list-foot' },
-      h('button', { type: 'button', class: 'link', 'data-action': 'toggle-markers' }, hidden ? 'Show markers' : 'Hide markers'),
-      h('button', { type: 'button', class: 'link', 'data-action': 'clear-all' },
-        confirmClear ? `Delete all ${notes.length}?` : 'Clear all')))
   }
 
   /* ---------- syncing with the server ---------- */
@@ -200,64 +181,25 @@ export function createNotes(ui: HTMLElement, onOpen: (note: Note, el: Element) =
   return {
     added(note, el) {
       els.set(note.id, new WeakRef(el))
+      born.add(note.id)
       notes = [...notes.filter(n => n.id !== note.id), note].sort((a, b) => a.n - b.n)
       render()
     },
     refresh,
     find,
-    toggleList() {
-      list.hidden = !list.hidden
-      confirmClear = 0
-      if (!list.hidden) { renderList(); void refresh() }
-    },
-    closeList() {
-      if (list.hidden) return false
-      list.hidden = true
-      return true
-    },
     handle(e) {
       const a = actionOf(e)
       if (e.type === 'pointerover' && a?.action === 'marker') { showPreview(a.el); return true }
       if ((e.type === 'pointerout' || e.type === 'pointerleave') && !preview.hidden) {
         const to = (e as PointerEvent).relatedTarget
-        if (!(to instanceof Element) || to.getAttribute?.('data-action') !== 'marker') preview.hidden = true
+        if (!(to instanceof Element) || to.getAttribute?.('data-action') !== 'marker') leave(preview, 90)
       }
-      if (e.type !== 'click' || !a) return false
+      if (e.type !== 'click' || a?.action !== 'marker') return false
+      leave(preview, 90)
       const n = notes.find(x => x.id === a.el.dataset.id)
-      switch (a.action) {
-        case 'marker': {
-          preview.hidden = true
-          const el = n && find(n)
-          if (n && el) onOpen(n, el)
-          return true
-        }
-        case 'jump': {
-          if (!n) return true
-          const el = find(n)
-          list.hidden = true
-          if (el) {
-            el.scrollIntoView({ block: 'center', behavior: 'smooth' })
-            setTimeout(() => onOpen(n, el), 350)
-          }
-          return true
-        }
-        case 'toggle-markers':
-          hidden = !hidden
-          tabStore.set('markers-hidden', hidden ? '1' : null)
-          render()
-          return true
-        case 'clear-all':
-          if (!confirmClear) {
-            confirmClear = window.setTimeout(() => { confirmClear = 0; renderList() }, 3000)
-            renderList()
-            return true
-          }
-          clearTimeout(confirmClear)
-          confirmClear = 0
-          void Promise.all(notes.map(x => api.remove(x.id).catch(() => {}))).then(refresh)
-          return true
-      }
-      return false
+      const el = n && find(n)
+      if (n && el) onOpen(n, el)
+      return true
     },
     destroy() {
       clearTimeout(timer)

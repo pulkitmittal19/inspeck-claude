@@ -4,6 +4,7 @@
  */
 import { describe, type Description } from './css/describe'
 import { highlight, resolved } from './css/highlight'
+import { enter, leave, play } from './anim'
 import { clear, h, svg } from './dom'
 import { ICONS } from './icons'
 import { actionOf } from './router'
@@ -67,6 +68,16 @@ export const cssText = (d: Description) => d.lines.map(l => `${l.prop}: ${l.valu
 
 let keysSeen = (() => { try { return localStorage.getItem('inspeck:keys-seen') === '1' } catch { return false } })()
 
+/** A section whose height animates open and closed. */
+function reveal(cls: string, open: boolean, ...children: Array<Node | null>): HTMLDivElement {
+  const inner = h('div', { class: 'inner' }, ...children)
+  return h('div', { class: `reveal ${cls}`, 'data-open': open }, inner)
+}
+const setOpen = (el: HTMLElement | null | undefined, open: boolean) => el?.toggleAttribute('data-open', open)
+
+const GLIDE_MS = 170
+const SENT_HOLD_MS = 750
+
 export function createCard(ui: HTMLElement): Card {
   const el = h('div', { class: 'card', hidden: true })
   ui.appendChild(el)
@@ -74,13 +85,25 @@ export function createCard(ui: HTMLElement): Card {
   let lastTarget: Element | null = null
   let desc: Description | null = null
   let opts: PinOptions | null = null
-  let parts: { css: HTMLElement; fold: HTMLElement; note: HTMLTextAreaElement; send: HTMLButtonElement; status: HTMLElement; keys: HTMLElement | null } | null = null
+  let parts: {
+    cssWrap: HTMLElement; foldWrap: HTMLElement; noteWrap: HTMLElement; statusWrap: HTMLElement; status: HTMLElement
+    keysWrap: HTMLElement | null; note: HTMLTextAreaElement; send: HTMLButtonElement
+  } | null = null
   let busy = false
+  let folded = false
+  let glide = 0
 
-  const setFolded = (folded: boolean) => {
+  const glideNow = () => {
+    el.setAttribute('data-glide', '')
+    clearTimeout(glide)
+    glide = window.setTimeout(() => el.removeAttribute('data-glide'), GLIDE_MS)
+  }
+
+  const setFolded = (f: boolean) => {
     if (!parts) return
-    parts.css.hidden = folded
-    parts.fold.hidden = !folded
+    folded = f
+    setOpen(parts.cssWrap, !f)
+    setOpen(parts.foldWrap, f)
   }
 
   const grow = () => {
@@ -96,16 +119,16 @@ export function createCard(ui: HTMLElement): Card {
     parts.send.disabled = !has || busy
     parts.send.toggleAttribute('data-ready', has)
     /* The first keystroke folds the CSS away so the note has the room. */
-    if (has && !parts.css.hidden && !opts?.existing) setFolded(true)
+    if (has && !folded && !opts?.existing) setFolded(true)
     grow()
   }
 
   const status = (text: string, kind: 'ok' | 'error') => {
     if (!parts) return
     clear(parts.status)
-    parts.status.append(kind === 'ok' ? svg(ICONS.check, 13, 2.4) : '', text)
+    parts.status.append(...(kind === 'ok' ? [svg(ICONS.check, 13, 2.4)] : []), text)
     parts.status.dataset.kind = kind
-    parts.status.hidden = false
+    setOpen(parts.statusWrap, true)
   }
 
   const send = async () => {
@@ -117,12 +140,19 @@ export function createCard(ui: HTMLElement): Card {
     try {
       const r = await opts.onSend(text)
       if (!keysSeen) { keysSeen = true; try { localStorage.setItem('inspeck:keys-seen', '1') } catch { /* fine */ } }
+      /* The note line gives way to the confirmation, then the card bows out. */
+      setOpen(parts.noteWrap, false)
+      setOpen(parts.keysWrap, false)
       status(opts.existing ? 'Saved' : `Sent to Claude${r ? ` as #${r.n}` : ''}`, 'ok')
-      parts.note.disabled = true
       const done = opts
-      setTimeout(() => { if (opts === done) done.onClose() }, 900)
+      setTimeout(() => {
+        if (opts !== done) return
+        el.setAttribute('data-sent', '')
+        done.onClose()
+      }, SENT_HOLD_MS)
     } catch (err) {
       status((err as Error).message, 'error')
+      play(el, 'data-pulse', 300)
     } finally {
       busy = false
       sync()
@@ -137,59 +167,73 @@ export function createCard(ui: HTMLElement): Card {
 
     showHover(target) {
       if (mode === 'pinned') return
+      const visible = !el.hidden && el.dataset.state !== 'out'
       if (target !== lastTarget || mode !== 'hover') {
         lastTarget = target
         desc = describe(target)
         clear(el)
         el.removeAttribute('data-pinned')
+        el.removeAttribute('data-sent')
         el.append(renderHead(desc), renderCss(desc))
+        /* Already showing for another element: glide over rather than blink. */
+        if (visible) glideNow()
       }
-      el.hidden = false
       mode = 'hover'
+      enter(el)
     },
 
     pin(target, o) {
+      const wasShowing = !el.hidden && el.dataset.state !== 'out'
       opts = o
       lastTarget = target
       desc = describe(target)
       mode = 'pinned'
       busy = false
+      folded = false
       clear(el)
+      el.removeAttribute('data-sent')
       el.setAttribute('data-pinned', '')
       const head = renderHead(desc, [h('span', { class: 'tools' }, tool('copy', 'copy', 'Copy CSS'), tool('close-card', 'close', 'Close'))], o.existing?.n)
-      const css = renderCss(desc)
       const first = desc.lines[0]
-      const fold = h('button', { type: 'button', class: 'fold', 'data-action': 'unfold', hidden: true },
+      const cssWrap = reveal('css-wrap', !o.existing, renderCss(desc))
+      const foldWrap = reveal('fold-wrap quick', !!o.existing, h('button', { type: 'button', class: 'fold', 'data-action': 'unfold' },
         svg(ICONS.chevron, 11, 2.2), h('span', {}, `${desc.lines.length} properties`),
-        first ? h('span', { class: 'fold-peek' }, `${first.prop}: ${first.value}; …`) : null)
+        first ? h('span', { class: 'fold-peek' }, `${first.prop}: ${first.value}; …`) : null))
       const note = h('textarea', { class: 'note-input', rows: 1, placeholder: 'Add a note for Claude…', 'aria-label': 'Note for Claude', spellcheck: 'true' })
       if (o.existing) note.value = o.existing.note
       const sendBtn = h('button', { type: 'button', class: 'send', 'data-action': 'send', 'aria-label': o.existing ? 'Save note' : 'Send to Claude', disabled: true }, svg(ICONS.enter, 13, 2.2))
-      const noteRow = h('div', { class: 'note' }, svg(ICONS.note, 13), note, sendBtn)
-      const statusEl = h('div', { class: 'status', hidden: true, role: 'status' })
-      const keys = keysSeen ? null : h('div', { class: 'keys' },
-        h('span', {}, h('span', { class: 'kbd' }, '↵'), ' send'), h('span', {}, h('span', { class: 'kbd' }, '⇧↵'), ' new line'), h('span', {}, h('span', { class: 'kbd' }, 'esc'), ' close'))
-      const del = o.onDelete ? h('div', { class: 'note-actions' }, h('button', { type: 'button', class: 'link', 'data-action': 'delete' }, svg(ICONS.trash, 12), 'Delete')) : null
-      el.append(head, css, fold, noteRow, statusEl, ...(keys ? [keys] : []), ...(del ? [del] : []))
-      parts = { css, fold, note, send: sendBtn, status: statusEl, keys }
-      if (o.existing) setFolded(true)
-      el.hidden = false
+      /* The pinned parts start closed and open on the next frame, so the card
+         grows from what you were just hovering into the note. */
+      const noteWrap = reveal('note-wrap', false, h('div', { class: 'note' }, svg(ICONS.note, 13), note, sendBtn))
+      const statusEl = h('div', { class: 'status', role: 'status' })
+      const statusWrap = reveal('status-wrap quick', false, statusEl)
+      const keysWrap = keysSeen ? null : reveal('keys-wrap', false, h('div', { class: 'keys' },
+        h('span', {}, h('span', { class: 'kbd' }, '↵'), ' send'), h('span', {}, h('span', { class: 'kbd' }, '⇧↵'), ' new line'), h('span', {}, h('span', { class: 'kbd' }, 'esc'), ' close')))
+      const actionsWrap = o.onDelete ? reveal('actions-wrap', false, h('div', { class: 'note-actions' }, h('button', { type: 'button', class: 'link', 'data-action': 'delete' }, svg(ICONS.trash, 12), 'Delete'))) : null
+      el.append(head, cssWrap, foldWrap, noteWrap, statusWrap, ...(keysWrap ? [keysWrap] : []), ...(actionsWrap ? [actionsWrap] : []))
+      parts = { cssWrap, foldWrap, noteWrap, statusWrap, status: statusEl, keysWrap, note, send: sendBtn }
+      folded = !!o.existing
+      if (!wasShowing) enter(el)
       sync()
       /* Focus now, not on the next frame: on a busy page the next frame can be
          a quarter-second away, and the first keystrokes would land on the page. */
       const focusNote = () => { note.focus({ preventScroll: true }); note.setSelectionRange(note.value.length, note.value.length) }
       focusNote()
-      requestAnimationFrame(() => { if (parts?.note === note && el.getRootNode() instanceof ShadowRoot && (el.getRootNode() as ShadowRoot).activeElement !== note) focusNote() })
+      requestAnimationFrame(() => {
+        setOpen(noteWrap, true)
+        setOpen(keysWrap, true)
+        setOpen(actionsWrap, true)
+        if (parts?.note === note && (el.getRootNode() as ShadowRoot).activeElement !== note) focusNote()
+      })
     },
 
     hide() {
-      el.hidden = true
-      el.removeAttribute('data-pinned')
       mode = null
       lastTarget = null
       desc = null
       opts = null
       parts = null
+      leave(el, el.hasAttribute('data-sent') ? 220 : 140, () => el.removeAttribute('data-pinned'))
     },
 
     focus() {
@@ -197,20 +241,22 @@ export function createCard(ui: HTMLElement): Card {
     },
 
     pulse() {
-      el.removeAttribute('data-pulse')
-      void el.offsetWidth
-      el.setAttribute('data-pulse', '')
+      play(el, 'data-pulse', 300)
       parts?.note.focus({ preventScroll: true })
     },
 
     place(r) {
-      if (!mode) return
+      if (!mode && el.dataset.state !== 'out') return
       const w = el.offsetWidth, hgt = el.offsetHeight
       const vw = window.innerWidth, vh = window.innerHeight
       let top = r.bottom + GAP
-      if (top + hgt > vh - EDGE && r.top - GAP - hgt >= EDGE) top = r.top - GAP - hgt
+      let below = true
+      if (top + hgt > vh - EDGE && r.top - GAP - hgt >= EDGE) { top = r.top - GAP - hgt; below = false }
       if (top + hgt > vh - EDGE) top = Math.max(EDGE, vh - EDGE - hgt)
       const left = Math.min(vw - EDGE - w, Math.max(EDGE, r.left))
+      /* Arrive from the element's side: rising when below it, settling when above. */
+      el.style.setProperty('--ix-rise', below ? '5px' : '-5px')
+      el.style.setProperty('--ix-origin', below ? 'top left' : 'bottom left')
       el.style.left = `${Math.round(left)}px`
       el.style.top = `${Math.round(top)}px`
     },
