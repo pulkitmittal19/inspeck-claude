@@ -83,12 +83,13 @@ export class App {
     /* Markers first, so the card is drawn above them. */
     this.notes = createNotes(this.host.ui, (note, el) => this.openNote(note, el))
     this.card = createCard(this.host.ui)
-    this.spacing = createSpacing(this.host.ui)
-    this.marquee = createMarquee(this.host.ui, this.host.el, b => this.card.place(new DOMRect(b.left, b.top, b.right - b.left, b.bottom - b.top)))
     this.outline = createOutline(this.host.ui, (el, r) => {
       this.card.place(r)
       if (this.shift) this.measure(el)
     })
+    /* After the outline, so the numbers sit on top of its line. */
+    this.spacing = createSpacing(this.host.ui)
+    this.marquee = createMarquee(this.host.ui, this.host.el, b => this.card.place(new DOMRect(b.left, b.top, b.right - b.left, b.bottom - b.top)))
     this.unroute = createRouter(this.host, {
       ui: e => this.onUi(e),
       page: e => this.onPage(e),
@@ -369,6 +370,7 @@ export class App {
       if (e.type === 'pointermove') {
         const p = e as PointerEvent
         this.pointer = { x: p.clientX, y: p.clientY }
+        this.syncShift(p)
         this.schedulePick()
         if (this.pointerMove(p)) return
       } else if (e.type === 'pointerdown' && (e as PointerEvent).button === 0) {
@@ -400,6 +402,7 @@ export class App {
     if (e.type === 'pointermove') {
       const p = e as PointerEvent
       this.pointer = { x: p.clientX, y: p.clientY }
+      this.syncShift(p)
       if (this.pointerMove(p)) return 'swallow'
       this.schedulePick()
       return this.freeze.active ? 'stop' : undefined
@@ -441,6 +444,9 @@ export class App {
       return 'swallow'
     }
     if (!this.open || inside) return
+    /* Shift on its own types nothing, so it measures even when one of the
+       app's fields has the focus (an auto-focused search or message box). */
+    if (e.key === 'Shift') { if (!this.pinned) this.setShift(true); return }
     /* Typing in the app's own fields stays the app's business. */
     if (isEditable(document.activeElement)) return
     /* A note is open but the cursor isn't in it: no key is a shortcut now.
@@ -468,13 +474,16 @@ export class App {
       case ' ':
         if (!this.through) this.setThrough(true)
         return 'swallow'
-      case 'Shift':
-        this.setShift(true)
-        return
     }
   }
 
-  private setShift(on: boolean): void {
+  /** The pointer says whether Shift is down, even when the page doesn't have
+      the keyboard (the cursor was last in the Claude chat) or a key-up was missed. */
+  private syncShift(p: PointerEvent): void {
+    if (p.shiftKey !== this.shift && (!p.shiftKey || !this.pinned)) this.setShift(p.shiftKey)
+  }
+
+    private setShift(on: boolean): void {
     if (on === this.shift) return
     this.shift = on
     this.measureFrom = on ? this.target : null
