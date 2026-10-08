@@ -35,7 +35,7 @@ If the person hasn't added Inspeck to their app yet, the line is:
 1. **Find the code.** Search for the `source` component first, then the selector or classes in `where`, then the quoted text. Done when you have the one element the note is about. If several candidates fit and the note can't settle it, ask the person in the chat.
 2. **Change it.** Prefer the project's tokens: where a `css` line has a raw value and the project has a token for it, use the token. Leave lines already written as tokens alone unless the note asks.
 3. **Check it** in the browser pane if you can: the page reloads with your change. Close Inspeck there first (Escape, or `window.__INSPECK__.app.setOpen(false)`), because while it's open it catches clicks to place notes.
-4. **Resolve** with one line naming what changed and where: `padding 8px 14px → var(--spacing-200) var(--spacing-400) in SaveButton.tsx`. The note's marker disappears from the page.
+4. **Resolve** with one line naming what changed and where: `padding 8px 14px → var(--spacing-200) var(--spacing-400) in SaveButton.tsx`. (Its marker already left the page when you read it.)
 
 For a note `inside` a menu, open that menu in the pane (click the button the line names) to see the element before and after.
 

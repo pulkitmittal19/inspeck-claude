@@ -16,6 +16,8 @@ const MAX_NOTE_LINES = 4
 export interface PinOptions {
   /** Editing an existing note: its text and number. */
   existing?: { n: number; note: string }
+  /** A note on a dragged area rather than one element: what the head says. No CSS. */
+  group?: { label: string; size: string }
   onSend(note: string): Promise<{ n: number } | void>
   onClose(): void
   onDelete?(): Promise<void>
@@ -26,7 +28,8 @@ export interface Card {
   readonly mode: 'hover' | 'pinned' | null
   readonly description: Description | null
   showHover(target: Element): void
-  pin(target: Element, opts: PinOptions): void
+  /** Pin to an element, or (with `opts.group`) to a dragged area, with `target` null. */
+  pin(target: Element | null, opts: PinOptions): void
   hide(): void
   /** Keep the card beside the element as it moves. */
   place(rect: DOMRect): void
@@ -51,7 +54,7 @@ export function renderCss(d: Description): HTMLDivElement {
   return box
 }
 
-function renderHead(d: Description, extra: Array<Node | null> = [], num?: number, lead?: Node): HTMLDivElement {
+function renderHead(d: Pick<Description, 'label' | 'size' | 'component'>, extra: Array<Node | null> = [], num?: number, lead?: Node): HTMLDivElement {
   return h('div', { class: 'card-head' },
     lead ?? null,
     num ? h('span', { class: 'num' }, `#${num}`) : null,
@@ -86,7 +89,7 @@ export function createCard(ui: HTMLElement): Card {
   let desc: Description | null = null
   let opts: PinOptions | null = null
   let parts: {
-    cssWrap: HTMLElement; noteWrap: HTMLElement; statusWrap: HTMLElement; status: HTMLElement
+    cssWrap: HTMLElement | null; noteWrap: HTMLElement; statusWrap: HTMLElement; status: HTMLElement
     keysWrap: HTMLElement | null; note: HTMLTextAreaElement; send: HTMLButtonElement
   } | null = null
   let busy = false
@@ -189,23 +192,30 @@ export function createCard(ui: HTMLElement): Card {
       const wasShowing = !el.hidden && el.dataset.state !== 'out'
       opts = o
       lastTarget = target
-      desc = describe(target)
+      desc = target && !o.group ? describe(target) : null
       mode = 'pinned'
       busy = false
       /* A note you're editing opens with its CSS folded; a new one with it open. */
       folded = !!o.existing
-      autoFolded = folded
+      autoFolded = folded || !desc
       clear(el)
       el.removeAttribute('data-sent')
       el.toggleAttribute('data-folded', folded)
       el.setAttribute('data-pinned', '')
-      /* The whole head is the fold toggle, so it's always in the same place. */
-      const chevron = h('span', { class: 'chev', 'aria-hidden': 'true' }, svg(ICONS.chevron, 10, 2.4))
-      const head = renderHead(desc, [h('span', { class: 'tools' }, tool('copy', 'copy', 'Copy CSS'), tool('close-card', 'close', 'Close'))], o.existing?.n, chevron)
-      head.setAttribute('data-action', 'fold')
-      head.setAttribute('role', 'button')
-      head.setAttribute('aria-label', 'Show or hide the CSS')
-      const cssWrap = reveal('css-wrap', !folded, renderCss(desc))
+      const close = tool('close-card', 'close', 'Close')
+      let head: HTMLDivElement
+      let cssWrap: HTMLDivElement | null = null
+      if (desc) {
+        /* The whole head is the fold toggle, so it's always in the same place. */
+        const chevron = h('span', { class: 'chev', 'aria-hidden': 'true' }, svg(ICONS.chevron, 10, 2.4))
+        head = renderHead(desc, [h('span', { class: 'tools' }, tool('copy', 'copy', 'Copy CSS'), close)], o.existing?.n, chevron)
+        head.setAttribute('data-action', 'fold')
+        head.setAttribute('role', 'button')
+        head.setAttribute('aria-label', 'Show or hide the CSS')
+        cssWrap = reveal('css-wrap', !folded, renderCss(desc))
+      } else {
+        head = renderHead(o.group ?? { label: 'Area', size: '' }, [h('span', { class: 'tools' }, close)], o.existing?.n)
+      }
       const note = h('textarea', { class: 'note-input', rows: 1, placeholder: 'Add a note for Claude…', 'aria-label': 'Note for Claude', spellcheck: 'true' })
       if (o.existing) note.value = o.existing.note
       const sendBtn = h('button', { type: 'button', class: 'send', 'data-action': 'send', 'aria-label': o.existing ? 'Save note' : 'Send to Claude', disabled: true }, svg(ICONS.enter, 13, 2.2))
@@ -217,7 +227,7 @@ export function createCard(ui: HTMLElement): Card {
       const keysWrap = keysSeen ? null : reveal('keys-wrap', false, h('div', { class: 'keys' },
         h('span', {}, h('span', { class: 'kbd' }, '↵'), ' send'), h('span', {}, h('span', { class: 'kbd' }, '⇧↵'), ' new line'), h('span', {}, h('span', { class: 'kbd' }, 'esc'), ' close')))
       const actionsWrap = o.onDelete ? reveal('actions-wrap', false, h('div', { class: 'note-actions' }, h('button', { type: 'button', class: 'link', 'data-action': 'delete' }, svg(ICONS.trash, 12), 'Delete'))) : null
-      el.append(head, cssWrap, noteWrap, statusWrap, ...(keysWrap ? [keysWrap] : []), ...(actionsWrap ? [actionsWrap] : []))
+      el.append(head, ...(cssWrap ? [cssWrap] : []), noteWrap, statusWrap, ...(keysWrap ? [keysWrap] : []), ...(actionsWrap ? [actionsWrap] : []))
       parts = { cssWrap, noteWrap, statusWrap, status: statusEl, keysWrap, note, send: sendBtn }
       if (!wasShowing) enter(el)
       sync()

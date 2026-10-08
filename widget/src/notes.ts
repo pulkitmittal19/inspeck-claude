@@ -12,6 +12,7 @@
 import { api, type Note } from './api'
 import { enter, leave } from './anim'
 import { clear, h } from './dom'
+import { unionOf, type Box } from './marquee'
 import { actionOf } from './router'
 
 const POLL_MS = 4000
@@ -29,20 +30,25 @@ export function anchorOf(el: Element): { x: number; y: number; visible: boolean 
   }
   return { x: r.right, y: r.top, visible }
 }
-const open = (n: Note) => n.status === 'new' || n.status === 'seen'
+/* A marker stays until Claude has read its note; then it leaves the page.
+   (The note itself stays with Claude until it's resolved.) */
+const open = (n: Note) => n.status === 'new'
 const pageNow = () => location.href.split('#')[0]
 
 export interface Notes {
   /** A note was just sent: show its marker straight away. */
-  added(note: Note, el: Element): void
+  added(note: Note, el: Element | Element[]): void
   refresh(): Promise<void>
+  /** An area note's elements still on the page, and where the area is now. */
+  membersOf(note: Note): Element[]
+  areaOf(note: Note): Box | null
   /** Events inside the widget that belong to the markers. */
   handle(e: Event): boolean
   find(note: Note): Element | null
   destroy(): void
 }
 
-export function createNotes(ui: HTMLElement, onOpen: (note: Note, el: Element) => void): Notes {
+export function createNotes(ui: HTMLElement, onOpen: (note: Note, el: Element | null) => void): Notes {
   const layer = h('div', { class: 'markers' })
   /* Hovering a marker outlines, faintly, the element its note is about. */
   const ghost = h('div', { class: 'ghost', hidden: true })
@@ -73,6 +79,24 @@ export function createNotes(ui: HTMLElement, onOpen: (note: Note, el: Element) =
     }
     if (el) els.set(n.id, new WeakRef(el))
     return el
+  }
+
+  /** A note on a dragged area: the elements still on the page. */
+  const groups = new Map<string, Element[]>()
+  function membersOf(n: Note): Element[] {
+    const cached = groups.get(n.id)
+    if (cached?.length && cached.every(e => e.isConnected)) return cached
+    const found = (n.group ?? []).map(m => { try { return document.querySelector(m.selector) } catch { return null } })
+      .filter((e): e is Element => !!e)
+    groups.set(n.id, found)
+    return found
+  }
+  /** Where an area note is now: around its elements, else the area as it was drawn. */
+  function areaOf(n: Note): Box | null {
+    const live = unionOf(membersOf(n))
+    if (live) return live
+    const r = n.rect
+    return r ? { left: r.x - scrollX, top: r.y - scrollY, right: r.x + r.w - scrollX, bottom: r.y + r.h - scrollY } : null
   }
 
   function findAnchor(n: Note): Element | null {
@@ -108,6 +132,15 @@ export function createNotes(ui: HTMLElement, onOpen: (note: Note, el: Element) =
     for (const n of notes) {
       const m = markers.get(n.id)
       if (!m) continue
+      if (n.group) {
+        const b = areaOf(n)
+        if (!b) continue
+        m.removeAttribute('data-lost')
+        m.style.left = `${Math.round(b.right - 2)}px`
+        m.style.top = `${Math.round(b.top - 18)}px`
+        if (n.id === hovered) { ghost.style.cssText = `left:${b.left - 2}px;top:${b.top - 2}px;width:${b.right - b.left + 4}px;height:${b.bottom - b.top + 4}px`; enter(ghost) }
+        continue
+      }
       let el = find(n)
       let anchor: Element | null = null
       let x = 0, y = 0
@@ -193,13 +226,16 @@ export function createNotes(ui: HTMLElement, onOpen: (note: Note, el: Element) =
 
   return {
     added(note, el) {
-      els.set(note.id, new WeakRef(el))
+      if (Array.isArray(el)) groups.set(note.id, el)
+      else els.set(note.id, new WeakRef(el))
       born.add(note.id)
       notes = [...notes.filter(n => n.id !== note.id), note].sort((a, b) => a.n - b.n)
       render()
     },
     refresh,
     find,
+    membersOf,
+    areaOf,
     handle(e) {
       const a = actionOf(e)
       if (e.type === 'pointerover' && a?.action === 'marker') { hovered = a.el.dataset.id ?? null; showPreview(a.el); return true }
@@ -212,6 +248,7 @@ export function createNotes(ui: HTMLElement, onOpen: (note: Note, el: Element) =
       leave(preview, 90)
       leave(ghost, 90)
       const n = notes.find(x => x.id === a.el.dataset.id)
+      if (n?.group) { onOpen(n, null); return true }
       const el = n && find(n)
       if (n && el) onOpen(n, el)
       return true

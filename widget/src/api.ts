@@ -10,7 +10,11 @@ export interface NoteIn {
   at: { x: number; y: number }
   rect: { x: number; y: number; w: number; h: number }
   css: CssLine[]
+  /** A note on a dragged area: the elements inside it, none for empty space. */
+  group?: GroupMember[]
 }
+
+export interface GroupMember { selector: string; name?: string; text?: string }
 
 export interface Note {
   id: string
@@ -21,6 +25,7 @@ export interface Note {
   element: NoteIn['element']
   at?: { x: number; y: number }
   rect?: NoteIn['rect']
+  group?: GroupMember[]
   createdAt: string
 }
 

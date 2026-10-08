@@ -13,12 +13,25 @@ import { childToward, elementAt, parentOf, pickable, snap } from './pick'
 import { createRouter } from './router'
 import { selectorFor } from './selector'
 import { createSpacing, type Spacing } from './spacing'
+import { createMarquee, MAX_MEMBERS, unionOf, type Box, type Marquee } from './marquee'
+import { labelOf } from './css/describe'
 import { createToolbar, type Toolbar } from './toolbar'
 import { openPathOf } from './transient'
 
 /* Presses that would act on the app. While Inspeck is open they pick instead. */
 const PRESS = new Set(['pointerdown', 'pointerup', 'mousedown', 'mouseup', 'click', 'dblclick', 'auxclick',
   'contextmenu', 'touchstart', 'touchend', 'dragstart'])
+
+/** How far the pointer moves with the button down before a click becomes a drag. */
+const DRAG_PX = 5
+
+/** The nearest element holding all of them. */
+function commonAncestor(els: Element[]): Element | null {
+  if (!els.length) return null
+  let a: Element | null = els[0].parentElement
+  while (a && !els.every(e => a!.contains(e))) a = a.parentElement
+  return a && a !== document.documentElement ? a : null
+}
 
 export class App {
   readonly host: Host
@@ -27,6 +40,7 @@ export class App {
   readonly card: Card
   readonly notes: Notes
   readonly spacing: Spacing
+  readonly marquee: Marquee
   readonly freeze: Freeze
   private frost: HTMLDivElement
   /** Shift is held: show the hovered element's spacing. */
@@ -46,6 +60,8 @@ export class App {
   /** The element under the pointer when a note closed: it stays quiet until the pointer moves off it. */
   private rest: Element | null = null
   private pickFrame = 0
+  /** Where the button went down on the page: a click if it comes up close by, a drag across a section if not. */
+  private down: PointerEvent | null = null
   private unroute: () => void
 
   constructor() {
@@ -63,6 +79,7 @@ export class App {
     this.notes = createNotes(this.host.ui, (note, el) => this.openNote(note, el))
     this.card = createCard(this.host.ui)
     this.spacing = createSpacing(this.host.ui)
+    this.marquee = createMarquee(this.host.ui, this.host.el, b => this.card.place(new DOMRect(b.left, b.top, b.right - b.left, b.bottom - b.top)))
     this.outline = createOutline(this.host.ui, (el, r) => {
       this.card.place(r)
       if (this.shift) this.measure(el)
@@ -103,9 +120,16 @@ export class App {
   }
 
   /** A marker or a list row was clicked: open that note on its element. */
-  private openNote(note: Note, el: Element): void {
+  private openNote(note: Note, el: Element | null): void {
     if (!this.open) this.setOpen(true)
     this.unpin()
+    if (note.group) {
+      const members = this.notes.membersOf(note)
+      const area = this.notes.areaOf(note)
+      if (area) this.pinGroup(members, area, note)
+      return
+    }
+    if (!el) return
     this.target = el
     this.pin(el, note)
   }
@@ -113,7 +137,7 @@ export class App {
   /* ---------- picking ---------- */
 
   private schedulePick(): void {
-    if (this.pickFrame || this.pinned) return
+    if (this.pickFrame || this.pinned || this.marquee.dragging) return
     this.pickFrame = requestAnimationFrame(() => {
       this.pickFrame = 0
       if (!this.open || this.pinned) return
@@ -191,12 +215,97 @@ export class App {
     })
   }
 
+  /* ---------- a note on a section ---------- */
+
+  private pointerDown(p: PointerEvent): void {
+    this.down = p
+  }
+
+  /** Returns true while a drag is under way, so the move isn't treated as hovering. */
+  private pointerMove(p: PointerEvent): boolean {
+    if (this.down && !this.marquee.dragging && (p.buttons & 1) &&
+      Math.hypot(p.clientX - this.down.clientX, p.clientY - this.down.clientY) > DRAG_PX) {
+      /* Half a note written? Keep it; nudge the card instead of starting over. */
+      if (this.pinned && this.card.draft.trim()) { this.down = null; this.card.pulse(); return false }
+      this.unpin()
+      this.setTarget(null)
+      this.marquee.start(this.down.clientX, this.down.clientY)
+    }
+    if (!this.marquee.dragging) return false
+    if (!(p.buttons & 1)) { this.pointerUp(); return true }   /* released outside the window */
+    this.marquee.move(p.clientX, p.clientY)
+    return true
+  }
+
+  private pointerUp(): void {
+    const d = this.down
+    this.down = null
+    if (this.marquee.dragging) {
+      const { box, members } = this.marquee.end()
+      /* Round one element: that's just a note on it, CSS and all. */
+      if (members.length === 1) {
+        this.marquee.hide()
+        this.rest = null
+        this.setTarget(members[0])
+        this.pin(members[0])
+        return
+      }
+      this.pinGroup(members, box)
+    } else if (d) this.pressAt(d)
+  }
+
+  /** Pin a note to a dragged area: the elements inside it, or the bare area. `box` is in viewport coordinates. */
+  pinGroup(members: Element[], box: Box, existing?: Note): void {
+    this.freeze.freeze(false)
+    const holder = commonAncestor(members) ?? document.body
+    this.pinned = holder
+    this.target = holder
+    this.outline.hide()
+    this.marquee.hold(members, members.length ? null : { left: box.left + scrollX, top: box.top + scrollY, right: box.right + scrollX, bottom: box.bottom + scrollY })
+    const around = unionOf(members) ?? box
+    const w = Math.round(around.right - around.left), hgt = Math.round(around.bottom - around.top)
+    this.card.pin(null, {
+      group: { label: members.length ? `${members.length}${members.length >= MAX_MEMBERS ? '+' : ''} elements` : 'Area', size: `${w} × ${hgt}` },
+      existing: existing ? { n: existing.n, note: existing.note } : undefined,
+      onSend: async text => {
+        if (existing) {
+          await api.edit(existing.id, text)
+          void this.notes.refresh()
+          return
+        }
+        const note = await api.add(this.noteForGroup(holder, members, box, text))
+        this.notes.added(note, members)
+        return { n: note.n }
+      },
+      onClose: () => this.unpin(),
+      onDelete: existing ? async () => { await api.remove(existing.id); await this.notes.refresh() } : undefined,
+    })
+  }
+
+  private noteForGroup(holder: Element, members: Element[], box: Box, text: string) {
+    const doc = (b: Box) => ({ x: Math.round(b.left + scrollX), y: Math.round(b.top + scrollY), w: Math.round(b.right - b.left), h: Math.round(b.bottom - b.top) })
+    const area = unionOf(members) ?? box
+    return {
+      note: text,
+      page: location.href,
+      element: { selector: holder === document.body ? 'body' : selectorFor(holder), tag: holder.tagName.toLowerCase(), name: members.length ? `${members.length} elements` : 'Area' },
+      group: members.map(m => {
+        const t = ((m as HTMLElement).innerText ?? m.textContent ?? '').replace(/\s+/g, ' ').trim()
+        return { selector: selectorFor(m), name: labelOf(m), ...(t ? { text: t.slice(0, 120) } : {}) }
+      }),
+      at: { x: Math.round(area.right + scrollX), y: Math.round(area.top + scrollY) },
+      rect: doc(area),
+      css: [],
+    }
+  }
+
   unpin(): void {
     if (!this.pinned) return
     this.pinned = null
     this.freeze.unfreeze(false)
     this.card.hide()
     this.outline.hide()
+    this.marquee.hide()
     this.target = null
     this.stepped = false
     /* The card just bowed out; don't bring the hover card straight back over the same spot. */
@@ -236,8 +345,11 @@ export class App {
         const p = e as PointerEvent
         this.pointer = { x: p.clientX, y: p.clientY }
         this.schedulePick()
+        if (this.pointerMove(p)) return
       } else if (e.type === 'pointerdown' && (e as PointerEvent).button === 0) {
-        this.pressAt(e as PointerEvent)
+        this.pointerDown(e as PointerEvent)
+      } else if (e.type === 'pointerup') {
+        this.pointerUp()
       }
       return
     }
@@ -263,6 +375,7 @@ export class App {
     if (e.type === 'pointermove') {
       const p = e as PointerEvent
       this.pointer = { x: p.clientX, y: p.clientY }
+      if (this.pointerMove(p)) return 'swallow'
       this.schedulePick()
       return this.freeze.active ? 'stop' : undefined
     }
@@ -273,7 +386,8 @@ export class App {
     }
     if (PRESS.has(e.type)) {
       if (this.through && !this.freeze.active) return
-      if (e.type === 'pointerdown' && (e as PointerEvent).button === 0) this.pressAt(e as PointerEvent)
+      if (e.type === 'pointerdown' && (e as PointerEvent).button === 0) this.pointerDown(e as PointerEvent)
+      if (e.type === 'pointerup') this.pointerUp()
       return 'swallow'
     }
     if (this.freeze.active && FROZEN_BLOCK.has(e.type)) return 'stop'

@@ -36506,6 +36506,11 @@ var CssLine = external_exports.object({
   value: external_exports.string().max(300),
   resolved: external_exports.string().max(160).optional()
 });
+var GroupMember = external_exports.object({
+  selector: external_exports.string().max(1e3),
+  name: external_exports.string().max(200).optional(),
+  text: external_exports.string().max(120).optional()
+});
 var NewComment = external_exports.object({
   kind: external_exports.enum(KINDS).optional(),
   note: external_exports.string().max(4e3),
@@ -36525,8 +36530,10 @@ var NewComment = external_exports.object({
   }),
   /** Document coordinates of the badge, so every page draws it in the same place. */
   at: external_exports.object({ x: external_exports.number(), y: external_exports.number() }).optional(),
-  /** The element's box in document coordinates when the note was placed. */
+  /** The element's box in document coordinates when the note was placed; for a dragged area, the area. */
   rect: external_exports.object({ x: external_exports.number(), y: external_exports.number(), w: external_exports.number(), h: external_exports.number() }).optional(),
+  /** A note on a dragged area: the elements inside it (none, for empty space). `element` is then what holds them. */
+  group: external_exports.array(GroupMember).max(30).optional(),
   measured: external_exports.array(Measurement).max(40).optional(),
   /** The element's key declarations as the code writes them, with the resolved value. */
   css: external_exports.array(CssLine).max(16).optional(),
@@ -36594,9 +36601,17 @@ function heading(c) {
 }
 function render(c) {
   const lines = [heading(c), c.note.trim() || "(no note)", ""];
-  const where = [c.element.name && c.element.name !== c.element.selector ? `${c.element.name}  (${c.element.selector})` : c.element.selector];
-  if (c.element.text) where.push(`"${c.element.text}"`);
-  lines.push(row("where", where.join(" \xB7 ")));
+  if (c.group) {
+    const r = c.rect;
+    lines.push(row("area", `${r ? `${r.w} \xD7 ${r.h} at ${r.x}, ${r.y} on the page` : "a dragged area"}${c.group.length ? `, inside ${c.element.selector}` : ", empty space"}`));
+    for (const m of c.group) {
+      lines.push(row("element", [m.name && m.name !== m.selector ? `${m.name}  (${m.selector})` : m.selector, ...m.text ? [`"${m.text}"`] : []].join(" \xB7 ")));
+    }
+  } else {
+    const where = [c.element.name && c.element.name !== c.element.selector ? `${c.element.name}  (${c.element.selector})` : c.element.selector];
+    if (c.element.text) where.push(`"${c.element.text}"`);
+    lines.push(row("where", where.join(" \xB7 ")));
+  }
   if (c.element.within) lines.push(row("inside", `${c.element.within} (closed now? open it from ${c.element.anchor ?? "the page"})`));
   if (c.element.trail?.length) lines.push(row("source", c.element.trail.join(" \u203A ")));
   for (const l of c.css ?? []) {
@@ -36714,6 +36729,7 @@ function add(input2, to) {
       element: input2.element,
       ...input2.at ? { at: input2.at } : {},
       ...input2.rect ? { rect: input2.rect } : {},
+      ...input2.group ? { group: input2.group } : {},
       measured: input2.measured ?? [],
       ...input2.css?.length ? { css: input2.css } : {},
       ...input2.client ? { client: input2.client } : {},
@@ -37176,14 +37192,14 @@ var log = (msg) => process.stderr.write(`inspeck: ${msg}
 `);
 var INSTRUCTIONS = `Inspeck lets a person hover any element of their web app to see its CSS, and click it to leave a note for you. Their notes arrive here.
 
-Each note carries the element's selector, the React component that rendered it, its key CSS exactly as written (tokens as var(--x), with the resolved value), and, for things inside a menu, the buttons that open it ("inside More \u203A Share").
+Each note carries the element's selector, the React component that rendered it, its key CSS exactly as written (tokens as var(--x), with the resolved value), and, for things inside a menu, the buttons that open it ("inside More \u203A Share"). A note on a dragged area lists each element inside it (or says it's empty space) with the area's position; treat it as one request about all of them.
 
 Setting up, once per session, when you open the person's app in your browser pane:
 1. Call bind. It returns one line of JavaScript; run it in the browser pane tab showing the app. Notes from that tab now come to this session.
 2. Start the watcher as a background task: ${WAIT_COMMAND}
    It finishes, printing the notes, the moment one arrives. Handle them, then start it again.
 
-Working through notes: pending lists what's waiting, get opens one, watch waits for new ones in the foreground, resolve closes a note with one line saying what changed (its marker disappears from the page), dismiss declines with a reason.
+Working through notes: pending lists what's waiting, get opens one, watch waits for new ones in the foreground, a note's marker leaves the page once you've read it (get, watch or the watcher); resolve closes it with one line saying what changed, dismiss declines with a reason.
 
 Talk to the person only here in the chat. The page shows their notes, never your answers: if a note is unclear, ask in the chat.
 
@@ -37234,7 +37250,7 @@ Open one with get and its id.`);
 });
 server.registerTool("get", {
   title: "Open comment",
-  description: "Open one Inspeck comment in full: the note, the element, what was measured, the thread, and the screenshot. Marks it as seen, so the badge shows Claude is on it.",
+  description: "Open one Inspeck comment in full: the note, the element, what was measured, the thread, and the screenshot. Marks it as read: its marker leaves the page, and it stays open here until you resolve or dismiss it.",
   inputSchema: { id: external_exports.string().describe("The comment id, from pending") }
 }, async ({ id }) => {
   const c = markSeen(id);
@@ -37278,7 +37294,7 @@ server.registerTool("bind", {
 });
 server.registerTool("resolve", {
   title: "Mark done",
-  description: "Mark an Inspeck comment as done. The badge clears from the page. Include one line saying what changed.",
+  description: "Mark an Inspeck comment as done. Include one line saying what changed.",
   inputSchema: { id: external_exports.string(), summary: external_exports.string().min(1).max(500).describe("What changed, in one line") }
 }, async ({ id, summary }) => {
   const c = close(id, "resolved", summary);
@@ -37286,7 +37302,7 @@ server.registerTool("resolve", {
 });
 server.registerTool("dismiss", {
   title: "Decline",
-  description: "Decline an Inspeck comment, with the reason. The person sees the reason on the badge.",
+  description: "Decline an Inspeck comment, with the reason.",
   inputSchema: { id: external_exports.string(), reason: external_exports.string().min(1).max(500) }
 }, async ({ id, reason }) => {
   const c = close(id, "dismissed", reason);

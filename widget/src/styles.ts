@@ -191,20 +191,22 @@ button { appearance: none; background: none; border: 0; padding: 0; cursor: poin
 /* Spacing lives on the child, never on .inner: padding there would survive the collapse. */
 .note-wrap .note { margin-top: 8px; }
 .note {
-  display: flex; align-items: flex-end; gap: 8px; padding: 6px 6px 6px 9px;
+  /* The icon and text start at the top; the send button stays at the bottom right. */
+  display: flex; align-items: flex-start; gap: 8px; padding: 6px 6px 6px 9px;
   border-radius: 9px; background: rgba(255, 255, 255, 0.05);
   box-shadow: 0 0 0 1.5px rgba(255, 255, 255, 0.12) inset; color: var(--ix-dim);
   transition: box-shadow 140ms ease;
 }
 .note:focus-within { box-shadow: 0 0 0 1.5px var(--ix-accent) inset; }
 .note > svg { flex-shrink: 0; margin-bottom: 4px; }
+.note > svg { flex: none; margin-top: 5.5px; }
 .note-input {
-  flex: 1; min-width: 220px; height: 20px; resize: none; border: 0; outline: 0; background: transparent; padding: 0;
+  margin-top: 2px; flex: 1; min-width: 220px; height: 20px; resize: none; border: 0; outline: 0; background: transparent; padding: 0;
   font: 12.5px/20px var(--ix-sans); color: var(--ix-text); overflow-y: auto;
 }
 .note-input::placeholder { color: var(--ix-faint); }
 .send {
-  width: 24px; height: 24px; flex-shrink: 0; border-radius: 7px; background: rgba(255, 255, 255, 0.1);
+  align-self: flex-end; width: 24px; height: 24px; flex-shrink: 0; border-radius: 7px; background: rgba(255, 255, 255, 0.1);
   color: var(--ix-dim); display: flex; align-items: center; justify-content: center;
   transition: background 160ms ease, color 160ms ease, transform 120ms var(--ix-ease);
 }
@@ -279,6 +281,19 @@ button { appearance: none; background: none; border: 0; padding: 0; cursor: poin
 .sp-label {
   position: fixed; transform: translate(-50%, -50%); padding: 1px 5px; border-radius: 4px;
   background: #17171C; color: #fff; font: 600 10px/1.4 var(--ix-mono); white-space: nowrap;
+}
+/* dragging across a section */
+.marquee-layer { position: fixed; inset: 0; pointer-events: none; transition: opacity 140ms ease; }
+.marquee-layer[data-state="enter"], .marquee-layer[data-state="out"] { opacity: 0; }
+.marquee { position: fixed; border: 1px solid var(--ix-accent); background: rgba(255, 61, 138, 0.06); border-radius: 2px; }
+.marquee[data-held] { border-style: dashed; background: transparent; border-radius: 5px; }
+.member {
+  position: fixed; border: 1.5px solid var(--ix-accent); border-radius: 3px;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.5);
+}
+.marquee-count {
+  position: fixed; transform: translate(4px, 4px); padding: 1px 5px; border-radius: 4px;
+  background: var(--ix-accent); color: #fff; font: 600 10px/1.4 var(--ix-mono);
 }
 /* distance between two elements */
 .anchor-box { position: fixed; box-shadow: 0 0 0 1.5px var(--ix-accent); border-radius: 2px; }

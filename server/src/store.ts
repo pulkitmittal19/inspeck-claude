@@ -135,6 +135,7 @@ export function add(input: NewComment, to?: Comment['to']): Comment {
       element: input.element,
       ...(input.at ? { at: input.at } : {}),
       ...(input.rect ? { rect: input.rect } : {}),
+      ...(input.group ? { group: input.group } : {}),
       measured: input.measured ?? [],
       ...(input.css?.length ? { css: input.css } : {}),
       ...(input.client ? { client: input.client } : {}),

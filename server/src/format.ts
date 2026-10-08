@@ -45,6 +45,13 @@ const CssLine = z.object({
 })
 export type CssLine = z.infer<typeof CssLine>
 
+const GroupMember = z.object({
+  selector: z.string().max(1000),
+  name: z.string().max(200).optional(),
+  text: z.string().max(120).optional(),
+})
+export type GroupMember = z.infer<typeof GroupMember>
+
 /** What a page sends when someone places a comment. */
 export const NewComment = z.object({
   kind: z.enum(KINDS).optional(),
@@ -65,8 +72,10 @@ export const NewComment = z.object({
   }),
   /** Document coordinates of the badge, so every page draws it in the same place. */
   at: z.object({ x: z.number(), y: z.number() }).optional(),
-  /** The element's box in document coordinates when the note was placed. */
+  /** The element's box in document coordinates when the note was placed; for a dragged area, the area. */
   rect: z.object({ x: z.number(), y: z.number(), w: z.number(), h: z.number() }).optional(),
+  /** A note on a dragged area: the elements inside it (none, for empty space). `element` is then what holds them. */
+  group: z.array(GroupMember).max(30).optional(),
   measured: z.array(Measurement).max(40).optional(),
   /** The element's key declarations as the code writes them, with the resolved value. */
   css: z.array(CssLine).max(16).optional(),
@@ -97,6 +106,7 @@ export interface Comment {
   element: NewComment['element']
   at?: { x: number; y: number }
   rect?: { x: number; y: number; w: number; h: number }
+  group?: GroupMember[]
   measured: Measurement[]
   css?: CssLine[]
   client?: { name: string; version: string }
@@ -209,9 +219,18 @@ export function heading(c: Comment): string {
 export function render(c: Comment): string {
   const lines: string[] = [heading(c), c.note.trim() || '(no note)', '']
 
-  const where = [c.element.name && c.element.name !== c.element.selector ? `${c.element.name}  (${c.element.selector})` : c.element.selector]
-  if (c.element.text) where.push(`"${c.element.text}"`)
-  lines.push(row('where', where.join(' · ')))
+  if (c.group) {
+    /* A dragged area: where it is, and each element inside it. */
+    const r = c.rect
+    lines.push(row('area', `${r ? `${r.w} × ${r.h} at ${r.x}, ${r.y} on the page` : 'a dragged area'}${c.group.length ? `, inside ${c.element.selector}` : ', empty space'}`))
+    for (const m of c.group) {
+      lines.push(row('element', [m.name && m.name !== m.selector ? `${m.name}  (${m.selector})` : m.selector, ...(m.text ? [`"${m.text}"`] : [])].join(' · ')))
+    }
+  } else {
+    const where = [c.element.name && c.element.name !== c.element.selector ? `${c.element.name}  (${c.element.selector})` : c.element.selector]
+    if (c.element.text) where.push(`"${c.element.text}"`)
+    lines.push(row('where', where.join(' · ')))
+  }
   if (c.element.within) lines.push(row('inside', `${c.element.within} (closed now? open it from ${c.element.anchor ?? 'the page'})`))
   if (c.element.trail?.length) lines.push(row('source', c.element.trail.join(' › ')))
   for (const l of c.css ?? []) {

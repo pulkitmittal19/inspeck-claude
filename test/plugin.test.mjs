@@ -158,6 +158,34 @@ test('a note inside a menu tells Claude how to open it again', async () => {
   await page(s.port, 'DELETE', `/comments/${r.json.comment.id}`)
 })
 
+test('a note on a dragged area lists each element inside it, or says it is empty space', async () => {
+  const r = await page(s.port, 'POST', '/comments', { body: {
+    note: 'These two should be the same height', page: 'http://localhost:5173/settings',
+    element: { selector: 'div.actions', tag: 'div', name: '2 elements' },
+    group: [
+      { selector: '#cancel', name: 'button', text: 'Cancel' },
+      { selector: '#save', name: 'button.btn-primary', text: 'Save changes' },
+    ],
+    rect: { x: 600, y: 330, w: 221, h: 36 },
+  } })
+  assert.equal(r.status, 201)
+  assert.equal(r.json.comment.group.length, 2)
+  const text = (await s.client.callTool({ name: 'get', arguments: { id: r.json.comment.id } })).content[0].text
+  assert.match(text, /area +221 × 36 at 600, 330 on the page, inside div\.actions/)
+  assert.match(text, /element +button  \(#cancel\) · "Cancel"/)
+  assert.match(text, /element +button\.btn-primary  \(#save\) · "Save changes"/)
+  assert.doesNotMatch(text, /^where/m)
+  await page(s.port, 'DELETE', `/comments/${r.json.comment.id}`)
+
+  const empty = await page(s.port, 'POST', '/comments', { body: {
+    note: 'Add a help link here', page: 'http://localhost:5173/settings',
+    element: { selector: 'body', tag: 'body', name: 'Area' }, group: [], rect: { x: 900, y: 330, w: 119, h: 185 },
+  } })
+  const t2 = (await s.client.callTool({ name: 'get', arguments: { id: empty.json.comment.id } })).content[0].text
+  assert.match(t2, /area +119 × 185 at 900, 330 on the page, empty space/)
+  await page(s.port, 'DELETE', `/comments/${empty.json.comment.id}`)
+})
+
 test('Claude sees six actions, by the names people see, and none that writes on the page', async () => {
   const { tools } = await s.client.listTools()
   const byName = Object.fromEntries(tools.map(t => [t.name, t.title]))

@@ -38,14 +38,14 @@ const log = (msg: string) => process.stderr.write(`inspeck: ${msg}\n`)
 
 const INSTRUCTIONS = `Inspeck lets a person hover any element of their web app to see its CSS, and click it to leave a note for you. Their notes arrive here.
 
-Each note carries the element's selector, the React component that rendered it, its key CSS exactly as written (tokens as var(--x), with the resolved value), and, for things inside a menu, the buttons that open it ("inside More › Share").
+Each note carries the element's selector, the React component that rendered it, its key CSS exactly as written (tokens as var(--x), with the resolved value), and, for things inside a menu, the buttons that open it ("inside More › Share"). A note on a dragged area lists each element inside it (or says it's empty space) with the area's position; treat it as one request about all of them.
 
 Setting up, once per session, when you open the person's app in your browser pane:
 1. Call bind. It returns one line of JavaScript; run it in the browser pane tab showing the app. Notes from that tab now come to this session.
 2. Start the watcher as a background task: ${WAIT_COMMAND}
    It finishes, printing the notes, the moment one arrives. Handle them, then start it again.
 
-Working through notes: pending lists what's waiting, get opens one, watch waits for new ones in the foreground, resolve closes a note with one line saying what changed (its marker disappears from the page), dismiss declines with a reason.
+Working through notes: pending lists what's waiting, get opens one, watch waits for new ones in the foreground, a note's marker leaves the page once you've read it (get, watch or the watcher); resolve closes it with one line saying what changed, dismiss declines with a reason.
 
 Talk to the person only here in the chat. The page shows their notes, never your answers: if a note is unclear, ask in the chat.
 
@@ -104,7 +104,7 @@ server.registerTool('pending', {
 
 server.registerTool('get', {
   title: 'Open comment',
-  description: 'Open one Inspeck comment in full: the note, the element, what was measured, the thread, and the screenshot. Marks it as seen, so the badge shows Claude is on it.',
+  description: 'Open one Inspeck comment in full: the note, the element, what was measured, the thread, and the screenshot. Marks it as read: its marker leaves the page, and it stays open here until you resolve or dismiss it.',
   inputSchema: { id: z.string().describe('The comment id, from pending') },
 }, async ({ id }) => {
   const c = store.markSeen(id)
@@ -151,7 +151,7 @@ server.registerTool('bind', {
 
 server.registerTool('resolve', {
   title: 'Mark done',
-  description: 'Mark an Inspeck comment as done. The badge clears from the page. Include one line saying what changed.',
+  description: 'Mark an Inspeck comment as done. Include one line saying what changed.',
   inputSchema: { id: z.string(), summary: z.string().min(1).max(500).describe('What changed, in one line') },
 }, async ({ id, summary }) => {
   const c = store.close(id, 'resolved', summary)
@@ -160,7 +160,7 @@ server.registerTool('resolve', {
 
 server.registerTool('dismiss', {
   title: 'Decline',
-  description: 'Decline an Inspeck comment, with the reason. The person sees the reason on the badge.',
+  description: 'Decline an Inspeck comment, with the reason.',
   inputSchema: { id: z.string(), reason: z.string().min(1).max(500) },
 }, async ({ id, reason }) => {
   const c = store.close(id, 'dismissed', reason)
