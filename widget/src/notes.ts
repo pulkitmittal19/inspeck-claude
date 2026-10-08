@@ -143,7 +143,7 @@ export function createNotes(ui: HTMLElement, onOpen: (note: Note, el: Element | 
         if (!b) continue
         m.removeAttribute('data-lost')
         m.style.left = `${Math.round(b.right - 2)}px`
-        m.style.top = `${Math.round(b.top - 18)}px`
+        m.style.top = `${Math.round(b.top - 20)}px`
         if (n.id === hovered) { ghost.style.cssText = `left:${b.left - 2}px;top:${b.top - 2}px;width:${b.right - b.left + 4}px;height:${b.bottom - b.top + 4}px`; enter(ghost) }
         continue
       }
@@ -168,7 +168,7 @@ export function createNotes(ui: HTMLElement, onOpen: (note: Note, el: Element | 
       m.toggleAttribute('data-nested', !el && !!anchor)
       /* The badge sits up and to the right, its pointed corner on the spot. */
       m.style.left = `${Math.round(x - 2)}px`
-      m.style.top = `${Math.round(y - 18)}px`
+      m.style.top = `${Math.round(y - 20)}px`
       if (n.id === hovered) {
         const box = el ?? anchor
         if (box && (el ? a?.visible : true)) {

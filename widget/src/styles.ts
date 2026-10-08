@@ -236,10 +236,10 @@ button { appearance: none; background: none; border: 0; padding: 0; cursor: poin
 
 /* ---------- markers and their preview ---------- */
 .marker {
-  position: fixed; left: 0; top: 0; width: 20px; height: 20px; pointer-events: auto;
+  position: fixed; left: 0; top: 0; width: 22px; height: 22px; pointer-events: auto;
   /* A pin: round, with the bottom-left corner drawn to a point on the element. */
-  border-radius: 10px 10px 10px 2px; transform-origin: 1px 19px;
-  background: #17171C; color: #fff; font: 700 10.5px/1 var(--ix-sans);
+  border-radius: 11px 11px 11px 2px; transform-origin: 1px 21px;
+  background: #17171C; color: #fff; font: 700 11.5px/1 var(--ix-sans);
   display: flex; align-items: center; justify-content: center;
   box-shadow: 0 0 0 1.5px #fff, 0 2px 6px rgba(0, 0, 0, 0.28);
   transition: transform 180ms var(--ix-ease), opacity 200ms ease, box-shadow 180ms ease;
