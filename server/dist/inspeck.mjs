@@ -36517,7 +36517,11 @@ var NewComment = external_exports.object({
     /** React component names, outermost first. */
     trail: external_exports.array(external_exports.string().max(120)).max(12).optional(),
     /** How the widget labels it, e.g. `button.btn-primary`. */
-    name: external_exports.string().max(200).optional()
+    name: external_exports.string().max(200).optional(),
+    /** For an element inside a menu or popover: the buttons that open it, e.g. "More › Share". */
+    within: external_exports.string().max(300).optional(),
+    /** Selector of the outermost of those buttons. */
+    anchor: external_exports.string().max(1e3).optional()
   }),
   /** Document coordinates of the badge, so every page draws it in the same place. */
   at: external_exports.object({ x: external_exports.number(), y: external_exports.number() }).optional(),
@@ -36591,6 +36595,7 @@ function render(c) {
   const where = [c.element.name && c.element.name !== c.element.selector ? `${c.element.name}  (${c.element.selector})` : c.element.selector];
   if (c.element.text) where.push(`"${c.element.text}"`);
   lines.push(row("where", where.join(" \xB7 ")));
+  if (c.element.within) lines.push(row("inside", `${c.element.within} (closed now? open it from ${c.element.anchor ?? "the page"})`));
   if (c.element.trail?.length) lines.push(row("source", c.element.trail.join(" \u203A ")));
   for (const l of c.css ?? []) {
     lines.push(row("css", `${l.property}: ${l.value};${l.resolved ? `   ${l.resolved}` : ""}`));

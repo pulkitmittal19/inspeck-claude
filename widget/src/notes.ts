@@ -74,6 +74,10 @@ export function createNotes(ui: HTMLElement, onOpen: (note: Note, el: Element) =
     return el
   }
 
+  function findAnchor(n: Note): Element | null {
+    try { return n.element.anchor ? document.querySelector(n.element.anchor) : null } catch { return null }
+  }
+
   /* ---------- markers ---------- */
 
   function render() {
@@ -97,16 +101,25 @@ export function createNotes(ui: HTMLElement, onOpen: (note: Note, el: Element) =
     for (const n of notes) {
       const m = markers.get(n.id)
       if (!m) continue
-      const el = find(n)
-      let x: number, y: number
-      if (el) {
-        const a = anchorOf(el)
+      let el = find(n)
+      let anchor: Element | null = null
+      let x = 0, y = 0
+      let a = el ? anchorOf(el) : null
+      /* Still in the page but hidden (a closed menu kept in the DOM): treat as closed. */
+      if (el && a && !a.visible && n.element.anchor) { el = null; a = null }
+      if (el && a) {
         x = a.x; y = a.y
         m.toggleAttribute('data-lost', !a.visible)
+      } else if (n.element.anchor && (anchor = findAnchor(n))) {
+        /* Inside a menu that's closed now: wait on the button that opens it. */
+        const r = anchor.getBoundingClientRect()
+        x = r.right; y = r.top
+        m.removeAttribute('data-lost')
       } else if (n.rect) {
         x = n.rect.x + n.rect.w - scrollX; y = n.rect.y - scrollY
         m.setAttribute('data-lost', '')
       } else continue
+      m.toggleAttribute('data-nested', !el && !!anchor)
       m.style.left = `${Math.round(x - 10)}px`
       m.style.top = `${Math.round(y - 10)}px`
     }
@@ -122,7 +135,8 @@ export function createNotes(ui: HTMLElement, onOpen: (note: Note, el: Element) =
     preview.append(
       h('div', { class: 'preview-head' }, `#${n.n}`, h('span', {}, ` · ${n.element.name ?? n.element.selector}`)),
       h('div', { class: 'preview-text' }, n.note),
-      ...(find(n) ? [] : [h('div', { class: 'preview-lost' }, 'Can’t find this element on the page right now')]),
+      ...(n.element.within ? [h('div', { class: 'preview-lost' }, `in ${n.element.within}`)] : []),
+      ...(find(n) || (n.element.within && findAnchor(n)) ? [] : [h('div', { class: 'preview-lost' }, 'Can’t find this element on the page right now')]),
     )
     preview.hidden = false
     const r = m.getBoundingClientRect()
@@ -147,7 +161,7 @@ export function createNotes(ui: HTMLElement, onOpen: (note: Note, el: Element) =
         h('span', { class: 'row-num' }, String(n.n)),
         h('span', { class: 'row-body' },
           h('span', { class: 'row-note' }, n.note),
-          h('span', { class: 'row-where' }, n.element.name ?? n.element.selector))))
+          h('span', { class: 'row-where' }, n.element.within ? `in ${n.element.within}` : (n.element.name ?? n.element.selector)))))
     }
     list.appendChild(h('div', { class: 'list-foot' },
       h('button', { type: 'button', class: 'link', 'data-action': 'toggle-markers' }, hidden ? 'Show markers' : 'Hide markers'),

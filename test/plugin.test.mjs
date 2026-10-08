@@ -140,6 +140,17 @@ test('a note from the widget carries its CSS, and Claude reads it as written', a
   await page(s.port, 'DELETE', `/comments/${r.json.comment.id}`)
 })
 
+test('a note inside a menu tells Claude how to open it again', async () => {
+  const r = await page(s.port, 'POST', '/comments', { body: {
+    note: 'Icon to label gap is too tight', page: 'http://localhost:5173/settings',
+    element: { selector: '#share-menu > div:nth-of-type(3)', tag: 'div', within: 'More › Share', anchor: '#more' },
+  } })
+  assert.equal(r.status, 201)
+  const got = await s.client.callTool({ name: 'get', arguments: { id: r.json.comment.id } })
+  assert.match(got.content[0].text, /inside +More › Share \(closed now\? open it from #more\)/)
+  await page(s.port, 'DELETE', `/comments/${r.json.comment.id}`)
+})
+
 test('Claude sees the six actions, by the names people see', async () => {
   const { tools } = await s.client.listTools()
   const byName = Object.fromEntries(tools.map(t => [t.name, t.title]))

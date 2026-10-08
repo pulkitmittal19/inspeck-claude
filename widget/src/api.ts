@@ -6,7 +6,7 @@ export interface CssLine { property: string; value: string; resolved?: string }
 export interface NoteIn {
   note: string
   page: string
-  element: { selector: string; tag: string; text?: string; trail?: string[]; name?: string }
+  element: { selector: string; tag: string; text?: string; trail?: string[]; name?: string; within?: string; anchor?: string }
   at: { x: number; y: number }
   rect: { x: number; y: number; w: number; h: number }
   css: CssLine[]

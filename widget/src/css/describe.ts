@@ -259,8 +259,14 @@ export function labelOf(el: Element): string {
   const tag = el.tagName.toLowerCase()
   if (el.id && !/^[:]|^radix-|^headlessui-|\d{3,}/.test(el.id)) return `${tag}#${el.id}`
   const cls = Array.from(el.classList).find(c => !UTILITY.test(c) && !TAILWIND.test(c) && c.length <= 28)
+  if (cls) return `${tag}.${cls}`
+  /* No class worth showing: a role and its words say more, e.g. menuitem “Copy link”. */
   const role = el.getAttribute('role')
-  return cls ? `${tag}.${cls}` : role ? `${tag}[role=${role}]` : tag
+  if (role) {
+    const words = ((el as HTMLElement).innerText ?? el.textContent ?? '').split('\n')[0].replace(/\s+/g, ' ').trim()
+    return words ? `${role} “${words.length > 24 ? words.slice(0, 23) + '…' : words}”` : `${tag}[role=${role}]`
+  }
+  return tag
 }
 
 /** The React component that rendered an element (dev builds keep names). */

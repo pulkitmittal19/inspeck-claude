@@ -89,6 +89,9 @@ button { appearance: none; background: none; border: 0; padding: 0; cursor: poin
   opacity: 0; transition: opacity 180ms ease; }
 .bar[data-open] .sep { opacity: 1; transition-delay: 120ms; }
 
+/* ---------- frozen: a clear sheet over the page catches the real pointer ---------- */
+.frost { position: fixed; inset: 0; pointer-events: auto; cursor: crosshair; background: transparent; }
+
 /* ---------- the outline that follows the element under the pointer ---------- */
 .outline {
   position: fixed; left: 0; top: 0; pointer-events: none; will-change: transform;
@@ -181,6 +184,10 @@ button { appearance: none; background: none; border: 0; padding: 0; cursor: poin
   transition: transform 140ms var(--ix-ease), opacity 140ms ease;
 }
 .marker:hover { transform: scale(1.12); }
+.marker[data-nested]::after {
+  content: ''; position: absolute; right: -4px; bottom: -4px; width: 8px; height: 8px; border-radius: 4px;
+  background: var(--ix-accent); box-shadow: 0 0 0 1.5px #fff;
+}
 .marker[data-lost] { opacity: 0.45; box-shadow: 0 0 0 1.5px #fff, 0 0 0 3px rgba(23, 23, 28, 0.25); }
 .preview {
   position: fixed; left: 0; top: 0; width: max-content; max-width: 280px; pointer-events: none;
