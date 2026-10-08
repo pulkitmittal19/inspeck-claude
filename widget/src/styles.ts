@@ -97,6 +97,35 @@ button { appearance: none; background: none; border: 0; padding: 0; cursor: poin
 }
 .outline[data-through] { border-style: dashed; opacity: 0.6; }
 
+/* ---------- the CSS card ---------- */
+.card {
+  position: fixed; left: 0; top: 0; pointer-events: none;
+  min-width: 240px; max-width: min(420px, calc(100vw - 16px));
+  padding: 9px 11px 10px; border-radius: 11px; background: var(--ix-bg); box-shadow: var(--ix-shadow);
+}
+.card[data-pinned] { pointer-events: auto; box-shadow: 0 0 0 1.5px rgba(255, 255, 255, 0.2) inset, 0 14px 36px rgba(0, 0, 0, 0.34); }
+.card-head {
+  display: flex; align-items: center; gap: 8px; padding-bottom: 6px; margin-bottom: 4px;
+  border-bottom: 1px solid var(--ix-line); white-space: nowrap;
+}
+.card-head .label { font: 650 11.5px/1.2 var(--ix-mono); color: var(--ix-text); overflow: hidden; text-overflow: ellipsis; }
+.card-head .comp { font: 500 11px/1.2 var(--ix-sans); color: var(--ix-dim); }
+.card-head .size { margin-left: auto; padding-left: 8px; font: 500 10.5px/1 var(--ix-mono); color: var(--ix-dim); }
+.css { font: 11px/1.75 var(--ix-mono); color: var(--ix-text); }
+.decl { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.decl.empty { color: var(--ix-dim); font-family: var(--ix-sans); }
+.c-prop { color: var(--ix-c-prop); }
+.c-num { color: var(--ix-c-num); }
+.c-token { color: var(--ix-c-token); }
+.c-kw { color: var(--ix-c-kw); }
+.c-hex { color: var(--ix-c-hex); }
+.c-fn, .c-punct { color: var(--ix-c-punct); }
+.res { margin-left: 8px; color: var(--ix-faint); }
+.sw {
+  display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 5px; vertical-align: -1px;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.35);
+}
+
 /* small label that appears above a toolbar button on hover */
 .tip {
   position: fixed; pointer-events: none; padding: 5px 8px; border-radius: 7px;

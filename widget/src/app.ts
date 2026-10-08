@@ -3,6 +3,8 @@
 import { isEditable } from './dom'
 import { tabStore } from './env'
 import { createHost, type Host } from './host'
+import { createCard, type Card } from './card'
+import { warmUp } from './css/cascade'
 import { createOutline, type Outline } from './outline'
 import { childToward, elementAt, parentOf, pickable, snap } from './pick'
 import { createRouter } from './router'
@@ -16,6 +18,7 @@ export class App {
   readonly host: Host
   readonly toolbar: Toolbar
   readonly outline: Outline
+  readonly card: Card
   open = false
   /** Held Space: presses go to the app, so you can open a menu to comment inside it. */
   through = false
@@ -30,7 +33,8 @@ export class App {
   constructor() {
     this.host = createHost()
     this.toolbar = createToolbar(this.host.ui)
-    this.outline = createOutline(this.host.ui)
+    this.card = createCard(this.host.ui)
+    this.outline = createOutline(this.host.ui, (_el, r) => this.card.place(r))
     this.unroute = createRouter(this.host, {
       ui: e => this.onUi(e),
       page: e => this.onPage(e),
@@ -43,6 +47,7 @@ export class App {
     this.open = open
     this.toolbar.setOpen(open)
     tabStore.set('open', open ? '1' : null)
+    if (open) warmUp()
     if (!open) this.setTarget(null)
     else if (this.pointer.x >= 0) this.schedulePick()
   }
@@ -73,8 +78,13 @@ export class App {
   setTarget(el: Element | null): void {
     if (!pickable(el, this.host.el)) el = null
     this.target = el
-    if (el) this.outline.show(el)
-    else this.outline.hide()
+    if (el) {
+      this.card.showHover(el)
+      this.outline.show(el)
+    } else {
+      this.outline.hide()
+      this.card.hide()
+    }
   }
 
   private step(dir: 'up' | 'down'): void {
