@@ -1,5 +1,5 @@
 /* Talking to the Inspeck server that served this script. */
-import { SERVER, VERSION } from './env'
+import { SERVER, TAB_ID, VERSION } from './env'
 
 export interface CssLine { property: string; value: string; resolved?: string }
 
@@ -45,7 +45,7 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<T>
 
 export const api = {
   async add(n: NoteIn): Promise<Note> {
-    const r = await call<{ comment: Note }>('POST', '/comments', { ...n, client: { name: 'widget', version: VERSION } })
+    const r = await call<{ comment: Note }>('POST', '/comments', { ...n, tabId: TAB_ID, client: { name: 'widget', version: VERSION } })
     return r.comment
   },
   async list(page: string): Promise<Note[]> {
@@ -54,6 +54,10 @@ export const api = {
   },
   async edit(id: string, note: string): Promise<Note> {
     return (await call<{ comment: Note }>('PATCH', `/comments/${id}`, { note })).comment
+  },
+  /** Claude, from its own browser pane: send this tab's notes to my session. */
+  async bind(token: string): Promise<{ project: string }> {
+    return call<{ project: string }>('POST', '/bind', { tabId: TAB_ID, token })
   },
   async remove(id: string): Promise<void> {
     await call('DELETE', `/comments/${id}`)

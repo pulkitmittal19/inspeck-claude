@@ -18,6 +18,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import { dirname, join, normalize } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import * as store from './store.js'
+import { bindTab, route as routeNote } from './sessions.js'
 import { isThisMachine, NewComment, type Comment } from './format.js'
 
 export const PORT = Number(process.env.INSPECK_PORT) || 4848
@@ -126,6 +127,14 @@ async function route(req: IncomingMessage, res: ServerResponse, version: string,
     return devFile(req, res, parts.slice(1).join('/'))
   }
 
+  /* A Claude session hands its pane's widget a code; from then on that tab's notes go to it. */
+  if (req.method === 'POST' && url.pathname === '/bind') {
+    const b = (await body(req)) as { tabId?: unknown; token?: unknown }
+    if (typeof b.tabId !== 'string' || typeof b.token !== 'string' || b.tabId.length > 64) return send(res, 400, { error: 'Send { tabId, token }' })
+    const s = bindTab(b.tabId, b.token)
+    return s ? send(res, 200, { ok: true, project: s.cwd }) : send(res, 404, { error: 'That code belongs to no open Claude session' })
+  }
+
   if (parts[0] !== 'comments') return send(res, 404, { error: 'Not found' })
   const id = parts[1]
 
@@ -140,7 +149,7 @@ async function route(req: IncomingMessage, res: ServerResponse, version: string,
     if (!parsed.success) {
       return send(res, 400, { error: 'Comment is not in the Inspeck format', issues: parsed.error.issues })
     }
-    const created = store.add(parsed.data)
+    const created = store.add(parsed.data, routeNote(parsed.data.page, parsed.data.tabId))
     onNew(created)
     return send(res, 201, { comment: forPage(created) })
   }

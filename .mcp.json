@@ -2,7 +2,9 @@
   "mcpServers": {
     "inspeck": {
       "command": "node",
-      "args": ["${CLAUDE_PLUGIN_ROOT}/server/dist/inspeck.mjs"],
+      "args": [
+        "${CLAUDE_PLUGIN_ROOT}/server/dist/inspeck.mjs"
+      ],
       "_meta": {
         "ideToolIconPath": "./icon.svg",
         "ideToolIconRendersAsTemplate": true,
@@ -12,7 +14,8 @@
           "watch": "Wait for comments",
           "reply": "Reply on badge",
           "resolve": "Mark done",
-          "dismiss": "Decline"
+          "dismiss": "Decline",
+          "bind": "Link browser tab"
         }
       }
     }

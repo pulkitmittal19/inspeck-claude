@@ -36,3 +36,13 @@ export const tabStore = {
     } catch { /* storage blocked: the widget just won't remember */ }
   },
 }
+
+/** This browser tab, stable across reloads, so its notes go to the session it's bound to. */
+export const TAB_ID = (() => {
+  let id = tabStore.get('tab')
+  if (!id) {
+    id = Array.from(crypto.getRandomValues(new Uint8Array(9)), b => b.toString(16).padStart(2, '0')).join('')
+    tabStore.set('tab', id)
+  }
+  return id
+})()

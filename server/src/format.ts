@@ -72,6 +72,8 @@ export const NewComment = z.object({
   css: z.array(CssLine).max(16).optional(),
   /** What sent it: the in-page widget or the extension, and its version. */
   client: z.object({ name: z.string().max(40), version: z.string().max(20) }).optional(),
+  /** The browser tab it came from, so it can go to the session that tab is bound to. */
+  tabId: z.string().max(64).optional(),
   /** A data URL. The server writes it to disk and keeps only the path. */
   screenshot: z.string().max(4_500_000).optional(),
 })
@@ -98,6 +100,9 @@ export interface Comment {
   measured: Measurement[]
   css?: CssLine[]
   client?: { name: string; version: string }
+  tabId?: string
+  /** The session it's for, decided by the server when it arrives. */
+  to?: { pid?: number; cwd?: string; how: 'bound' | 'only' | 'project' | 'waiting' }
   /** Absolute path to the PNG on this machine. */
   screenshot?: string
   thread: Message[]

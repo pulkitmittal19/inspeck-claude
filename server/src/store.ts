@@ -121,7 +121,7 @@ function saveShot(id: string, dataUrl: string): string | undefined {
   return path
 }
 
-export function add(input: NewComment): Comment {
+export function add(input: NewComment, to?: Comment['to']): Comment {
   return change(inbox => {
     const id = newId()
     const comment: Comment = {
@@ -138,6 +138,8 @@ export function add(input: NewComment): Comment {
       measured: input.measured ?? [],
       ...(input.css?.length ? { css: input.css } : {}),
       ...(input.client ? { client: input.client } : {}),
+      ...(input.tabId ? { tabId: input.tabId } : {}),
+      ...(to ? { to } : {}),
       thread: [],
     }
     if (input.screenshot) {
@@ -173,13 +175,14 @@ export function forPage(page: string): Comment[] {
  * Claiming happens in one write, so when two Claude sessions are open the
  * first to look takes the comment and the second never gets a duplicate.
  */
-export function claimNew(page?: string): Comment[] {
+export function claimNew(page?: string, mine: (c: Comment) => boolean = () => true): Comment[] {
   const key = page ? pageKey(page) : undefined
+  const wanted = (c: Comment) => c.status === 'new' && (!key || c.page === key) && mine(c)
   /* Watch calls this every second. Look first without the lock, so an idle
      watch never rewrites the file; the claim itself re-checks under it. */
-  if (!read().comments.some(c => c.status === 'new' && (!key || c.page === key))) return []
+  if (!read().comments.some(wanted)) return []
   return change(inbox => {
-    const claimed = inbox.comments.filter(c => c.status === 'new' && (!key || c.page === key))
+    const claimed = inbox.comments.filter(wanted)
     for (const c of claimed) c.status = 'seen'
     return claimed.map(c => ({ ...c }))
   })

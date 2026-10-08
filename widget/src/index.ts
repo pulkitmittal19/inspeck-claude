@@ -5,9 +5,10 @@
  * Hover any element to see its CSS; click it to leave a note for Claude.
  */
 import { App } from './app'
-import { allowedHere, SERVER, VERSION } from './env'
+import { api } from './api'
+import { allowedHere, SERVER, TAB_ID, VERSION } from './env'
 
-type Global = { app?: App; version: string; server: string; destroy(): void }
+type Global = { app?: App; version: string; server: string; tab: string; bind(token: string): Promise<string>; destroy(): void }
 declare global { interface Window { __INSPECK__?: Global } }
 
 function boot(): void {
@@ -15,7 +16,16 @@ function boot(): void {
   if (window.__INSPECK__?.app) return
   const app = new App()
   window.__INSPECK__ = {
-    app, version: VERSION, server: SERVER,
+    app, version: VERSION, server: SERVER, tab: TAB_ID,
+    /* Called by Claude in its browser pane (the bind tool says how). */
+    async bind(token: string) {
+      try {
+        const r = await api.bind(token)
+        return `Bound: notes from this tab now go to the Claude session in ${r.project}.`
+      } catch (e) {
+        return `Not bound: ${(e as Error).message}`
+      }
+    },
     destroy() { app.destroy(); delete window.__INSPECK__ },
   }
 }

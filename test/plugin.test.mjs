@@ -151,11 +151,11 @@ test('a note inside a menu tells Claude how to open it again', async () => {
   await page(s.port, 'DELETE', `/comments/${r.json.comment.id}`)
 })
 
-test('Claude sees the six actions, by the names people see', async () => {
+test('Claude sees the seven actions, by the names people see', async () => {
   const { tools } = await s.client.listTools()
   const byName = Object.fromEntries(tools.map(t => [t.name, t.title]))
   assert.deepEqual(byName, {
-    pending: 'Check comments', get: 'Open comment', watch: 'Wait for comments',
+    pending: 'Check comments', get: 'Open comment', watch: 'Wait for comments', bind: 'Link browser tab',
     reply: 'Reply on badge', resolve: 'Mark done', dismiss: 'Decline',
   })
 })
