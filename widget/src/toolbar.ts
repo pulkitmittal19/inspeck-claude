@@ -32,7 +32,7 @@ export function createToolbar(ui: HTMLElement): Toolbar {
     return el
   })
   const row = h('div', { class: 'row' }, ...btns)
-  const logo = h('button', { type: 'button', class: 'logo', 'data-action': 'open', 'aria-label': 'Open Inspeck', 'data-tip': 'Inspeck', 'data-key': '⌥I' },
+  const logo = h('button', { type: 'button', class: 'logo', 'data-action': 'open', 'aria-label': 'Open Inspeck', 'data-tip': 'Inspeck', 'data-key': '⌥ I' },
     svg(ICONS.inspect, 18, 1.5))
   const bar = h('div', { class: 'bar', role: 'toolbar', 'aria-label': 'Inspeck' }, logo, row)
   const tip = h('div', { class: 'tip', role: 'tooltip' })

@@ -51,7 +51,7 @@ If your app sets a Content Security Policy in development, allow `http://127.0.0
 
 ## Use
 
-Open your app and click the circle in the corner, or press **⌥I**. The pill opens to two buttons, Freeze and Close, and you are already inspecting:
+Open your app and click the circle in the corner, or press **⌥ I** (Option + I). The pill opens to two buttons, Freeze and Close, and you are already inspecting:
 
 | | |
 |---|---|
