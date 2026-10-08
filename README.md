@@ -55,10 +55,10 @@ Open your app and click the circle in the corner, or press **⌥I**. The pill op
 
 | | |
 |---|---|
-| **Hover** | the element's key CSS: 5–6 declarations for its kind (type for text, spacing and fill for a button), tokens shown as `var(--x)` with the real value beside them |
-| **Click** | pin the card and write a note. **Enter** sends it to Claude, **Shift+Enter** adds a line, **Esc** closes |
+| **Hover** | the element's key CSS: 5–6 declarations for its kind (type for text, spacing and fill for a button). A value from a token shows the token's name in a chip, with the real value beside it; a value without a chip was typed in |
+| **Click** | pin the card and write a note. The CSS folds away as you type; click the card's top line to open or fold it. **Enter** sends it to Claude, **Shift+Enter** adds a line, **Esc** closes |
 | **↑ / ↓** | the element's parent or child |
-| **Hold Shift** | padding, margin and the gaps between children, with numbers |
+| **Hold Shift** | padding, margin and the gaps between children, with numbers. Keep holding and move to another element: the distance between the two |
 | **Hold Space** | clicks go to your app: open a menu, then note something inside it |
 | **F** or ❄ | freeze the page: menus, tooltips and hover states stay as they are. Writing a note freezes it too |
 | **Esc** | close the note, then the freeze, then Inspeck |

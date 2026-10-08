@@ -44,6 +44,10 @@ export interface Notes {
 
 export function createNotes(ui: HTMLElement, onOpen: (note: Note, el: Element) => void): Notes {
   const layer = h('div', { class: 'markers' })
+  /* Hovering a marker outlines, faintly, the element its note is about. */
+  const ghost = h('div', { class: 'ghost', hidden: true })
+  layer.appendChild(ghost)
+  let hovered: string | null = null
   const preview = h('div', { class: 'preview', hidden: true, role: 'tooltip' })
   ui.append(layer, preview)
 
@@ -123,8 +127,17 @@ export function createNotes(ui: HTMLElement, onOpen: (note: Note, el: Element) =
         m.setAttribute('data-lost', '')
       } else continue
       m.toggleAttribute('data-nested', !el && !!anchor)
-      m.style.left = `${Math.round(x - 10)}px`
-      m.style.top = `${Math.round(y - 10)}px`
+      /* The badge sits up and to the right, its pointed corner on the spot. */
+      m.style.left = `${Math.round(x - 2)}px`
+      m.style.top = `${Math.round(y - 18)}px`
+      if (n.id === hovered) {
+        const box = el ?? anchor
+        if (box && (el ? a?.visible : true)) {
+          const r = box.getBoundingClientRect()
+          ghost.style.cssText = `left:${r.left - 2}px;top:${r.top - 2}px;width:${r.width + 4}px;height:${r.height + 4}px`
+          enter(ghost)
+        }
+      }
     }
     raf = requestAnimationFrame(frame)
   }
@@ -189,13 +202,15 @@ export function createNotes(ui: HTMLElement, onOpen: (note: Note, el: Element) =
     find,
     handle(e) {
       const a = actionOf(e)
-      if (e.type === 'pointerover' && a?.action === 'marker') { showPreview(a.el); return true }
+      if (e.type === 'pointerover' && a?.action === 'marker') { hovered = a.el.dataset.id ?? null; showPreview(a.el); return true }
       if ((e.type === 'pointerout' || e.type === 'pointerleave') && !preview.hidden) {
         const to = (e as PointerEvent).relatedTarget
-        if (!(to instanceof Element) || to.getAttribute?.('data-action') !== 'marker') leave(preview, 90)
+        if (!(to instanceof Element) || to.getAttribute?.('data-action') !== 'marker') { hovered = null; leave(preview, 90); leave(ghost, 120) }
       }
       if (e.type !== 'click' || a?.action !== 'marker') return false
+      hovered = null
       leave(preview, 90)
+      leave(ghost, 90)
       const n = notes.find(x => x.id === a.el.dataset.id)
       const el = n && find(n)
       if (n && el) onOpen(n, el)

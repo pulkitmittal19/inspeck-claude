@@ -155,6 +155,11 @@ button { appearance: none; background: none; border: 0; padding: 0; cursor: poin
 .c-prop { color: var(--ix-c-prop); }
 .c-num { color: var(--ix-c-num); }
 .c-token { color: var(--ix-c-token); }
+/* A token: its name in a quiet sky chip. Anything without a chip was typed in. */
+.tok {
+  display: inline-block; padding: 0 5px; border-radius: 4px; line-height: 16px;
+  color: var(--ix-c-token); background: rgba(125, 211, 252, 0.13);
+}
 .c-kw { color: var(--ix-c-kw); }
 .c-hex { color: var(--ix-c-hex); }
 .c-fn, .c-punct { color: var(--ix-c-punct); }
@@ -173,12 +178,16 @@ button { appearance: none; background: none; border: 0; padding: 0; cursor: poin
   display: flex; align-items: center; justify-content: center;
 }
 .tool:hover { background: var(--ix-bg-2); color: var(--ix-text); }
-.fold {
-  display: flex; align-items: center; gap: 6px; width: 100%; padding: 3px 0 1px; text-align: left; border-radius: 5px;
-  font: 11px/1.4 var(--ix-mono); color: var(--ix-dim); white-space: nowrap; overflow: hidden;
+/* pinned, the head folds the CSS: a chevron that turns, and the whole row answers */
+.card[data-pinned] .card-head { cursor: pointer; }
+.card[data-pinned] .card-head:hover .chev, .card[data-pinned] .card-head:hover .label { color: #fff; }
+.chev {
+  display: flex; flex: none; margin-right: -3px; color: var(--ix-dim);
+  transform: rotate(90deg); transition: transform 220ms var(--ix-ease), color 120ms ease;
+  animation: ix-chev-in 260ms var(--ix-ease) both;
 }
-.fold:hover { color: var(--ix-text); }
-.fold-peek { margin-left: auto; overflow: hidden; text-overflow: ellipsis; color: var(--ix-faint); }
+.card[data-folded] .chev { transform: rotate(0deg); }
+@keyframes ix-chev-in { from { opacity: 0; margin-left: -13px; } to { opacity: 1; margin-left: 0; } }
 /* Spacing lives on the child, never on .inner: padding there would survive the collapse. */
 .note-wrap .note { margin-top: 8px; }
 .note {
@@ -221,17 +230,26 @@ button { appearance: none; background: none; border: 0; padding: 0; cursor: poin
 
 /* ---------- markers and their preview ---------- */
 .marker {
-  position: fixed; left: 0; top: 0; width: 20px; height: 20px; border-radius: 10px; pointer-events: auto;
+  position: fixed; left: 0; top: 0; width: 20px; height: 20px; pointer-events: auto;
+  /* A pin: round, with the bottom-left corner drawn to a point on the element. */
+  border-radius: 10px 10px 10px 2px; transform-origin: 1px 19px;
   background: #17171C; color: #fff; font: 700 10.5px/1 var(--ix-sans);
   display: flex; align-items: center; justify-content: center;
   box-shadow: 0 0 0 1.5px #fff, 0 2px 6px rgba(0, 0, 0, 0.28);
   transition: transform 180ms var(--ix-ease), opacity 200ms ease, box-shadow 180ms ease;
 }
-.marker:hover { transform: scale(1.14) translateY(-1px); box-shadow: 0 0 0 1.5px #fff, 0 4px 12px rgba(0, 0, 0, 0.3); }
+.marker:hover { transform: scale(1.14); box-shadow: 0 0 0 1.5px #fff, 0 4px 12px rgba(0, 0, 0, 0.3); }
 .marker:active { transform: scale(0.96); transition-duration: 80ms; }
 /* A new note: the marker pops into place. */
 .marker[data-born] { animation: ix-pop 460ms var(--ix-spring) both; }
-@keyframes ix-pop { 0% { transform: scale(0); opacity: 0; } 60% { opacity: 1; } 100% { transform: none; } }
+/* It grows out of its point, so it reads as coming from the element. */
+@keyframes ix-pop { 0% { transform: scale(0); opacity: 0; } 50% { opacity: 1; } 100% { transform: none; } }
+.ghost {
+  position: fixed; pointer-events: none; border-radius: 4px;
+  box-shadow: 0 0 0 1px rgba(23, 23, 28, 0.55), 0 0 0 3px rgba(255, 255, 255, 0.5);
+  transition: opacity 140ms ease;
+}
+.ghost[data-state="enter"], .ghost[data-state="out"] { opacity: 0; }
 .marker[data-gone] { transform: scale(0.4); opacity: 0; transition: transform 200ms var(--ix-ease-in), opacity 160ms ease; }
 .marker[data-nested]::after {
   content: ''; position: absolute; right: -4px; bottom: -4px; width: 8px; height: 8px; border-radius: 4px;
@@ -262,6 +280,20 @@ button { appearance: none; background: none; border: 0; padding: 0; cursor: poin
   position: fixed; transform: translate(-50%, -50%); padding: 1px 5px; border-radius: 4px;
   background: #17171C; color: #fff; font: 600 10px/1.4 var(--ix-mono); white-space: nowrap;
 }
+/* distance between two elements */
+.anchor-box { position: fixed; box-shadow: 0 0 0 1.5px var(--ix-accent); border-radius: 2px; }
+.ruler { position: fixed; background: var(--ix-accent); }
+.ruler.h { height: 1px; }
+.ruler.v { width: 1px; }
+.ruler::before, .ruler::after { content: ''; position: absolute; background: var(--ix-accent); }
+.ruler.h::before, .ruler.h::after { top: -3px; width: 1px; height: 7px; }
+.ruler.h::before { left: 0; } .ruler.h::after { right: 0; }
+.ruler.v::before, .ruler.v::after { left: -3px; height: 1px; width: 7px; }
+.ruler.v::before { top: 0; } .ruler.v::after { bottom: 0; }
+.guide { position: fixed; }
+.guide.h { height: 0; border-top: 1px dashed var(--ix-accent); }
+.guide.v { width: 0; border-left: 1px dashed var(--ix-accent); }
+.sp-label.dist { background: var(--ix-accent); }
 
 /* small label that appears above a toolbar button on hover */
 .tip {

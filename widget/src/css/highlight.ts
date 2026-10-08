@@ -1,5 +1,7 @@
-/* Syntax colours for a CSS value, as DOM (no innerHTML): tokens in sky,
-   numbers in amber, keywords in violet, hex colours with a swatch. */
+/* Syntax colours for a CSS value, as DOM (no innerHTML). A token reads as a
+   chip with its name (`var(--text-sm)` → [text-sm]) so a linked value stands
+   apart from a typed-in one at a glance; numbers are amber, keywords violet,
+   hex colours get a swatch. Copying still gives the CSS exactly as written. */
 import { h } from '../dom'
 
 const PATTERN = /(var\()(--[\w-]+)(\s*,\s*[^)]*)?(\))|(#[0-9A-Fa-f]{3,8})\b|(-?\d*\.?\d+)(px|r?em|%|ms|s|deg|vh|vw|fr)?|([a-zA-Z-]+)(?=\()|([a-zA-Z-]+)|([^\w#-]+|-)/g
@@ -15,10 +17,7 @@ export function highlight(value: string): DocumentFragment {
   const span = (cls: string, text: string) => f.appendChild(h('span', { class: cls }, text))
   for (const m of value.matchAll(PATTERN)) {
     if (m[1]) {
-      span('c-fn', 'var(')
-      span('c-token', m[2])
-      if (m[3]) span('c-punct', m[3])
-      span('c-fn', ')')
+      f.appendChild(h('span', { class: 'tok', title: `var(${m[2]}${m[3] ?? ''})` }, m[2].slice(2)))
     } else if (m[5]) {
       f.appendChild(swatch(m[5]))
       span('c-hex', m[5])

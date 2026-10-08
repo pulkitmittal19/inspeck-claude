@@ -44,7 +44,6 @@ export function renderCss(d: Description): HTMLDivElement {
   for (const l of d.lines) {
     const row = h('div', { class: 'decl' }, h('span', { class: 'c-prop' }, l.prop), h('span', { class: 'c-punct' }, ': '))
     row.appendChild(highlight(l.value))
-    row.appendChild(h('span', { class: 'c-punct' }, ';'))
     if (l.resolved) row.appendChild(resolved(l.resolved))
     box.appendChild(row)
   }
@@ -52,8 +51,9 @@ export function renderCss(d: Description): HTMLDivElement {
   return box
 }
 
-function renderHead(d: Description, extra: Array<Node | null> = [], num?: number): HTMLDivElement {
+function renderHead(d: Description, extra: Array<Node | null> = [], num?: number, lead?: Node): HTMLDivElement {
   return h('div', { class: 'card-head' },
+    lead ?? null,
     num ? h('span', { class: 'num' }, `#${num}`) : null,
     h('span', { class: 'label' }, d.label),
     d.component ? h('span', { class: 'comp' }, d.component) : null,
@@ -86,11 +86,13 @@ export function createCard(ui: HTMLElement): Card {
   let desc: Description | null = null
   let opts: PinOptions | null = null
   let parts: {
-    cssWrap: HTMLElement; foldWrap: HTMLElement; noteWrap: HTMLElement; statusWrap: HTMLElement; status: HTMLElement
+    cssWrap: HTMLElement; noteWrap: HTMLElement; statusWrap: HTMLElement; status: HTMLElement
     keysWrap: HTMLElement | null; note: HTMLTextAreaElement; send: HTMLButtonElement
   } | null = null
   let busy = false
   let folded = false
+  /** The CSS folds by itself once, on the first keystroke; after that only you fold or open it. */
+  let autoFolded = false
   let glide = 0
 
   const glideNow = () => {
@@ -103,7 +105,7 @@ export function createCard(ui: HTMLElement): Card {
     if (!parts) return
     folded = f
     setOpen(parts.cssWrap, !f)
-    setOpen(parts.foldWrap, f)
+    el.toggleAttribute('data-folded', f)
   }
 
   const grow = () => {
@@ -119,7 +121,7 @@ export function createCard(ui: HTMLElement): Card {
     parts.send.disabled = !has || busy
     parts.send.toggleAttribute('data-ready', has)
     /* The first keystroke folds the CSS away so the note has the room. */
-    if (has && !folded && !opts?.existing) setFolded(true)
+    if (has && !autoFolded) { autoFolded = true; setFolded(true) }
     grow()
   }
 
@@ -174,6 +176,7 @@ export function createCard(ui: HTMLElement): Card {
         clear(el)
         el.removeAttribute('data-pinned')
         el.removeAttribute('data-sent')
+        el.removeAttribute('data-folded')
         el.append(renderHead(desc), renderCss(desc))
         /* Already showing for another element: glide over rather than blink. */
         if (visible) glideNow()
@@ -189,16 +192,20 @@ export function createCard(ui: HTMLElement): Card {
       desc = describe(target)
       mode = 'pinned'
       busy = false
-      folded = false
+      /* A note you're editing opens with its CSS folded; a new one with it open. */
+      folded = !!o.existing
+      autoFolded = folded
       clear(el)
       el.removeAttribute('data-sent')
+      el.toggleAttribute('data-folded', folded)
       el.setAttribute('data-pinned', '')
-      const head = renderHead(desc, [h('span', { class: 'tools' }, tool('copy', 'copy', 'Copy CSS'), tool('close-card', 'close', 'Close'))], o.existing?.n)
-      const first = desc.lines[0]
-      const cssWrap = reveal('css-wrap', !o.existing, renderCss(desc))
-      const foldWrap = reveal('fold-wrap quick', !!o.existing, h('button', { type: 'button', class: 'fold', 'data-action': 'unfold' },
-        svg(ICONS.chevron, 11, 2.2), h('span', {}, `${desc.lines.length} properties`),
-        first ? h('span', { class: 'fold-peek' }, `${first.prop}: ${first.value}; …`) : null))
+      /* The whole head is the fold toggle, so it's always in the same place. */
+      const chevron = h('span', { class: 'chev', 'aria-hidden': 'true' }, svg(ICONS.chevron, 10, 2.4))
+      const head = renderHead(desc, [h('span', { class: 'tools' }, tool('copy', 'copy', 'Copy CSS'), tool('close-card', 'close', 'Close'))], o.existing?.n, chevron)
+      head.setAttribute('data-action', 'fold')
+      head.setAttribute('role', 'button')
+      head.setAttribute('aria-label', 'Show or hide the CSS')
+      const cssWrap = reveal('css-wrap', !folded, renderCss(desc))
       const note = h('textarea', { class: 'note-input', rows: 1, placeholder: 'Add a note for Claude…', 'aria-label': 'Note for Claude', spellcheck: 'true' })
       if (o.existing) note.value = o.existing.note
       const sendBtn = h('button', { type: 'button', class: 'send', 'data-action': 'send', 'aria-label': o.existing ? 'Save note' : 'Send to Claude', disabled: true }, svg(ICONS.enter, 13, 2.2))
@@ -210,9 +217,8 @@ export function createCard(ui: HTMLElement): Card {
       const keysWrap = keysSeen ? null : reveal('keys-wrap', false, h('div', { class: 'keys' },
         h('span', {}, h('span', { class: 'kbd' }, '↵'), ' send'), h('span', {}, h('span', { class: 'kbd' }, '⇧↵'), ' new line'), h('span', {}, h('span', { class: 'kbd' }, 'esc'), ' close')))
       const actionsWrap = o.onDelete ? reveal('actions-wrap', false, h('div', { class: 'note-actions' }, h('button', { type: 'button', class: 'link', 'data-action': 'delete' }, svg(ICONS.trash, 12), 'Delete'))) : null
-      el.append(head, cssWrap, foldWrap, noteWrap, statusWrap, ...(keysWrap ? [keysWrap] : []), ...(actionsWrap ? [actionsWrap] : []))
-      parts = { cssWrap, foldWrap, noteWrap, statusWrap, status: statusEl, keysWrap, note, send: sendBtn }
-      folded = !!o.existing
+      el.append(head, cssWrap, noteWrap, statusWrap, ...(keysWrap ? [keysWrap] : []), ...(actionsWrap ? [actionsWrap] : []))
+      parts = { cssWrap, noteWrap, statusWrap, status: statusEl, keysWrap, note, send: sendBtn }
       if (!wasShowing) enter(el)
       sync()
       /* Focus now, not on the next frame: on a busy page the next frame can be
@@ -265,6 +271,9 @@ export function createCard(ui: HTMLElement): Card {
       if (mode !== 'pinned' || !parts || !opts) return false
       if (!e.composedPath().includes(el)) return false
       if (e.type === 'input') { sync(); return true }
+      /* A press anywhere else on the card (its head, the CSS, a button) leaves
+         the cursor in the note, so you can click and carry on typing. */
+      if (e.type === 'mousedown' && !(e.composedPath()[0] instanceof HTMLTextAreaElement)) { e.preventDefault(); return true }
       if (e.type === 'keydown') {
         const k = e as KeyboardEvent
         if (k.isComposing) return true
@@ -277,7 +286,11 @@ export function createCard(ui: HTMLElement): Card {
         switch (a?.action) {
           case 'send': void send(); break
           case 'close-card': opts.onClose(); break
-          case 'unfold': setFolded(false); parts.note.focus({ preventScroll: true }); break
+          case 'fold': {
+            setFolded(!folded)
+            parts.note.focus({ preventScroll: true })
+            break
+          }
           case 'copy':
             if (desc) void navigator.clipboard?.writeText(cssText(desc)).then(() => status('CSS copied', 'ok'), () => status('Couldn’t copy', 'error'))
             break

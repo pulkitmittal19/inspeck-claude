@@ -31,6 +31,8 @@ export class App {
   private frost: HTMLDivElement
   /** Shift is held: show the hovered element's spacing. */
   private shift = false
+  /** Where Shift went down: measured on its own, and the far end of every distance after. */
+  private measureFrom: Element | null = null
   open = false
   /** Held Space: presses go to the app, so you can open a menu to comment inside it. */
   through = false
@@ -63,7 +65,7 @@ export class App {
     this.spacing = createSpacing(this.host.ui)
     this.outline = createOutline(this.host.ui, (el, r) => {
       this.card.place(r)
-      if (this.shift) this.spacing.draw(el)
+      if (this.shift) this.measure(el)
     })
     this.unroute = createRouter(this.host, {
       ui: e => this.onUi(e),
@@ -239,14 +241,14 @@ export class App {
       }
       return
     }
+    /* The pointer over our own UI (a marker, the pill) isn't pointing at the page. */
+    if (e.type === 'pointerover' && this.open && !this.pinned) this.setTarget(null)
     if (this.card.handle(e)) return
     if (this.notes.handle(e)) return
     const action = this.toolbar.handle(e)
     if (action) this.act(action)
     if (e.type === 'keydown') this.onKey(e as KeyboardEvent, true)
     if (e.type === 'keyup') this.onKeyUp(e as KeyboardEvent)
-    /* The pointer over our own UI isn't pointing at the page. */
-    if (e.type === 'pointerover' && this.open && !this.pinned) this.setTarget(null)
   }
 
   /** Events on the page. Returning a verdict stops the app from seeing it. */
@@ -336,10 +338,19 @@ export class App {
   private setShift(on: boolean): void {
     if (on === this.shift) return
     this.shift = on
+    this.measureFrom = on ? this.target : null
     /* The numbers are the point while Shift is down; the hover card steps aside. */
     if (this.card.mode === 'hover') this.card.el.hidden = on
-    if (on && this.target) this.spacing.draw(this.target)
+    if (on && this.target) this.measure(this.target)
     else this.spacing.hide()
+  }
+
+  /** Shift held: the element it went down on shows its own spacing; any other shows its distance from it. */
+  private measure(el: Element): void {
+    if (this.measureFrom && !this.measureFrom.isConnected) this.measureFrom = null
+    this.measureFrom ??= el
+    if (el === this.measureFrom) this.spacing.draw(el)
+    else this.spacing.distance(this.measureFrom, el)
   }
 
   private onKeyUp(e: KeyboardEvent): 'swallow' | void {

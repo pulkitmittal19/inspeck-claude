@@ -1,10 +1,14 @@
 /* Hold Shift: the hovered element's padding (tinted bands), margin (outlined
-   bands outside it) and the gaps between its children, each with its number. */
+   bands outside it) and the gaps between its children, each with its number.
+   Keep holding it and move to another element: the first one stays outlined
+   and the distance between the two is drawn instead. One key for both. */
 import { enter, leave } from './anim'
 import { clear, h } from './dom'
 
 export interface Spacing {
   draw(el: Element): void
+  /** The distance from `from` (where Shift went down) to `to` (under the pointer). */
+  distance(from: Element, to: Element): void
   hide(): void
   readonly on: boolean
 }
@@ -29,12 +33,87 @@ export function createSpacing(ui: HTMLElement): Spacing {
     layer.appendChild(l)
   }
 
+  /* A measuring line with end ticks, and its number at the middle. */
+  const ruler = (x1: number, y1: number, x2: number, y2: number) => {
+    const horiz = y1 === y2
+    const len = horiz ? x2 - x1 : y2 - y1
+    if (len < 0.5) return
+    const r = h('div', { class: `ruler ${horiz ? 'h' : 'v'}` })
+    r.style.cssText = horiz ? `left:${x1}px;top:${y1}px;width:${len}px` : `left:${x1}px;top:${y1}px;height:${len}px`
+    layer.appendChild(r)
+    const l = h('span', { class: 'sp-label dist' }, round(len))
+    /* On the line when it fits; beside it when the line is shorter than the number. */
+    const roomy = len >= (horiz ? 30 : 22)
+    l.style.left = `${Math.round(horiz ? x1 + len / 2 : x1 + (roomy ? 0 : 16))}px`
+    l.style.top = `${Math.round(horiz ? y1 + (roomy ? 0 : 12) : y1 + len / 2)}px`
+    layer.appendChild(l)
+  }
+  /* A dashed line carrying an edge across to where the ruler runs. */
+  const guide = (x1: number, y1: number, x2: number, y2: number) => {
+    const horiz = y1 === y2
+    const a = horiz ? Math.min(x1, x2) : Math.min(y1, y2), len = Math.abs(horiz ? x2 - x1 : y2 - y1)
+    if (len < 1) return
+    const g = h('div', { class: `guide ${horiz ? 'h' : 'v'}` })
+    g.style.cssText = horiz ? `left:${a}px;top:${y1}px;width:${len}px` : `left:${x1}px;top:${a}px;height:${len}px`
+    layer.appendChild(g)
+  }
+  const frame = (r: DOMRect) => {
+    const b = h('div', { class: 'anchor-box' })
+    b.style.cssText = `left:${r.left}px;top:${r.top}px;width:${r.width}px;height:${r.height}px`
+    layer.appendChild(b)
+  }
+  const show = () => {
+    on = true
+    if (layer.hidden || layer.dataset.state === 'out') enter(layer)
+    clear(layer)
+  }
+
   return {
     get on() { return on },
+    distance(from, to) {
+      show()
+      const a = from.getBoundingClientRect(), b = to.getBoundingClientRect()
+      frame(a)
+      const inside = (i: DOMRect, o: DOMRect) => i.left >= o.left && i.right <= o.right && i.top >= o.top && i.bottom <= o.bottom
+      if (inside(a, b) || inside(b, a)) {
+        /* One holds the other: the inner one's distance to each edge of the outer. */
+        const [i, o] = inside(a, b) ? [a, b] : [b, a]
+        const cx = Math.round(i.left + i.width / 2), cy = Math.round(i.top + i.height / 2)
+        ruler(cx, o.top, cx, i.top)
+        ruler(cx, i.bottom, cx, o.bottom)
+        ruler(o.left, cy, i.left, cy)
+        ruler(i.right, cy, o.right, cy)
+        return
+      }
+      /* Side by side: the horizontal gap, run where the two overlap vertically
+         (or from A's middle, with a guide carrying B's edge across). */
+      const hGap = b.left >= a.right ? [a.right, b.left] : a.left >= b.right ? [b.right, a.left] : null
+      const vGap = b.top >= a.bottom ? [a.bottom, b.top] : a.top >= b.bottom ? [b.bottom, a.top] : null
+      if (hGap) {
+        const lo = Math.max(a.top, b.top), hi = Math.min(a.bottom, b.bottom)
+        const y = Math.round(lo < hi ? (lo + hi) / 2 : a.top + a.height / 2)
+        ruler(hGap[0], y, hGap[1], y)
+        const far = b.left >= a.right ? b.left : b.right
+        if (y < b.top) guide(far, y, far, b.top)
+        else if (y > b.bottom) guide(far, b.bottom, far, y)
+      }
+      if (vGap) {
+        const lo = Math.max(a.left, b.left), hi = Math.min(a.right, b.right)
+        const x = Math.round(lo < hi ? (lo + hi) / 2 : a.left + a.width / 2)
+        ruler(x, vGap[0], x, vGap[1])
+        const far = b.top >= a.bottom ? b.top : b.bottom
+        if (x < b.left) guide(x, far, b.left, far)
+        else if (x > b.right) guide(b.right, far, x, far)
+      }
+      if (!hGap && !vGap) {
+        /* Overlapping without one holding the other: how far their edges sit apart. */
+        const y = Math.round(Math.max(a.top, b.top) + 6), x = Math.round(Math.max(a.left, b.left) + 6)
+        ruler(Math.min(a.left, b.left), y, Math.max(a.left, b.left), y)
+        ruler(x, Math.min(a.top, b.top), x, Math.max(a.top, b.top))
+      }
+    },
     draw(el) {
-      on = true
-      if (layer.hidden || layer.dataset.state === 'out') enter(layer)
-      clear(layer)
+      show()
       const r = el.getBoundingClientRect()
       const cs = getComputedStyle(el)
       const n = (p: string) => parseFloat(cs.getPropertyValue(p)) || 0
