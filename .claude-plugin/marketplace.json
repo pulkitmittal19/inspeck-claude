@@ -1,0 +1,13 @@
+{
+  "name": "inspeck",
+  "description": "Inspeck — design-system-aware comments for Claude.",
+  "owner": { "name": "Pulkit Mittal" },
+  "plugins": [
+    {
+      "name": "inspeck",
+      "description": "Point at something on a web page, say what's wrong or what you like, and Claude picks it up — with what that element measures against your design system.",
+      "category": "development",
+      "source": "./"
+    }
+  ]
+}
