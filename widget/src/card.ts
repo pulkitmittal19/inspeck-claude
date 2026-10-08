@@ -83,6 +83,8 @@ function reveal(cls: string, open: boolean, ...children: Array<Node | null>): HT
 const setOpen = (el: HTMLElement | null | undefined, open: boolean) => el?.toggleAttribute('data-open', open)
 
 const GLIDE_MS = 170
+/** Fold the CSS away on the first keystroke of a note. Off while we try the card with the CSS always showing. */
+const AUTO_FOLD = false
 const SENT_HOLD_MS = 750
 
 export function createCard(ui: HTMLElement): Card {
@@ -128,7 +130,7 @@ export function createCard(ui: HTMLElement): Card {
     parts.send.disabled = !has || busy
     parts.send.toggleAttribute('data-ready', has)
     /* The first keystroke folds the CSS away so the note has the room. */
-    if (has && !autoFolded) { autoFolded = true; setFolded(true) }
+    if (AUTO_FOLD && has && !autoFolded) { autoFolded = true; setFolded(true) }
     grow()
   }
 
@@ -201,7 +203,7 @@ export function createCard(ui: HTMLElement): Card {
       mode = 'pinned'
       busy = false
       /* A note you're editing opens with its CSS folded; a new one with it open. */
-      folded = !!o.existing
+      folded = AUTO_FOLD && !!o.existing
       autoFolded = folded || !desc
       clear(el)
       el.removeAttribute('data-sent')
