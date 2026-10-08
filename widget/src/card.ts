@@ -16,6 +16,8 @@ const MAX_NOTE_LINES = 4
 export interface PinOptions {
   /** Editing an existing note: its text and number. */
   existing?: { n: number; note: string }
+  /** Text you'd started before, to carry on with. */
+  draft?: string
   /** A note on a dragged area rather than one element: what the head says. No CSS. */
   group?: { label: string; size: string }
   onSend(note: string): Promise<{ n: number } | void>
@@ -40,6 +42,8 @@ export interface Card {
   /** Put the cursor back in the note. */
   focus(): void
   readonly draft: string
+  /** The open note is one already sent, being edited. */
+  readonly editing: boolean
 }
 
 export function renderCss(d: Description): HTMLDivElement {
@@ -169,6 +173,7 @@ export function createCard(ui: HTMLElement): Card {
     get mode() { return mode },
     get description() { return desc },
     get draft() { return parts?.note.value ?? '' },
+    get editing() { return !!opts?.existing },
 
     showHover(target) {
       if (mode === 'pinned') return
@@ -218,6 +223,7 @@ export function createCard(ui: HTMLElement): Card {
       }
       const note = h('textarea', { class: 'note-input', rows: 1, placeholder: 'Add a note for Claude…', 'aria-label': 'Note for Claude', spellcheck: 'true' })
       if (o.existing) note.value = o.existing.note
+      else if (o.draft) note.value = o.draft
       const sendBtn = h('button', { type: 'button', class: 'send', 'data-action': 'send', 'aria-label': o.existing ? 'Save note' : 'Send to Claude', disabled: true }, svg(ICONS.enter, 13, 2.2))
       /* The pinned parts start closed and open on the next frame, so the card
          grows from what you were just hovering into the note. */

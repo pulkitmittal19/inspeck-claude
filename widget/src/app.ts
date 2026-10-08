@@ -61,6 +61,10 @@ export class App {
   /** The element under the pointer when a note closed: it stays quiet until the pointer moves off it. */
   private rest: Element | null = null
   private pickFrame = 0
+  /** Half-written notes, kept when the card closes, given back when you click the same element again. */
+  private drafts = new WeakMap<Element, string>()
+  /** The open card's note was just sent: nothing to keep as a draft when it closes. */
+  private sent = false
   /** Where the button went down on the page: a click if it comes up close by, a drag across a section if not. */
   private down: PointerEvent | null = null
   private unroute: () => void
@@ -192,15 +196,13 @@ export class App {
   /** A press on the page while open: pin the card to the element and start a note. */
   private press(): void {
     const el = this.target
-    if (!el) return
     if (this.pinned) {
-      if (el === this.pinned) return
-      /* Half a note written? Don't throw it away: nudge the card instead. */
-      if (this.card.draft.trim()) { this.card.pulse(); return }
-      this.unpin()
-      this.setTarget(el)
+      /* A click outside the note puts things back as they were: just hovering.
+         (A half-written note is kept for its element; see `drafts`.) */
+      if (el !== this.pinned) this.unpin()
+      return
     }
-    this.pin(el)
+    if (el) this.pin(el)
   }
 
   pin(el: Element, existing?: Note): void {
@@ -209,8 +211,10 @@ export class App {
     this.pinned = el
     this.target = el
     this.outline.show(el)
+    this.sent = false
     this.card.pin(el, {
       existing: existing ? { n: existing.n, note: existing.note } : undefined,
+      draft: existing ? undefined : this.drafts.get(el),
       onSend: async text => {
         if (existing) {
           await api.edit(existing.id, text)
@@ -219,6 +223,8 @@ export class App {
         }
         const source = await sourceOf(el)
         const note = await api.add({ ...this.noteFor(el, text), ...(source.length ? { source } : {}) })
+        this.sent = true
+        this.drafts.delete(el)
         this.notes.added(note, el)
         return { n: note.n }
       },
@@ -237,8 +243,6 @@ export class App {
   private pointerMove(p: PointerEvent): boolean {
     if (this.down && !this.marquee.dragging && (p.buttons & 1) &&
       Math.hypot(p.clientX - this.down.clientX, p.clientY - this.down.clientY) > DRAG_PX) {
-      /* Half a note written? Keep it; nudge the card instead of starting over. */
-      if (this.pinned && this.card.draft.trim()) { this.down = null; this.card.pulse(); return false }
       this.unpin()
       this.setTarget(null)
       this.marquee.start(this.down.clientX, this.down.clientY)
@@ -290,6 +294,7 @@ export class App {
         const places = await Promise.all(members.slice(0, 12).map(m => sourceOf(m)))
         payload.group.forEach((g, i) => { const at = places[i]?.[0]; if (at) (g as GroupMember).source = at })
         const note = await api.add(payload)
+        this.sent = true
         this.notes.added(note, members)
         return { n: note.n }
       },
@@ -317,6 +322,10 @@ export class App {
 
   unpin(): void {
     if (!this.pinned) return
+    const draft = this.card.draft.trim()
+    if (draft && !this.sent && this.card.description && !this.card.editing) this.drafts.set(this.pinned, this.card.draft)
+    else if (!draft) this.drafts.delete(this.pinned)
+    this.sent = false
     this.pinned = null
     this.freeze.unfreeze(false)
     this.card.hide()
