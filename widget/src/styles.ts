@@ -89,6 +89,14 @@ button { appearance: none; background: none; border: 0; padding: 0; cursor: poin
   opacity: 0; transition: opacity 180ms ease; }
 .bar[data-open] .sep { opacity: 1; transition-delay: 120ms; }
 
+/* ---------- the outline that follows the element under the pointer ---------- */
+.outline {
+  position: fixed; left: 0; top: 0; pointer-events: none; will-change: transform;
+  border: 1.5px solid var(--ix-accent); border-radius: 3px;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.5);
+}
+.outline[data-through] { border-style: dashed; opacity: 0.6; }
+
 /* small label that appears above a toolbar button on hover */
 .tip {
   position: fixed; pointer-events: none; padding: 5px 8px; border-radius: 7px;
