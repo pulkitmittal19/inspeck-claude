@@ -33,12 +33,18 @@ export function anchorOf(el: Element): { x: number; y: number; visible: boolean 
 /* A marker stays until Claude has read its note; then it leaves the page.
    (The note itself stays with Claude until it's resolved.) */
 const open = (n: Note) => n.status === 'new'
-const pageNow = () => location.href.split('#')[0]
+/* The page as the server keys it: a hash route (`#/settings`) is its own page,
+   a plain anchor (`#pricing`) is the same page scrolled. */
+const pageNow = () => /^#!?\//.test(location.hash) ? location.href : location.href.split('#')[0]
 
 export interface Notes {
   /** A note was just sent: show its marker straight away. */
   added(note: Note, el: Element | Element[]): void
   refresh(): Promise<void>
+  /** How many notes have markers on this page. */
+  readonly count: number
+  /** Withdraw every note on this page. */
+  clear(): Promise<void>
   /** An area note's elements still on the page, and where the area is now. */
   membersOf(note: Note): Element[]
   areaOf(note: Note): Box | null
@@ -220,6 +226,7 @@ export function createNotes(ui: HTMLElement, onOpen: (note: Note, el: Element | 
   history.pushState = function (...a: Parameters<History['pushState']>) { origPush.apply(this, a); queueMicrotask(onRoute) }
   history.replaceState = function (...a: Parameters<History['replaceState']>) { origReplace.apply(this, a); queueMicrotask(onRoute) }
   window.addEventListener('popstate', onRoute)
+  window.addEventListener('hashchange', onRoute)
 
   void refresh()
   poll()
@@ -236,6 +243,12 @@ export function createNotes(ui: HTMLElement, onOpen: (note: Note, el: Element | 
     find,
     membersOf,
     areaOf,
+    get count() { return notes.length },
+    async clear() {
+      const ids = notes.map(n => n.id)
+      await Promise.allSettled(ids.map(id => api.remove(id)))
+      await refresh()
+    },
     handle(e) {
       const a = actionOf(e)
       if (e.type === 'pointerover' && a?.action === 'marker') { hovered = a.el.dataset.id ?? null; showPreview(a.el); return true }
@@ -259,6 +272,7 @@ export function createNotes(ui: HTMLElement, onOpen: (note: Note, el: Element | 
       history.pushState = origPush
       history.replaceState = origReplace
       window.removeEventListener('popstate', onRoute)
+      window.removeEventListener('hashchange', onRoute)
     },
   }
 }

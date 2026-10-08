@@ -186,6 +186,34 @@ test('a note on a dragged area lists each element inside it, or says it is empty
   await page(s.port, 'DELETE', `/comments/${empty.json.comment.id}`)
 })
 
+test('Claude gets the line the element is written on, and where its component is used', async () => {
+  const r = await page(s.port, 'POST', '/comments', { body: {
+    note: 'Tag text is clipped', page: 'http://localhost:5173/conversations',
+    element: { selector: 'span.truncate', tag: 'span', text: 'Football' },
+    source: [
+      { file: '/src/app/features/conversations/convo-tag.jsx', line: 22, column: 3 },
+      { file: '/src/app/features/conversations/thread-list.jsx', line: 2952, column: 25 },
+    ],
+  } })
+  const text = (await s.client.callTool({ name: 'get', arguments: { id: r.json.comment.id } })).content[0].text
+  assert.match(text, /code +\/src\/app\/features\/conversations\/convo-tag\.jsx:22/)
+  assert.match(text, /used in +\/src\/app\/features\/conversations\/thread-list\.jsx:2952/)
+  await page(s.port, 'DELETE', `/comments/${r.json.comment.id}`)
+})
+
+test('a hash route is a page of its own; a plain anchor is the same page', async () => {
+  const post = (url) => page(s.port, 'POST', '/comments', { body: { note: 'x', page: url, element: { selector: 'h1' } } })
+  const a = await post('http://localhost:5173/app#/settings')
+  const b = await post('http://localhost:5173/app#/billing')
+  const c = await post('http://localhost:5173/app#pricing')
+  assert.equal(a.json.comment.page, 'http://localhost:5173/app#/settings')
+  assert.equal(b.json.comment.page, 'http://localhost:5173/app#/billing')
+  assert.equal(c.json.comment.page, 'http://localhost:5173/app')
+  const settings = await page(s.port, 'GET', '/comments?page=' + encodeURIComponent('http://localhost:5173/app#/settings'))
+  assert.deepEqual(settings.json.comments.map(x => x.id), [a.json.comment.id])
+  for (const x of [a, b, c]) await page(s.port, 'DELETE', `/comments/${x.json.comment.id}`)
+})
+
 test('Claude sees six actions, by the names people see, and none that writes on the page', async () => {
   const { tools } = await s.client.listTools()
   const byName = Object.fromEntries(tools.map(t => [t.name, t.title]))

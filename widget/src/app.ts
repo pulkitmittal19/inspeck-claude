@@ -1,6 +1,6 @@
 /* The widget's state and the one place events are decided. Each feature
    (picking, the CSS card, notes, markers, spacing, freeze) plugs in here. */
-import { api, type Note } from './api'
+import { api, type GroupMember, type Note } from './api'
 import { createCard, type Card } from './card'
 import { warmUp } from './css/cascade'
 import { h, isEditable } from './dom'
@@ -13,6 +13,7 @@ import { childToward, elementAt, parentOf, pickable, snap } from './pick'
 import { createRouter } from './router'
 import { selectorFor } from './selector'
 import { createSpacing, type Spacing } from './spacing'
+import { sourceOf } from './source'
 import { createMarquee, MAX_MEMBERS, unionOf, type Box, type Marquee } from './marquee'
 import { labelOf } from './css/describe'
 import { createToolbar, type Toolbar } from './toolbar'
@@ -111,7 +112,17 @@ export class App {
       case 'open': this.setOpen(true); break
       case 'close': this.setOpen(false); break
       case 'freeze': this.toggleFreeze(); break
+      case 'clear': this.clearNotes(); break
     }
+  }
+
+  /** Clear every note on this page, after a second click to be sure. */
+  private clearNotes(): void {
+    const n = this.notes.count
+    if (!n) { this.toolbar.say('clear', 'No notes on this page'); return }
+    if (!this.toolbar.armed('clear')) { this.toolbar.arm('clear', `Click again to clear ${n} note${n === 1 ? '' : 's'}`); return }
+    this.unpin()
+    void this.notes.clear().then(() => this.toolbar.say('clear', 'Cleared'))
   }
 
   private toggleFreeze(): void {
@@ -206,7 +217,8 @@ export class App {
           void this.notes.refresh()
           return
         }
-        const note = await api.add(this.noteFor(el, text))
+        const source = await sourceOf(el)
+        const note = await api.add({ ...this.noteFor(el, text), ...(source.length ? { source } : {}) })
         this.notes.added(note, el)
         return { n: note.n }
       },
@@ -273,7 +285,11 @@ export class App {
           void this.notes.refresh()
           return
         }
-        const note = await api.add(this.noteForGroup(holder, members, box, text))
+        const payload = this.noteForGroup(holder, members, box, text)
+        /* Where each element is written, so Claude can line them up in the code too. */
+        const places = await Promise.all(members.slice(0, 12).map(m => sourceOf(m)))
+        payload.group.forEach((g, i) => { const at = places[i]?.[0]; if (at) (g as GroupMember).source = at })
+        const note = await api.add(payload)
         this.notes.added(note, members)
         return { n: note.n }
       },

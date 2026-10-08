@@ -45,10 +45,16 @@ const CssLine = z.object({
 })
 export type CssLine = z.infer<typeof CssLine>
 
+/** A place in the code: where an element is written, or where a component that rendered it is used. */
+const SourceAt = z.object({ file: z.string().max(500), line: z.number().int().min(0), column: z.number().int().optional() })
+export type SourceAt = z.infer<typeof SourceAt>
+const sourceText = (s: SourceAt) => s.line ? `${s.file}:${s.line}` : s.file
+
 const GroupMember = z.object({
   selector: z.string().max(1000),
   name: z.string().max(200).optional(),
   text: z.string().max(120).optional(),
+  source: SourceAt.optional(),
 })
 export type GroupMember = z.infer<typeof GroupMember>
 
@@ -76,6 +82,8 @@ export const NewComment = z.object({
   rect: z.object({ x: z.number(), y: z.number(), w: z.number(), h: z.number() }).optional(),
   /** A note on a dragged area: the elements inside it (none, for empty space). `element` is then what holds them. */
   group: z.array(GroupMember).max(30).optional(),
+  /** Where the element is written, then where the components that rendered it are used, nearest first. */
+  source: z.array(SourceAt).max(4).optional(),
   measured: z.array(Measurement).max(40).optional(),
   /** The element's key declarations as the code writes them, with the resolved value. */
   css: z.array(CssLine).max(16).optional(),
@@ -107,6 +115,7 @@ export interface Comment {
   at?: { x: number; y: number }
   rect?: { x: number; y: number; w: number; h: number }
   group?: GroupMember[]
+  source?: SourceAt[]
   measured: Measurement[]
   css?: CssLine[]
   client?: { name: string; version: string }
@@ -169,10 +178,13 @@ export function pageLabel(page: string): string {
 }
 
 /** The key comments are grouped and numbered by — the page without its fragment. */
+/** A hash that's a route (`#/settings`, `#!/settings`) is a page of its own; a plain anchor (`#pricing`) isn't. */
+export const isHashRoute = (hash: string) => /^#!?\//.test(hash)
+
 export function pageKey(page: string): string {
   try {
     const u = new URL(page)
-    u.hash = ''
+    if (!isHashRoute(u.hash)) u.hash = ''
     return u.toString()
   } catch {
     return page
@@ -224,7 +236,7 @@ export function render(c: Comment): string {
     const r = c.rect
     lines.push(row('area', `${r ? `${r.w} × ${r.h} at ${r.x}, ${r.y} on the page` : 'a dragged area'}${c.group.length ? `, inside ${c.element.selector}` : ', empty space'}`))
     for (const m of c.group) {
-      lines.push(row('element', [m.name && m.name !== m.selector ? `${m.name}  (${m.selector})` : m.selector, ...(m.text ? [`"${m.text}"`] : [])].join(' · ')))
+      lines.push(row('element', [m.name && m.name !== m.selector ? `${m.name}  (${m.selector})` : m.selector, ...(m.text ? [`"${m.text}"`] : []), ...(m.source ? [sourceText(m.source)] : [])].join(' · ')))
     }
   } else {
     const where = [c.element.name && c.element.name !== c.element.selector ? `${c.element.name}  (${c.element.selector})` : c.element.selector]
@@ -233,6 +245,11 @@ export function render(c: Comment): string {
   }
   if (c.element.within) lines.push(row('inside', `${c.element.within} (closed now? open it from ${c.element.anchor ?? 'the page'})`))
   if (c.element.trail?.length) lines.push(row('source', c.element.trail.join(' › ')))
+  /* The element's own line first; "used in" is where the component around it is placed. */
+  if (c.source?.length) {
+    lines.push(row('code', sourceText(c.source[0])))
+    for (const s of c.source.slice(1)) lines.push(row('used in', sourceText(s)))
+  }
   for (const l of c.css ?? []) {
     lines.push(row('css', `${l.property}: ${l.value};${l.resolved ? `   ${l.resolved}` : ''}`))
   }

@@ -103,6 +103,10 @@ button { appearance: none; background: none; border: 0; padding: 0; cursor: poin
 .bar .btn:hover { background: rgba(255, 255, 255, 0.1); color: #fff; }
 .bar .btn:active { transform: scale(0.9); transition-duration: 80ms; }
 .bar .btn[aria-pressed="true"] { background: rgba(255, 61, 138, 0.26); color: #fff; }
+/* Asking before it clears: the button holds a warm fill until you click again or wait. */
+.bar .btn[data-armed] { background: rgba(255, 92, 92, 0.24); color: #FFB4B4; }
+.bar .btn[data-armed] svg { animation: ix-nudge 320ms var(--ix-ease); }
+@keyframes ix-nudge { 0%, 100% { transform: none; } 30% { transform: rotate(-12deg); } 65% { transform: rotate(8deg); } }
 .bar .btn[aria-pressed="true"] svg { animation: ix-spin-in 420ms var(--ix-ease); }
 @keyframes ix-spin-in { from { transform: rotate(-60deg) scale(0.7); } to { transform: none; } }
 

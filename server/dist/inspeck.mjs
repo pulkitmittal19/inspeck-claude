@@ -36506,10 +36506,13 @@ var CssLine = external_exports.object({
   value: external_exports.string().max(300),
   resolved: external_exports.string().max(160).optional()
 });
+var SourceAt = external_exports.object({ file: external_exports.string().max(500), line: external_exports.number().int().min(0), column: external_exports.number().int().optional() });
+var sourceText = (s) => s.line ? `${s.file}:${s.line}` : s.file;
 var GroupMember = external_exports.object({
   selector: external_exports.string().max(1e3),
   name: external_exports.string().max(200).optional(),
-  text: external_exports.string().max(120).optional()
+  text: external_exports.string().max(120).optional(),
+  source: SourceAt.optional()
 });
 var NewComment = external_exports.object({
   kind: external_exports.enum(KINDS).optional(),
@@ -36534,6 +36537,8 @@ var NewComment = external_exports.object({
   rect: external_exports.object({ x: external_exports.number(), y: external_exports.number(), w: external_exports.number(), h: external_exports.number() }).optional(),
   /** A note on a dragged area: the elements inside it (none, for empty space). `element` is then what holds them. */
   group: external_exports.array(GroupMember).max(30).optional(),
+  /** Where the element is written, then where the components that rendered it are used, nearest first. */
+  source: external_exports.array(SourceAt).max(4).optional(),
   measured: external_exports.array(Measurement).max(40).optional(),
   /** The element's key declarations as the code writes them, with the resolved value. */
   css: external_exports.array(CssLine).max(16).optional(),
@@ -36568,10 +36573,11 @@ function pageLabel(page) {
     return page;
   }
 }
+var isHashRoute = (hash2) => /^#!?\//.test(hash2);
 function pageKey(page) {
   try {
     const u = new URL(page);
-    u.hash = "";
+    if (!isHashRoute(u.hash)) u.hash = "";
     return u.toString();
   } catch {
     return page;
@@ -36605,7 +36611,7 @@ function render(c) {
     const r = c.rect;
     lines.push(row("area", `${r ? `${r.w} \xD7 ${r.h} at ${r.x}, ${r.y} on the page` : "a dragged area"}${c.group.length ? `, inside ${c.element.selector}` : ", empty space"}`));
     for (const m of c.group) {
-      lines.push(row("element", [m.name && m.name !== m.selector ? `${m.name}  (${m.selector})` : m.selector, ...m.text ? [`"${m.text}"`] : []].join(" \xB7 ")));
+      lines.push(row("element", [m.name && m.name !== m.selector ? `${m.name}  (${m.selector})` : m.selector, ...m.text ? [`"${m.text}"`] : [], ...m.source ? [sourceText(m.source)] : []].join(" \xB7 ")));
     }
   } else {
     const where = [c.element.name && c.element.name !== c.element.selector ? `${c.element.name}  (${c.element.selector})` : c.element.selector];
@@ -36614,6 +36620,10 @@ function render(c) {
   }
   if (c.element.within) lines.push(row("inside", `${c.element.within} (closed now? open it from ${c.element.anchor ?? "the page"})`));
   if (c.element.trail?.length) lines.push(row("source", c.element.trail.join(" \u203A ")));
+  if (c.source?.length) {
+    lines.push(row("code", sourceText(c.source[0])));
+    for (const s of c.source.slice(1)) lines.push(row("used in", sourceText(s)));
+  }
   for (const l of c.css ?? []) {
     lines.push(row("css", `${l.property}: ${l.value};${l.resolved ? `   ${l.resolved}` : ""}`));
   }
@@ -36730,6 +36740,7 @@ function add(input2, to) {
       ...input2.at ? { at: input2.at } : {},
       ...input2.rect ? { rect: input2.rect } : {},
       ...input2.group ? { group: input2.group } : {},
+      ...input2.source?.length ? { source: input2.source } : {},
       measured: input2.measured ?? [],
       ...input2.css?.length ? { css: input2.css } : {},
       ...input2.client ? { client: input2.client } : {},

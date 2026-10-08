@@ -1,3 +1,4 @@
+import type { SourceAt } from './source'
 /* Talking to the Inspeck server that served this script. */
 import { SERVER, TAB_ID, VERSION } from './env'
 
@@ -12,9 +13,11 @@ export interface NoteIn {
   css: CssLine[]
   /** A note on a dragged area: the elements inside it, none for empty space. */
   group?: GroupMember[]
+  /** Where it's written in the code, nearest first. */
+  source?: SourceAt[]
 }
 
-export interface GroupMember { selector: string; name?: string; text?: string }
+export interface GroupMember { selector: string; name?: string; text?: string; source?: SourceAt }
 
 export interface Note {
   id: string
