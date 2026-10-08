@@ -283,7 +283,9 @@ button { appearance: none; background: none; border: 0; padding: 0; cursor: poin
 .band.gap { background: rgba(125, 211, 252, 0.32); }
 .sp-label {
   position: fixed; transform: translate(-50%, -50%); padding: 1px 5px; border-radius: 4px;
-  background: #17171C; color: #fff; font: 600 10px/1.4 var(--ix-mono); white-space: nowrap;
+  /* Every number Shift shows, spacing or distance, is one pink chip. */
+  background: var(--ix-accent); color: #fff; font: 600 10px/1.4 var(--ix-mono); white-space: nowrap;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18);
 }
 /* dragging across a section */
 .marquee-layer { position: fixed; inset: 0; pointer-events: none; transition: opacity 140ms ease; }
@@ -311,7 +313,6 @@ button { appearance: none; background: none; border: 0; padding: 0; cursor: poin
 .guide { position: fixed; }
 .guide.h { height: 0; border-top: 1px dashed var(--ix-accent); }
 .guide.v { width: 0; border-left: 1px dashed var(--ix-accent); }
-.sp-label.dist { background: var(--ix-accent); }
 
 /* small label that appears above a toolbar button on hover */
 .tip {
