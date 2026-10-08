@@ -284,7 +284,7 @@ export class App {
     this.press()
   }
 
-  private onKey(e: KeyboardEvent, inside: boolean): 'swallow' | void {
+  private onKey(e: KeyboardEvent, inside: boolean): 'swallow' | 'stop' | void {
     /* ⌥I opens and closes Inspeck from anywhere, even mid-typing in the app:
        it's a chord no one types by accident. */
     if (e.altKey && !e.metaKey && !e.ctrlKey && e.code === 'KeyI') {
@@ -295,6 +295,12 @@ export class App {
     if (!this.open || inside) return
     /* Typing in the app's own fields stays the app's business. */
     if (isEditable(document.activeElement)) return
+    /* A note is open but the cursor isn't in it: no key is a shortcut now.
+       Escape still closes; anything else puts the cursor back in the note. */
+    if (this.pinned && e.key !== 'Escape') {
+      if (!e.metaKey && !e.ctrlKey) this.card.focus()
+      return 'stop'
+    }
     switch (e.key) {
       case 'Escape':
         if (this.pinned) this.unpin()

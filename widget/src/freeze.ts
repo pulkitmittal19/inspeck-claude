@@ -1,7 +1,8 @@
 /* Freeze: hold the page still so a menu, a tooltip or a hover state stays put
  * while you inspect it and write a note.
  *
- * Menus close for three kinds of reasons, and each is handled:
+ * Menus close for three kinds of reasons, and each is handled (cheaply: freezing
+ * a large app must not cost a frame, or the first keystrokes of a note are lost):
  *  - events: an outside click, focus leaving, the pointer leaving, Escape, a
  *    resize or a blur. While frozen the router keeps all of these from the app.
  *  - CSS :hover / :focus-within: no event to block, so we pin them. The
@@ -21,7 +22,6 @@ const PSEUDO: Array<[string, string]> = [
   [':active', 'data-ix-active'],
 ]
 
-const MOTION = `*, *::before, *::after { animation-play-state: paused !important; transition: none !important; caret-color: transparent !important; }`
 
 export interface Freeze {
   readonly active: boolean
@@ -34,16 +34,19 @@ function rulesOf(sheet: CSSStyleSheet): CSSRuleList | null {
   try { return sheet.cssRules } catch { return null }
 }
 
-/** Copy every rule that styles a pinned pseudo-state, keyed on our marks instead. */
-function pinnedRules(): string {
+/** Copy the rules that style a pinned pseudo-state, keyed on our marks instead —
+    only those that apply to an element we marked, so the copy stays small and
+    the browser doesn't restyle the whole page (a big app has thousands of :hover rules). */
+function pinnedRules(marked: Element[]): string {
   const out: string[] = []
+  const applies = (sel: string) => marked.some(el => { try { return el.matches(sel) } catch { return false } })
   const walk = (list: CSSRuleList, wrap: (css: string) => string) => {
     for (const r of Array.from(list)) {
       if (r instanceof CSSStyleRule) {
         if (PSEUDO.some(([p]) => r.selectorText.includes(p))) {
           let sel = r.selectorText
           for (const [p, attr] of PSEUDO) sel = sel.split(p).join(`[${attr}]`)
-          out.push(wrap(`${sel} { ${r.style.cssText} }`))
+          if (applies(sel)) out.push(wrap(`${sel} { ${r.style.cssText} }`))
         }
       } else if (r instanceof CSSMediaRule) {
         const text = r.media.mediaText
@@ -82,11 +85,17 @@ export function createFreeze(host: HTMLElement, onChange: (active: boolean, manu
         marked.push([el, attr])
       }
     }
-    /* 2. Pin those states and stop motion with one sheet of our own. */
-    sheet = new CSSStyleSheet()
-    try { sheet.replaceSync(`${pinnedRules()}\n${MOTION}`) } catch { sheet.replaceSync(MOTION) }
-    document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet]
-    /* 3. Finish what is opening, pause everything else. */
+    /* 2. Pin those states with one small sheet of our own. */
+    const css = marked.length ? pinnedRules(marked.map(([el]) => el)) : ''
+    if (css) {
+      sheet = new CSSStyleSheet()
+      try {
+        sheet.replaceSync(css)
+        document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet]
+      } catch { sheet = null }
+    }
+    /* 3. Stop motion: CSS animations and transitions are Animation objects too.
+       Finish what is opening, pause everything else. */
     for (const a of document.getAnimations()) {
       if (a.playState !== 'running') continue
       const target = (a.effect as KeyframeEffect | null)?.target ?? null

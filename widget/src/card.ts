@@ -33,6 +33,8 @@ export interface Card {
   handle(e: Event): boolean
   /** A nudge when you click elsewhere with a half-written note. */
   pulse(): void
+  /** Put the cursor back in the note. */
+  focus(): void
   readonly draft: string
 }
 
@@ -173,7 +175,11 @@ export function createCard(ui: HTMLElement): Card {
       if (o.existing) setFolded(true)
       el.hidden = false
       sync()
-      requestAnimationFrame(() => { note.focus({ preventScroll: true }); note.setSelectionRange(note.value.length, note.value.length) })
+      /* Focus now, not on the next frame: on a busy page the next frame can be
+         a quarter-second away, and the first keystrokes would land on the page. */
+      const focusNote = () => { note.focus({ preventScroll: true }); note.setSelectionRange(note.value.length, note.value.length) }
+      focusNote()
+      requestAnimationFrame(() => { if (parts?.note === note && el.getRootNode() instanceof ShadowRoot && (el.getRootNode() as ShadowRoot).activeElement !== note) focusNote() })
     },
 
     hide() {
@@ -184,6 +190,10 @@ export function createCard(ui: HTMLElement): Card {
       desc = null
       opts = null
       parts = null
+    },
+
+    focus() {
+      parts?.note.focus({ preventScroll: true })
     },
 
     pulse() {
