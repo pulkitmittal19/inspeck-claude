@@ -203,6 +203,17 @@ button { appearance: none; background: none; border: 0; padding: 0; cursor: poin
 .list-foot { display: flex; justify-content: space-between; padding: 6px 2px 2px; margin-top: 4px; border-top: 1px solid var(--ix-line); }
 .list-empty { padding: 14px 10px; font: 12px/1.45 var(--ix-sans); color: var(--ix-dim); }
 
+/* ---------- hold Shift: spacing ---------- */
+.spacing { position: fixed; inset: 0; pointer-events: none; }
+.band { position: fixed; }
+.band.padding { background: rgba(255, 61, 138, 0.2); }
+.band.margin { background: rgba(245, 199, 126, 0.28); }
+.band.gap { background: rgba(125, 211, 252, 0.32); }
+.sp-label {
+  position: fixed; transform: translate(-50%, -50%); padding: 1px 5px; border-radius: 4px;
+  background: #17171C; color: #fff; font: 600 10px/1.4 var(--ix-mono); white-space: nowrap;
+}
+
 /* small label that appears above a toolbar button on hover */
 .tip {
   position: fixed; pointer-events: none; padding: 5px 8px; border-radius: 7px;

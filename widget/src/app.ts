@@ -11,6 +11,7 @@ import { createOutline, type Outline } from './outline'
 import { childToward, elementAt, parentOf, pickable, snap } from './pick'
 import { createRouter } from './router'
 import { selectorFor } from './selector'
+import { createSpacing, type Spacing } from './spacing'
 import { createToolbar, type Toolbar } from './toolbar'
 
 /* Presses that would act on the app. While Inspeck is open they pick instead. */
@@ -23,6 +24,9 @@ export class App {
   readonly outline: Outline
   readonly card: Card
   readonly notes: Notes
+  readonly spacing: Spacing
+  /** Shift is held: show the hovered element's spacing. */
+  private shift = false
   open = false
   /** Held Space: presses go to the app, so you can open a menu to comment inside it. */
   through = false
@@ -40,7 +44,11 @@ export class App {
     this.host = createHost()
     this.toolbar = createToolbar(this.host.ui)
     this.card = createCard(this.host.ui)
-    this.outline = createOutline(this.host.ui, (_el, r) => this.card.place(r))
+    this.spacing = createSpacing(this.host.ui)
+    this.outline = createOutline(this.host.ui, (el, r) => {
+      this.card.place(r)
+      if (this.shift) this.spacing.draw(el)
+    })
     this.notes = createNotes(this.host.ui, (note, el) => this.openNote(note, el))
     this.unroute = createRouter(this.host, {
       ui: e => this.onUi(e),
@@ -101,10 +109,12 @@ export class App {
     this.target = el
     if (el) {
       this.card.showHover(el)
+      if (this.shift) this.card.el.hidden = true
       this.outline.show(el)
     } else {
       this.outline.hide()
       this.card.hide()
+      this.spacing.hide()
     }
   }
 
@@ -205,6 +215,7 @@ export class App {
       case 'keydown': return this.onKey(e as KeyboardEvent, false)
       case 'keyup': return this.onKeyUp(e as KeyboardEvent)
     }
+    if (e.type === 'blur' && e.target === window) { this.setShift(false); if (this.through) this.setThrough(false) }
     if (!this.open) return
 
     if (e.type === 'pointermove') {
@@ -261,10 +272,23 @@ export class App {
       case ' ':
         if (!this.through) this.setThrough(true)
         return 'swallow'
+      case 'Shift':
+        this.setShift(true)
+        return
     }
   }
 
+  private setShift(on: boolean): void {
+    if (on === this.shift) return
+    this.shift = on
+    /* The numbers are the point while Shift is down; the hover card steps aside. */
+    if (this.card.mode === 'hover') this.card.el.hidden = on
+    if (on && this.target) this.spacing.draw(this.target)
+    else this.spacing.hide()
+  }
+
   private onKeyUp(e: KeyboardEvent): 'swallow' | void {
+    if (e.key === 'Shift') this.setShift(false)
     if (e.key === ' ' && this.through) {
       this.setThrough(false)
       return 'swallow'
