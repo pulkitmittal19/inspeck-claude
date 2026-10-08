@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Inspeck test page</title>
+<style>
+  /* A small design system: primitives, then semantic roles that alias them. */
+  :root {
+    --gray-50: #FAFAF9; --gray-100: #F5F5F4; --gray-200: #E7E5E4; --gray-500: #78716C; --gray-900: #1C1917; --gray-950: #17171C;
+    --brand-500: #2D6BFF;
+    --spacing: 4px;
+    --spacing-100: 4px; --spacing-150: 6px; --spacing-200: 8px; --spacing-300: 12px; --spacing-400: 16px; --spacing-600: 24px;
+    --radius-150: 6px; --radius-200: 8px; --radius-300: 12px;
+    --text-sm: 13px; --text-md: 14px; --text-lg: 20px;
+    --font-body: -apple-system, BlinkMacSystemFont, "Inter", sans-serif;
+
+    --bg-page: var(--gray-50);
+    --bg-surface: #FFFFFF;
+    --bg-inverse: var(--gray-950);
+    --bg-hover: var(--gray-100);
+    --border-primary: var(--gray-200);
+    --text-primary: var(--gray-900);
+    --text-secondary: var(--gray-500);
+    --text-on-inverse: #FFFFFF;
+  }
+  @layer base, utilities;
+  @layer base {
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: var(--font-body); color: var(--text-primary); background: var(--bg-page); }
+  }
+  @layer utilities {
+    .p-200 { padding: var(--spacing-200); }
+    .px-400 { padding-inline: var(--spacing-400); }
+    .gap-200 { gap: var(--spacing-200); }
+    .rounded-200 { border-radius: var(--radius-200); }
+    .text-sm { font-size: var(--text-sm); }
+  }
+
+  .topbar { display: flex; align-items: center; gap: 10px; height: 56px; padding: 0 24px; background: var(--bg-surface); border-bottom: 1px solid var(--border-primary); }
+  .logo { width: 22px; height: 22px; border-radius: 6px; background: var(--bg-inverse); }
+  .topbar h2 { font-size: var(--text-md); font-weight: 600; flex: 1; }
+  .btn { display: inline-flex; align-items: center; gap: 6px; height: 32px; border-radius: var(--radius-200); font: 500 13px/20px var(--font-body); cursor: pointer; }
+  .btn-secondary { padding: 0 12px; background: var(--bg-surface); border: 1px solid var(--border-primary); color: var(--text-primary); }
+  .btn-primary { padding: 8px 14px; height: 30px; background: #17171C; color: var(--text-on-inverse); border: 0; font-weight: 600; font-size: 12px; }
+  .btn-icon { width: 32px; justify-content: center; background: var(--bg-surface); border: 1px solid var(--border-primary); color: var(--text-primary); }
+
+  main { max-width: 760px; margin: 0 auto; padding: 40px 24px 120px; display: flex; flex-direction: column; gap: 24px; }
+  .page-title { font-size: var(--text-lg); line-height: 28px; font-weight: 650; letter-spacing: -0.01em; color: var(--text-primary); }
+  .lede { color: var(--text-secondary); font-size: 14px; margin-top: 4px; }
+  .card { background: var(--bg-surface); border: 1px solid var(--border-primary); border-radius: var(--radius-300); padding: 24px; display: flex; flex-direction: column; gap: 16px; }
+  label { font-size: 13px; font-weight: 600; display: block; margin-bottom: 6px; }
+  input[type=text] { width: 100%; height: 36px; padding: 0 12px; border: 1px solid var(--border-primary); border-radius: 7px; font: 14px var(--font-body); background: var(--bg-surface); }
+  .actions { display: flex; justify-content: flex-end; }
+
+  /* dropdown + submenu: closes on outside pointerdown, Escape and window blur, like Radix */
+  .menu-wrap { position: relative; }
+  .menu, .submenu { position: absolute; min-width: 180px; padding: 6px; background: var(--bg-surface); border: 1px solid var(--border-primary); border-radius: 10px; box-shadow: 0 10px 30px rgba(0,0,0,.12); z-index: 50; }
+  .menu { top: 38px; right: 0; }
+  .submenu { top: -6px; right: calc(100% + 4px); }
+  [role=menuitem] { position: relative; display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 10px; border-radius: var(--radius-150); font-size: 13px; cursor: default; }
+  [role=menuitem]:hover, [role=menuitem][data-highlighted] { background: var(--bg-hover); }
+  [role=menuitem] .ico { width: 14px; height: 14px; border-radius: 3px; border: 1.5px solid #B9B6AE; }
+  [role=menuitem] .chev { margin-left: auto; color: var(--text-secondary); }
+
+  /* only visible on hover */
+  .row { display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; border-radius: 8px; }
+  .row:hover { background: var(--bg-hover); }
+  .row .reveal { visibility: hidden; }
+  .row:hover .reveal { visibility: visible; }
+
+  .scroller { height: 120px; overflow: auto; border: 1px solid var(--border-primary); border-radius: 8px; padding: 8px 12px; font-size: 13px; line-height: 22px; }
+  .dark { background: #0F1115; color: #E5E7EB; border-radius: 12px; padding: 20px; display: flex; gap: 12px; align-items: center; }
+  .chip { padding: 6px 14px; border-radius: 999px; border: 1px solid #2A2E36; font-size: 13px; }
+  dialog { border: 0; border-radius: 14px; padding: 24px; width: 360px; box-shadow: 0 30px 80px rgba(0,0,0,.3); }
+  dialog::backdrop { background: rgba(0,0,0,.3); }
+</style>
+</head>
+<body>
+  <header class="topbar">
+    <span class="logo"></span>
+    <h2>Workspace</h2>
+    <button class="btn btn-secondary" id="open-dialog">Invite</button>
+    <div class="menu-wrap">
+      <button class="btn btn-icon" id="more" aria-haspopup="menu" aria-expanded="false" aria-controls="more-menu" aria-label="More">⋯</button>
+      <div class="menu" id="more-menu" role="menu" aria-labelledby="more" hidden>
+        <div role="menuitem"><span class="ico"></span>Edit</div>
+        <div role="menuitem"><span class="ico"></span>Duplicate</div>
+        <div role="menuitem" id="share-item" aria-haspopup="menu" aria-controls="share-menu"><span class="ico"></span>Share<span class="chev">›</span>
+          <div class="submenu" id="share-menu" role="menu" hidden>
+            <div role="menuitem"><span class="ico"></span>Email</div>
+            <div role="menuitem"><span class="ico"></span>Slack</div>
+            <div role="menuitem"><span class="ico"></span>Copy link</div>
+            <div role="menuitem"><span class="ico"></span>Embed</div>
+          </div>
+        </div>
+        <div role="menuitem"><span class="ico"></span>Archive</div>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <div>
+      <h1 class="page-title">Team settings</h1>
+      <p class="lede">Manage your team’s name and billing contact.</p>
+    </div>
+
+    <section class="card">
+      <div><label for="team">Team name</label><input id="team" type="text" value="Design Ops"></div>
+      <div><label for="email">Billing email</label><input id="email" type="text" value="ops@yourteam.dev"></div>
+      <div class="actions gap-200" style="display:flex">
+        <button class="btn btn-secondary" type="button">Cancel</button>
+        <button class="btn btn-primary" type="button" id="save">Save changes</button>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="row"><span>Members</span><button class="btn btn-secondary reveal" type="button">Manage</button></div>
+      <div class="row"><span>Billing</span><button class="btn btn-secondary reveal" type="button">Manage</button></div>
+      <div class="p-200 px-400 rounded-200 text-sm" style="background: var(--bg-hover)">Utility classes: p-200 · px-400 · rounded-200 · text-sm</div>
+    </section>
+
+    <div class="scroller">
+      <p>An inner scroll area. Hover lines inside it while it is scrolled.</p>
+      <p>Line two</p><p>Line three</p><p>Line four</p><p>Line five</p><p>Line six</p><p>Line seven</p><p>Line eight</p>
+    </div>
+
+    <div class="dark"><span class="chip">Monthly</span><span class="chip">Yearly · save 20%</span></div>
+  </main>
+
+  <dialog id="dialog">
+    <h3 style="font-size: 16px; margin-bottom: 8px">Invite people</h3>
+    <p style="color: var(--text-secondary); font-size: 14px; margin-bottom: 16px">A native modal dialog. Everything outside it is inert.</p>
+    <button class="btn btn-primary" type="button" id="close-dialog">Done</button>
+  </dialog>
+
+  <p id="log" style="position: fixed; left: 12px; bottom: 12px; font: 12px ui-monospace, monospace; color: var(--text-secondary)">app: ready</p>
+
+  <script>
+    const log = m => { document.getElementById('log').textContent = 'app: ' + m }
+    document.getElementById('save').addEventListener('click', () => log('Save clicked (should NOT happen while Inspeck is open)'))
+
+    // dropdown that behaves like Radix: outside pointerdown, Escape and window blur close it
+    const more = document.getElementById('more'), menu = document.getElementById('more-menu')
+    const share = document.getElementById('share-item'), sub = document.getElementById('share-menu')
+    const setOpen = o => { menu.hidden = !o; more.setAttribute('aria-expanded', String(o)); if (!o) sub.hidden = true; log(o ? 'menu opened' : 'menu closed') }
+    more.addEventListener('click', () => setOpen(menu.hidden))
+    document.addEventListener('pointerdown', e => { if (!menu.hidden && !menu.contains(e.target) && e.target !== more) setOpen(false) })
+    document.addEventListener('keydown', e => { if (e.key === 'Escape' && !menu.hidden) setOpen(false) })
+    window.addEventListener('blur', () => { if (!menu.hidden) setOpen(false) })
+    let t
+    share.addEventListener('pointerenter', () => { clearTimeout(t); t = setTimeout(() => { sub.hidden = false }, 100) })
+    share.addEventListener('pointerleave', () => { clearTimeout(t); t = setTimeout(() => { sub.hidden = true }, 300) })
+    menu.addEventListener('click', e => { const item = e.target.closest('[role=menuitem]'); if (item && item !== share) { log('chose ' + item.textContent.trim()); setOpen(false) } })
+
+    const dlg = document.getElementById('dialog')
+    document.getElementById('open-dialog').addEventListener('click', () => dlg.showModal())
+    document.getElementById('close-dialog').addEventListener('click', () => dlg.close())
+  </script>
+  <script src="/inspeck.js"></script>
+</body>
+</html>

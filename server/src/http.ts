@@ -9,13 +9,16 @@
  *   - The Host header must name this machine. That stops DNS rebinding, where
  *     a public site points its own hostname at 127.0.0.1 to get in.
  *   - A browser always sends Origin on a cross-site request and a page can't
- *     fake it. Only local development origins (localhost, dev domains, private
- *     IPs) and browser extensions are let in; anything else must be named in
- *     INSPECK_ALLOWED_ORIGINS, e.g. staging.
+ *     fake it. Only pages on this machine (localhost, *.localhost, *.test) and
+ *     browser extensions are let in; anything else — a LAN address, staging —
+ *     must be named in INSPECK_ALLOWED_ORIGINS.
  */
+import { readFileSync, statSync } from 'node:fs'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
+import { dirname, join, normalize } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import * as store from './store.js'
-import { isLocalHost, NewComment, type Comment } from './format.js'
+import { isThisMachine, NewComment, type Comment } from './format.js'
 
 export const PORT = Number(process.env.INSPECK_PORT) || 4848
 
@@ -30,7 +33,7 @@ export function originAllowed(origin: string | undefined): boolean {
   let u: URL
   try { u = new URL(origin) } catch { return false }
   if (u.protocol === 'chrome-extension:' || u.protocol === 'moz-extension:') return true
-  return isLocalHost(u.hostname)
+  return isThisMachine(u.hostname)
 }
 
 function hostAllowed(host: string | undefined): boolean {
@@ -63,6 +66,43 @@ function body(req: IncomingMessage): Promise<unknown> {
   })
 }
 
+/* The widget is built next to this bundle (server/dist/widget/inspeck.js) and
+   read from disk on each request, so a rebuild shows up on the next reload
+   without restarting Claude. The ETag makes an unchanged reload a 304. */
+const HERE = dirname(fileURLToPath(import.meta.url))
+const WIDGET = process.env.INSPECK_WIDGET || join(HERE, 'widget', 'inspeck.js')
+
+function sendFile(req: IncomingMessage, res: ServerResponse, path: string, type: string): void {
+  let stat
+  try { stat = statSync(path) } catch {
+    res.writeHead(404, { 'content-type': 'text/plain' }).end('Not built. Run npm run build.')
+    return
+  }
+  const etag = `"${stat.size.toString(36)}-${stat.mtimeMs.toString(36)}"`
+  const headers = {
+    'content-type': type,
+    'cache-control': 'no-cache',
+    etag,
+    'x-content-type-options': 'nosniff',
+    /* A page on another port loads this with a plain <script src>. */
+    'cross-origin-resource-policy': 'cross-origin',
+  }
+  if (req.headers['if-none-match'] === etag) { res.writeHead(304, headers).end(); return }
+  res.writeHead(200, headers).end(readFileSync(path))
+}
+
+/* A test page to develop the widget against. Only with INSPECK_DEV=1, and
+   only files inside widget/dev — the name can't climb out of that folder. */
+const DEV = process.env.INSPECK_DEV === '1'
+const DEV_DIR = join(HERE, '..', '..', 'widget', 'dev')
+
+function devFile(req: IncomingMessage, res: ServerResponse, name: string): void {
+  const path = normalize(join(DEV_DIR, name || 'index.html'))
+  if (!path.startsWith(DEV_DIR)) { send(res, 404, { error: 'Not found' }); return }
+  const type = path.endsWith('.html') ? 'text/html; charset=utf-8' : path.endsWith('.css') ? 'text/css' : 'text/javascript'
+  sendFile(req, res, path, type)
+}
+
 /* What a page gets back about a comment: everything it needs to draw the badge
    and show Claude's replies, minus the file path on this machine. */
 function forPage(c: Comment) {
@@ -76,6 +116,14 @@ async function route(req: IncomingMessage, res: ServerResponse, version: string,
 
   if (req.method === 'GET' && url.pathname === '/health') {
     return send(res, 200, { ok: true, name: 'inspeck', version })
+  }
+
+  if (req.method === 'GET' && url.pathname === '/inspeck.js') {
+    return sendFile(req, res, WIDGET, 'text/javascript; charset=utf-8')
+  }
+
+  if (DEV && req.method === 'GET' && parts[0] === '__dev') {
+    return devFile(req, res, parts.slice(1).join('/'))
   }
 
   if (parts[0] !== 'comments') return send(res, 404, { error: 'Not found' })

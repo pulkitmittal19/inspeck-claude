@@ -23,7 +23,9 @@ import * as store from './store.js'
 import { listen, PORT } from './http.js'
 import { heading, pageLabel, render, summaryLine, type Comment } from './format.js'
 
-const VERSION = '0.1.0'
+/* Stamped from package.json at build time, so there is one version to bump. */
+declare const __INSPECK_VERSION__: string
+const VERSION = __INSPECK_VERSION__
 const log = (msg: string) => process.stderr.write(`inspeck: ${msg}\n`)
 
 const INSTRUCTIONS = `Inspeck lets a person point at something on a web page and say what's wrong with it, or what they like about it. Their comments arrive here.

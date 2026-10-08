@@ -2231,8 +2231,8 @@ var require_resolve = __commonJS({
       }
       return count;
     }
-    function getFullPath(resolver, id = "", normalize) {
-      if (normalize !== false)
+    function getFullPath(resolver, id = "", normalize2) {
+      if (normalize2 !== false)
         id = normalizeId(id);
       const p = resolver.parse(id);
       return _getFullPath(resolver, p);
@@ -3827,7 +3827,7 @@ var require_fast_uri = __commonJS({
       }
       return decodedScheme;
     }
-    function normalize(uri, options) {
+    function normalize2(uri, options) {
       if (typeof uri === "string") {
         uri = /** @type {T} */
         normalizeString(uri, options);
@@ -4205,7 +4205,7 @@ var require_fast_uri = __commonJS({
     }
     var fastUri = {
       SCHEMES,
-      normalize,
+      normalize: normalize2,
       resolve,
       resolveComponent,
       equal,
@@ -7196,8 +7196,8 @@ var require_dist = __commonJS({
 });
 
 // server/src/index.ts
-import { readFileSync as readFileSync2, writeFileSync as writeFileSync2, mkdirSync as mkdirSync2 } from "fs";
-import { extname, join as join2 } from "path";
+import { readFileSync as readFileSync3, writeFileSync as writeFileSync2, mkdirSync as mkdirSync2 } from "fs";
+import { extname, join as join3 } from "path";
 
 // node_modules/zod/v3/helpers/util.js
 var util;
@@ -36518,8 +36518,11 @@ var NewComment = external_exports.object({
   /** A data URL. The server writes it to disk and keeps only the path. */
   screenshot: external_exports.string().max(45e5).optional()
 });
+function isThisMachine(host) {
+  return host === "localhost" || host === "127.0.0.1" || host === "[::1]" || host === "::1" || host.endsWith(".localhost") || host.endsWith(".test");
+}
 function isLocalHost(host) {
-  return host === "localhost" || host === "127.0.0.1" || host === "[::1]" || host === "::1" || host.endsWith(".localhost") || host.endsWith(".local") || host.endsWith(".test") || /^10\.|^192\.168\.|^172\.(1[6-9]|2\d|3[01])\./.test(host);
+  return isThisMachine(host) || host.endsWith(".local") || /^10\.|^192\.168\.|^172\.(1[6-9]|2\d|3[01])\./.test(host);
 }
 function kindFor(page) {
   let host;
@@ -36759,7 +36762,10 @@ function remove(id) {
 }
 
 // server/src/http.ts
+import { readFileSync as readFileSync2, statSync as statSync2 } from "fs";
 import { createServer } from "http";
+import { dirname, join as join2, normalize } from "path";
+import { fileURLToPath } from "url";
 var PORT = Number(process.env.INSPECK_PORT) || 4848;
 var EXTRA_ORIGINS = (process.env.INSPECK_ALLOWED_ORIGINS ?? "").split(",").map((s) => s.trim()).filter(Boolean);
 function originAllowed(origin) {
@@ -36772,7 +36778,7 @@ function originAllowed(origin) {
     return false;
   }
   if (u.protocol === "chrome-extension:" || u.protocol === "moz-extension:") return true;
-  return isLocalHost(u.hostname);
+  return isThisMachine(u.hostname);
 }
 function hostAllowed(host) {
   if (!host) return false;
@@ -36807,6 +36813,42 @@ function body(req) {
     req.on("error", reject);
   });
 }
+var HERE = dirname(fileURLToPath(import.meta.url));
+var WIDGET = process.env.INSPECK_WIDGET || join2(HERE, "widget", "inspeck.js");
+function sendFile(req, res, path, type) {
+  let stat;
+  try {
+    stat = statSync2(path);
+  } catch {
+    res.writeHead(404, { "content-type": "text/plain" }).end("Not built. Run npm run build.");
+    return;
+  }
+  const etag = `"${stat.size.toString(36)}-${stat.mtimeMs.toString(36)}"`;
+  const headers = {
+    "content-type": type,
+    "cache-control": "no-cache",
+    etag,
+    "x-content-type-options": "nosniff",
+    /* A page on another port loads this with a plain <script src>. */
+    "cross-origin-resource-policy": "cross-origin"
+  };
+  if (req.headers["if-none-match"] === etag) {
+    res.writeHead(304, headers).end();
+    return;
+  }
+  res.writeHead(200, headers).end(readFileSync2(path));
+}
+var DEV = process.env.INSPECK_DEV === "1";
+var DEV_DIR = join2(HERE, "..", "..", "widget", "dev");
+function devFile(req, res, name) {
+  const path = normalize(join2(DEV_DIR, name || "index.html"));
+  if (!path.startsWith(DEV_DIR)) {
+    send(res, 404, { error: "Not found" });
+    return;
+  }
+  const type = path.endsWith(".html") ? "text/html; charset=utf-8" : path.endsWith(".css") ? "text/css" : "text/javascript";
+  sendFile(req, res, path, type);
+}
 function forPage2(c) {
   const { screenshot, ...rest } = c;
   return { ...rest, hasScreenshot: Boolean(screenshot) };
@@ -36816,6 +36858,12 @@ async function route(req, res, version2, onNew) {
   const parts = url2.pathname.split("/").filter(Boolean);
   if (req.method === "GET" && url2.pathname === "/health") {
     return send(res, 200, { ok: true, name: "inspeck", version: version2 });
+  }
+  if (req.method === "GET" && url2.pathname === "/inspeck.js") {
+    return sendFile(req, res, WIDGET, "text/javascript; charset=utf-8");
+  }
+  if (DEV && req.method === "GET" && parts[0] === "__dev") {
+    return devFile(req, res, parts.slice(1).join("/"));
   }
   if (parts[0] !== "comments") return send(res, 404, { error: "Not found" });
   const id = parts[1];
@@ -36900,7 +36948,7 @@ function listen(version2, log2, onNew = () => {
 }
 
 // server/src/index.ts
-var VERSION = "0.1.0";
+var VERSION = "0.2.0";
 var log = (msg) => process.stderr.write(`inspeck: ${msg}
 `);
 var INSTRUCTIONS = `Inspeck lets a person point at something on a web page and say what's wrong with it, or what they like about it. Their comments arrive here.
@@ -36921,7 +36969,7 @@ function contentFor(c) {
   ];
   if (c.screenshot) {
     try {
-      out.push({ type: "image", data: readFileSync2(c.screenshot).toString("base64"), mimeType: MIME[extname(c.screenshot)] ?? "image/png" });
+      out.push({ type: "image", data: readFileSync3(c.screenshot).toString("base64"), mimeType: MIME[extname(c.screenshot)] ?? "image/png" });
     } catch {
       out.push({ type: "text", text: "(The screenshot for this comment is missing from disk.)" });
     }
@@ -37006,7 +37054,7 @@ server.registerTool("dismiss", {
 function noteClient() {
   try {
     mkdirSync2(HOME, { recursive: true });
-    writeFileSync2(join2(HOME, "last-client.json"), JSON.stringify({
+    writeFileSync2(join3(HOME, "last-client.json"), JSON.stringify({
       at: (/* @__PURE__ */ new Date()).toISOString(),
       client: server.server.getClientVersion(),
       capabilities: server.server.getClientCapabilities()

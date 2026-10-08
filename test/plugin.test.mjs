@@ -7,7 +7,7 @@
  */
 import { test, before, after } from 'node:test'
 import assert from 'node:assert/strict'
-import { copyFileSync, mkdtempSync, rmSync, existsSync } from 'node:fs'
+import { copyFileSync, mkdtempSync, mkdirSync, rmSync, existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -44,6 +44,8 @@ function page(port, method, path, { body, origin = 'http://localhost:5173', host
 async function start({ home, port } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'inspeck-test-'))
   copyFileSync(join(root, 'server/dist/inspeck.mjs'), join(dir, 'inspeck.mjs'))
+  mkdirSync(join(dir, 'widget'))
+  copyFileSync(join(root, 'server/dist/widget/inspeck.js'), join(dir, 'widget/inspeck.js'))
   port ??= 49000 + Math.floor(Math.random() * 900)
   home ??= join(dir, 'home')
   const pushed = []
@@ -89,6 +91,31 @@ let s
 before(async () => { s = await start() })
 after(async () => { await s.stop() })
 
+function raw(port, path, headers = {}) {
+  return new Promise((resolve, reject) => {
+    http.get({ host: '127.0.0.1', port, path, headers }, res => {
+      let body = ''
+      res.on('data', c => { body += c })
+      res.on('end', () => resolve({ status: res.statusCode, headers: res.headers, body }))
+    }).on('error', reject)
+  })
+}
+
+test('the widget is served to a plain script tag, and an unchanged reload is a 304', async () => {
+  const r = await raw(s.port, '/inspeck.js')
+  assert.equal(r.status, 200)
+  assert.match(r.headers['content-type'], /javascript/)
+  assert.equal(r.headers['x-content-type-options'], 'nosniff')
+  assert.ok(r.body.length > 1000, 'the bundle is there')
+  const again = await raw(s.port, '/inspeck.js', { 'if-none-match': r.headers.etag })
+  assert.equal(again.status, 304)
+})
+
+test('the dev test page only exists with INSPECK_DEV=1', async () => {
+  const r = await raw(s.port, '/__dev/')
+  assert.equal(r.status, 404)
+})
+
 test('Claude sees the six actions, by the names people see', async () => {
   const { tools } = await s.client.listTools()
   const byName = Object.fromEntries(tools.map(t => [t.name, t.title]))
@@ -122,14 +149,15 @@ test('an ordinary website cannot slip a comment in', async () => {
   assert.equal(pre.headers['access-control-allow-origin'], undefined)
 })
 
-test('a dev server on a private network address can leave a fix', async () => {
+test('only pages on this machine may send notes; a LAN address must be named', async () => {
   const lan = { ...fix, page: 'http://192.168.1.20:5173/settings', screenshot: undefined }
   const r = await page(s.port, 'POST', '/comments', { body: lan, origin: 'http://192.168.1.20:5173' })
-  assert.equal(r.status, 201)
-  assert.equal(r.json.comment.kind, 'fix')
-  const pub = await page(s.port, 'POST', '/comments', { body: lan, origin: 'http://8.8.8.8' })
-  assert.equal(pub.status, 403, 'a public IP is still an ordinary website')
-  await page(s.port, 'DELETE', `/comments/${r.json.comment.id}`)
+  assert.equal(r.status, 403, 'a LAN page is not this machine')
+  for (const origin of ['http://app.localhost:3000', 'http://shop.test']) {
+    const ok = await page(s.port, 'POST', '/comments', { body: { ...lan, page: `${origin}/x` }, origin })
+    assert.equal(ok.status, 201, `${origin} resolves to this machine`)
+    await page(s.port, 'DELETE', `/comments/${ok.json.comment.id}`, { origin })
+  }
 })
 
 test('DNS rebinding is refused: the Host must be this machine', async () => {

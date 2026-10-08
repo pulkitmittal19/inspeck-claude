@@ -1,8 +1,16 @@
 {
   "name": "inspeck",
-  "description": "Point at something on a web page, say what's wrong or what you like, and Claude picks it up — with what that element measures against your design system.",
-  "version": "0.1.0",
-  "author": { "name": "Pulkit Mittal" },
+  "description": "Point at something on a web page, say what's wrong or what you like, and Claude picks it up \u2014 with what that element measures against your design system.",
+  "version": "0.2.0",
+  "author": {
+    "name": "Pulkit Mittal"
+  },
   "homepage": "https://github.com/pulkitmittal19/inspeck-claude",
-  "keywords": ["design-system", "ui-review", "annotation", "design-tokens", "inspeck"]
+  "keywords": [
+    "design-system",
+    "ui-review",
+    "annotation",
+    "design-tokens",
+    "inspeck"
+  ]
 }

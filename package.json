@@ -1,12 +1,12 @@
 {
   "name": "inspeck-claude",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
-  "description": "The Claude side of Inspeck: a local inbox that lets Claude read, fix and resolve what you point at in the browser.",
+  "description": "Inspeck: hover any element to see its CSS, click to leave a note for Claude.",
   "type": "module",
   "scripts": {
     "build": "tsup",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.widget.json",
     "test": "node --test test/*.test.mjs"
   },
   "engines": {

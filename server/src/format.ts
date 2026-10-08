@@ -86,14 +86,24 @@ export interface Comment {
 /* ------------------------------------------------------------------------ */
 
 /**
- * Whether an address only exists on a developer's machine or network:
- * localhost, dev domains, and private IPs such as the "Network" URL a dev
- * server prints. The server trusts these origins and treats their pages as
- * your own app, so both decisions come from this one list.
+ * Whether an address can only be this machine: loopback, and the dev domains
+ * that resolve to it. Pages here may send notes without being named, because
+ * nothing else on the network can serve them. Notes become text a Claude
+ * session reads, so the default stays this narrow; LAN and staging addresses
+ * are opted in through INSPECK_ALLOWED_ORIGINS.
+ */
+export function isThisMachine(host: string): boolean {
+  return host === 'localhost' || host === '127.0.0.1' || host === '[::1]' || host === '::1' ||
+    host.endsWith('.localhost') || host.endsWith('.test')
+}
+
+/**
+ * Whether an address only exists on a developer's machine or network: this
+ * machine, plus `.local` names and private IPs such as the "Network" URL a dev
+ * server prints. Used to tell your own app from someone else's site.
  */
 export function isLocalHost(host: string): boolean {
-  return host === 'localhost' || host === '127.0.0.1' || host === '[::1]' || host === '::1' ||
-    host.endsWith('.localhost') || host.endsWith('.local') || host.endsWith('.test') ||
+  return isThisMachine(host) || host.endsWith('.local') ||
     /^10\.|^192\.168\.|^172\.(1[6-9]|2\d|3[01])\./.test(host)
 }
 
