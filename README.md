@@ -77,7 +77,7 @@ Open your app and click the circle in the corner, or press **⌥ I** (Option + I
 | **↑ / ↓** | the element's parent or child |
 | **Hold Shift** | padding, margin and the gaps between children, with numbers. Keep holding and move to another element: the distance between the two |
 | **Hold Space** | clicks go to your app: open a menu, then note something inside it |
-| **F** | freeze the page, with the pointer where it is: tooltips, hover cards, menus and what shows on hover (a row's buttons) stay as they are, so you can point at them and note them. **F** again or **Esc** releases it. Writing a note freezes the page too, so an open menu stays open while you type |
+| **F** | freeze the page, with the pointer where it is: tooltips, hover cards, menus and what shows on hover (a row's buttons) stay as they are, so you can point at them and note them. Animations, spinners and loading states hold still too: the page's network answers wait until you release, so a loader you caught stays on screen. **F** again or **Esc** releases it. Writing a note freezes the page too, so an open menu stays open while you type |
 | **Tooltips** | Inspeck sees tooltips and other click-through layers: rest the pointer on one for a moment and it's outlined. Most close when the pointer leaves their button, so press **F** while it shows, then move onto it |
 | **Clear** (bin) | withdraw every note on this page; click twice to be sure |
 | **Esc** | close the note, then the freeze, then Inspeck |

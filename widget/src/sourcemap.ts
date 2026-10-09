@@ -2,6 +2,7 @@
  * to the code as written. Shared by the two ways Inspeck finds where an
  * element is written: React's stack (source.ts) and a search by name (defs.ts).
  * Everything is fetched once and kept for the page's lifetime. */
+import { nativeFetch } from './native'
 
 export interface Mapped {
   /** The original files, as URLs or paths. */
@@ -47,7 +48,7 @@ const codes = new Map<string, Promise<string | null>>()
 export function codeOf(url: string): Promise<string | null> {
   let p = codes.get(url)
   if (!p) {
-    p = fetch(url, { credentials: 'same-origin' }).then(r => r.ok ? r.text() : null).catch(() => null)
+    p = nativeFetch(url, { credentials: 'same-origin' }).then(r => r.ok ? r.text() : null).catch(() => null)
     codes.set(url, p)
   }
   return p
@@ -66,7 +67,7 @@ export function mapFor(url: string): Promise<Mapped | null> {
       if (!last) return null
       const json = last.startsWith('data:')
         ? JSON.parse(decodeURIComponent(escape(atob(last.slice(last.indexOf(',') + 1)))))
-        : await (await fetch(new URL(last, url), { credentials: 'same-origin' })).json()
+        : await (await nativeFetch(new URL(last, url), { credentials: 'same-origin' })).json()
       const root = json.sourceRoot ? new URL(json.sourceRoot, url).href : url
       let decoded: ReturnType<Mapped['lines']> | null = null
       return {

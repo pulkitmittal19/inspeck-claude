@@ -14,6 +14,7 @@ import { enter, leave } from './anim'
 import { clear, h } from './dom'
 import { unionOf, type Box } from './marquee'
 import { actionOf } from './router'
+import { cancelFrame, nextFrame } from './native'
 
 const POLL_MS = 4000
 /** How far a marker steps aside from another on the same spot: its width and a hair. */
@@ -145,7 +146,7 @@ export function createNotes(ui: HTMLElement, onOpen: (note: Note, el: Element | 
       markers.set(n.id, m)
       layer.appendChild(m)
     }
-    if (markers.size && !raf) raf = requestAnimationFrame(frame)
+    if (markers.size && !raf) raf = nextFrame(frame)
   }
 
   function frame() {
@@ -201,7 +202,7 @@ export function createNotes(ui: HTMLElement, onOpen: (note: Note, el: Element | 
         }
       }
     }
-    raf = requestAnimationFrame(frame)
+    raf = nextFrame(frame)
   }
 
   /* ---------- hover preview ---------- */
@@ -295,7 +296,7 @@ export function createNotes(ui: HTMLElement, onOpen: (note: Note, el: Element | 
     },
     destroy() {
       clearTimeout(timer)
-      cancelAnimationFrame(raf)
+      cancelFrame(raf)
       history.pushState = origPush
       history.replaceState = origReplace
       window.removeEventListener('popstate', onRoute)

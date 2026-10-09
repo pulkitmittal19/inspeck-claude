@@ -4,6 +4,7 @@ import { enter, leave } from './anim'
 import { h, svg } from './dom'
 import { ICONS, type IconName } from './icons'
 import { actionOf } from './router'
+import { nextFrame } from './native'
 
 const BUTTONS: Array<{ action: string; icon: IconName; label: string; key?: string }> = [
   { action: 'css', icon: 'code', label: 'Show CSS on hover', key: 'C' },
@@ -44,7 +45,7 @@ export function createToolbar(ui: HTMLElement): Toolbar {
   ui.append(bar, tip, status)
 
   /* The open width is whatever the buttons need, plus the padding. */
-  requestAnimationFrame(() => bar.style.setProperty('--ix-open-w', `${row.scrollWidth + 8}px`))
+  nextFrame(() => bar.style.setProperty('--ix-open-w', `${row.scrollWidth + 8}px`))
 
   let tipFor: Element | null = null
   let armedFor: HTMLElement | null = null

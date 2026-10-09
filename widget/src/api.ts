@@ -1,6 +1,7 @@
 import type { SourceAt } from './source'
 /* Talking to the Inspeck server that served this script. */
 import { SERVER, TAB_ID, VERSION } from './env'
+import { nativeFetch } from './native'
 
 export interface CssLine { property: string; value: string; resolved?: string }
 
@@ -37,7 +38,7 @@ export class ApiError extends Error {}
 async function call<T>(method: string, path: string, body?: unknown): Promise<T> {
   let res: Response
   try {
-    res = await fetch(`${SERVER}${path}`, {
+    res = await nativeFetch(`${SERVER}${path}`, {
       method,
       credentials: 'omit',
       headers: body ? { 'content-type': 'application/json' } : undefined,

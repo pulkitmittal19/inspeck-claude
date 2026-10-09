@@ -12,6 +12,7 @@
  */
 import { enter, leave, reducedMotion } from './anim'
 import { h } from './dom'
+import { cancelFrame, nextFrame } from './native'
 
 export interface Outline {
   show(el: Element): void
@@ -51,7 +52,7 @@ export function createOutline(ui: HTMLElement, onFrame?: (el: Element, r: DOMRec
     box.style.width = `${b.w + 4}px`
     box.style.height = `${b.h + 4}px`
     onFrame?.(target, new DOMRect(b.x, b.y, b.w, b.h))
-    raf = requestAnimationFrame(frame)
+    raf = nextFrame(frame)
   }
 
   function hide() {
@@ -59,7 +60,7 @@ export function createOutline(ui: HTMLElement, onFrame?: (el: Element, r: DOMRec
     shown = null
     off = { x: 0, y: 0, w: 0, h: 0 }
     leave(box, 90)
-    if (raf) cancelAnimationFrame(raf)
+    if (raf) cancelFrame(raf)
     raf = 0
   }
 
@@ -76,7 +77,7 @@ export function createOutline(ui: HTMLElement, onFrame?: (el: Element, r: DOMRec
         const radius = getComputedStyle(el).borderTopLeftRadius
         box.style.borderRadius = radius && radius !== '0px' ? `calc(${radius} + 2px)` : '3px'
       }
-      if (!raf) { last = 0; raf = requestAnimationFrame(frame) }
+      if (!raf) { last = 0; raf = nextFrame(frame) }
       enter(box)
     },
     hide,

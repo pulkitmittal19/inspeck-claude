@@ -12,9 +12,17 @@
  *    page starts hovering.
  *  - motion: running animations are paused, except ones on a layer that is
  *    opening, which are finished, so you measure the menu as it ends up.
+ *    That covers CSS animations and transitions, the Web Animations API,
+ *    animated SVG and video, including any that start while frozen. Motion
+ *    driven from JavaScript (Lottie, GSAP, canvas) waits for its next frame,
+ *    which the page doesn't get until you release.
+ *
+ * Frozen with F, the page's network answers are held too (hold.ts), so a
+ * loading state you caught stays a loading state.
  */
 
 import { splitList } from './css/rules'
+import { holdNetwork } from './hold'
 
 const EMPTY = document.createDocumentFragment()
 
@@ -93,6 +101,12 @@ function pinnedRules(marked: Element[]): string {
   return out.join('\n')
 }
 
+/** How often, while frozen, to look for motion that started since. */
+const SWEEP_MS = 200
+
+/** SVG's own animation elements; their outermost <svg> pauses them all. */
+const SMIL = 'animate, animateTransform, animateMotion, set'
+
 const opening = (el: Element | null) => !!el?.closest('[data-state="open"], [open], [data-open], [data-headlessui-state~="open"]')
 
 export function createFreeze(host: HTMLElement, onChange: (active: boolean, manual: boolean) => void): Freeze {
@@ -100,7 +114,61 @@ export function createFreeze(host: HTMLElement, onChange: (active: boolean, manu
   let manual = false
   let sheet: CSSStyleSheet | null = null
   let paused: Animation[] = []
+  let svgs: SVGSVGElement[] = []
+  let sweeper = 0
   const marked: Array<[Element, string]> = []
+
+  /** Inside Inspeck: the host, or anything in its shadow root. */
+  const ours = (n: Node | null): boolean => {
+    if (!n) return false
+    if (n === host || host.contains(n)) return true
+    const root = n.getRootNode()
+    return root instanceof ShadowRoot && ours(root.host)
+  }
+
+  /* JavaScript-driven motion: while frozen the page's frame requests are kept,
+     not run; on release each gets its frame. (Inspeck's own use native.ts.) */
+  let frames: { request: typeof requestAnimationFrame; cancel: typeof cancelAnimationFrame } | null = null
+  const waitingFrames = new Map<number, FrameRequestCallback>()
+  let nextId = 1e9
+  const holdFrames = () => {
+    frames = { request: window.requestAnimationFrame, cancel: window.cancelAnimationFrame }
+    const { cancel } = frames
+    window.requestAnimationFrame = cb => { const id = nextId++; waitingFrames.set(id, cb); return id }
+    window.cancelAnimationFrame = id => { if (!waitingFrames.delete(id)) cancel.call(window, id) }
+  }
+  const releaseFrames = () => {
+    if (!frames) return
+    const { request } = frames
+    window.requestAnimationFrame = frames.request
+    window.cancelAnimationFrame = frames.cancel
+    frames = null
+    for (const cb of waitingFrames.values()) request.call(window, cb)
+    waitingFrames.clear()
+  }
+
+  /* Stop what's moving: CSS animations and transitions are Animation objects too.
+     Finish what is opening, pause everything else. */
+  const sweep = () => {
+    for (const a of document.getAnimations()) {
+      if (a.playState !== 'running') continue
+      const target = (a.effect as KeyframeEffect | null)?.target ?? null
+      if (ours(target)) continue
+      try {
+        if (opening(target)) a.finish()
+        else { a.pause(); paused.push(a) }
+      } catch { /* infinite animations can't finish; pause instead */ try { a.pause(); paused.push(a) } catch { /* ignore */ } }
+    }
+    for (const el of Array.from(document.querySelectorAll(SMIL))) {
+      let svg = el.closest('svg')
+      for (let up = svg?.parentElement?.closest('svg'); up; up = up.parentElement?.closest('svg')) svg = up
+      if (svg && !svg.animationsPaused()) { svg.pauseAnimations(); svgs.push(svg) }
+    }
+    for (const v of Array.from(document.querySelectorAll('video'))) if (!v.paused) { v.pause(); v.dataset.ixPaused = '1' }
+  }
+  /* Motion that starts while frozen: a transition or animation tells us; the Web Animations API and SVG don't, so look again now and then. */
+  let swept = false
+  const sweepSoon = () => { if (!swept) { swept = true; queueMicrotask(() => { swept = false; if (active) sweep() }) } }
 
   const start = () => {
     /* 1. Mark what is hovered / focused right now. */
@@ -120,27 +188,27 @@ export function createFreeze(host: HTMLElement, onChange: (active: boolean, manu
         document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet]
       } catch { sheet = null }
     }
-    /* 3. Stop motion: CSS animations and transitions are Animation objects too.
-       Finish what is opening, pause everything else. */
-    for (const a of document.getAnimations()) {
-      if (a.playState !== 'running') continue
-      const target = (a.effect as KeyframeEffect | null)?.target ?? null
-      if (target && (target === host || host.contains(target))) continue
-      try {
-        if (opening(target)) a.finish()
-        else { a.pause(); paused.push(a) }
-      } catch { /* infinite animations can't finish; pause instead */ try { a.pause(); paused.push(a) } catch { /* ignore */ } }
-    }
-    for (const v of Array.from(document.querySelectorAll('video'))) if (!v.paused) { v.pause(); v.dataset.ixPaused = '1' }
+    /* 3. Stop motion, now and as it starts. */
+    sweep()
+    holdFrames()
+    document.addEventListener('animationstart', sweepSoon, true)
+    document.addEventListener('transitionrun', sweepSoon, true)
+    sweeper = window.setInterval(sweep, SWEEP_MS)
   }
 
   const stop = () => {
+    window.clearInterval(sweeper)
+    document.removeEventListener('animationstart', sweepSoon, true)
+    document.removeEventListener('transitionrun', sweepSoon, true)
     for (const [el, attr] of marked) el.removeAttribute(attr)
     marked.length = 0
     if (sheet) document.adoptedStyleSheets = document.adoptedStyleSheets.filter(s => s !== sheet)
     sheet = null
     for (const a of paused) { try { a.play() } catch { /* gone */ } }
     paused = []
+    for (const svg of svgs) { try { svg.unpauseAnimations() } catch { /* gone */ } }
+    svgs = []
+    releaseFrames()
     for (const v of Array.from(document.querySelectorAll<HTMLVideoElement>('video[data-ix-paused]'))) { delete v.dataset.ixPaused; void v.play().catch(() => {}) }
   }
 
@@ -150,6 +218,7 @@ export function createFreeze(host: HTMLElement, onChange: (active: boolean, manu
     freeze(byHand) {
       if (byHand) manual = true
       if (!active) { active = true; start() }
+      holdNetwork(active && manual)
       onChange(active, manual)
     },
     unfreeze(byHand) {
@@ -157,6 +226,7 @@ export function createFreeze(host: HTMLElement, onChange: (active: boolean, manu
       /* A freeze you asked for outlives the note that also froze the page. */
       if (manual) { onChange(active, manual); return }
       if (active) { active = false; stop() }
+      holdNetwork(false)
       onChange(active, manual)
     },
   }

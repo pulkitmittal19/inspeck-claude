@@ -7,6 +7,7 @@
 import { App } from './app'
 import { api } from './api'
 import { allowedHere, SERVER, TAB_ID, VERSION } from './env'
+import { installNetworkHold } from './hold'
 
 type Global = { app?: App; version: string; server: string; tab: string; bind(token: string): Promise<string>; destroy(): void }
 declare global { interface Window { __INSPECK__?: Global } }
@@ -35,6 +36,8 @@ if (!allowedHere()) {
 } else if (window.top !== window && !document.currentScript?.hasAttribute('data-inspeck-frames')) {
   /* Inside an iframe (Storybook, an embed): the top page's widget covers it. */
 } else {
+  /* Now, not at boot: a request already on its way when you freeze is held too. */
+  installNetworkHold()
   /* After load and a quiet moment, so we never race the app's hydration. */
   const start = () => ('requestIdleCallback' in window ? requestIdleCallback(boot, { timeout: 1500 }) : setTimeout(boot, 200))
   if (document.readyState === 'complete') start()

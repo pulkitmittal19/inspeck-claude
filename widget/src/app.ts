@@ -19,6 +19,7 @@ import { createMarquee, MAX_MEMBERS, unionOf, type Box, type Marquee } from './m
 import { labelOf } from './css/describe'
 import { createToolbar, type Toolbar } from './toolbar'
 import { openPathOf } from './transient'
+import { nextFrame } from './native'
 
 /* Presses that would act on the app. While Inspeck is open they pick instead. */
 const PRESS = new Set(['pointerdown', 'pointerup', 'mousedown', 'mouseup', 'click', 'dblclick', 'auxclick',
@@ -189,7 +190,7 @@ export class App {
 
   private schedulePick(): void {
     if (this.pickFrame || this.pinned || this.marquee.dragging) return
-    this.pickFrame = requestAnimationFrame(() => {
+    this.pickFrame = nextFrame(() => {
       this.pickFrame = 0
       if (!this.open || this.pinned) return
       const { x, y } = this.pointer

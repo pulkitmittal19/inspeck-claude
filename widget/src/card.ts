@@ -9,6 +9,7 @@ import { enter, leave, play } from './anim'
 import { clear, h, svg } from './dom'
 import { ICONS } from './icons'
 import { actionOf } from './router'
+import { nextFrame } from './native'
 
 const GAP = 8
 /** A value longer than this that is a comma list shows its first item and a count. */
@@ -241,7 +242,7 @@ export function createCard(ui: HTMLElement): Card {
          a quarter-second away, and the first keystrokes would land on the page. */
       const focusNote = () => { note.focus({ preventScroll: true }); note.setSelectionRange(note.value.length, note.value.length) }
       focusNote()
-      requestAnimationFrame(() => {
+      nextFrame(() => {
         setOpen(noteWrap, true)
         setOpen(actionsWrap, true)
         if (parts?.note === note && (el.getRootNode() as ShadowRoot).activeElement !== note) focusNote()

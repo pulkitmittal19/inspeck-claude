@@ -8,6 +8,7 @@
 import { enter, leave } from './anim'
 import { clear, h } from './dom'
 import { pickable } from './pick'
+import { cancelFrame, nextFrame } from './native'
 
 export interface Box { left: number; top: number; right: number; bottom: number }
 
@@ -122,10 +123,10 @@ export function createMarquee(ui: HTMLElement, host: Element, onFrame: (box: Box
         place(band, b, live.length ? 3 : 0)
         onFrame(b)
       }
-      raf = requestAnimationFrame(frame)
+      raf = nextFrame(frame)
     }
   }
-  const schedule = () => { if (!raf) raf = requestAnimationFrame(frame) }
+  const schedule = () => { if (!raf) raf = nextFrame(frame) }
 
   return {
     get dragging() { return dragging },
@@ -148,7 +149,7 @@ export function createMarquee(ui: HTMLElement, host: Element, onFrame: (box: Box
     },
     end() {
       dragging = false
-      if (raf) cancelAnimationFrame(raf)
+      if (raf) cancelFrame(raf)
       raf = 0
       const box = boxNow()
       members = membersIn(box, host)
@@ -170,7 +171,7 @@ export function createMarquee(ui: HTMLElement, host: Element, onFrame: (box: Box
     hide() {
       dragging = false
       held = null
-      if (raf) cancelAnimationFrame(raf)
+      if (raf) cancelFrame(raf)
       raf = 0
       leave(layer, 120, () => { if (!held && !dragging) { clear(layer); outlines.length = 0 } })
     },
