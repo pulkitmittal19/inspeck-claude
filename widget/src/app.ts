@@ -23,6 +23,9 @@ import { openPathOf } from './transient'
 const PRESS = new Set(['pointerdown', 'pointerup', 'mousedown', 'mouseup', 'click', 'dblclick', 'auxclick',
   'contextmenu', 'touchstart', 'touchend', 'dragstart'])
 
+/** Seconds the ❄ button counts before it freezes. */
+const FREEZE_COUNT = 3
+
 /** After Enter, how long a note waits for its place in the code before going without it. */
 const SOURCE_WAIT_MS = 2500
 const wait = <T>(ms: number, value: T) => new Promise<T>(r => setTimeout(() => r(value), ms))
@@ -65,6 +68,8 @@ export class App {
   /** The element under the pointer when a note closed: it stays quiet until the pointer moves off it. */
   private rest: Element | null = null
   private pickFrame = 0
+  /** The ❄ button's count before it freezes, while it runs. */
+  private countdown = 0
   /** Half-written notes, kept when the card closes, given back when you click the same element again. */
   private drafts = new WeakMap<Element, string>()
   /** The open card's note was just sent: nothing to keep as a draft when it closes. */
@@ -83,6 +88,7 @@ export class App {
       this.frost.hidden = !active
       this.toolbar.setPressed('freeze', manual)
       this.toolbar.setFrozen(manual)
+      if (!this.countdown) this.toolbar.setStatus(manual ? 'Frozen · F or ❄ to release' : null)
     })
     /* Markers first, so the card is drawn above them. */
     this.notes = createNotes(this.host.ui, (note, el) => this.openNote(note, el))
@@ -111,6 +117,7 @@ export class App {
       if (this.pointer.x >= 0) this.schedulePick()
     } else {
       this.unpin()
+      this.stopCountdown()
       this.freeze.unfreeze(true)
       this.setTarget(null)
     }
@@ -120,7 +127,7 @@ export class App {
     switch (action) {
       case 'open': this.setOpen(true); break
       case 'close': this.setOpen(false); break
-      case 'freeze': this.toggleFreeze(); break
+      case 'freeze': this.freezeFromPill(); break
       case 'clear': this.clearNotes(); break
     }
   }
@@ -134,9 +141,35 @@ export class App {
     void this.notes.clear().then(() => this.toolbar.say('clear', 'Cleared'))
   }
 
+  /** F: freeze or release at once, with the pointer where it is. */
   private toggleFreeze(): void {
+    this.stopCountdown()
     if (this.freeze.manual) this.freeze.unfreeze(true)
     else this.freeze.freeze(true)
+  }
+
+  /**
+   * The ❄ button: release at once, or freeze after a short count. Reaching the
+   * button means leaving whatever you were hovering, so the count gives you
+   * time to go back to it: the row whose buttons show on hover, the tooltip.
+   */
+  private freezeFromPill(): void {
+    if (this.freeze.manual || this.countdown) { this.toggleFreeze(); return }
+    let left = FREEZE_COUNT
+    const tick = () => {
+      if (left === 0) { this.countdown = 0; this.freeze.freeze(true); return }
+      this.toolbar.setStatus(`Freezing in ${left} · hover what you want to keep`)
+      left--
+      this.countdown = window.setTimeout(tick, 1000)
+    }
+    tick()
+  }
+
+  private stopCountdown(): void {
+    if (!this.countdown) return
+    clearTimeout(this.countdown)
+    this.countdown = 0
+    this.toolbar.setStatus(null)
   }
 
   /** A marker or a list row was clicked: open that note on its element. */
@@ -451,7 +484,10 @@ export class App {
       e.preventDefault()
       return 'swallow'
     }
-    if (!this.open || inside) return
+    if (!this.open) return
+    /* Typing in Inspeck's own fields is typing. Anywhere else in it (after
+       clicking the pill, say), keys are shortcuts as on the page. */
+    if (inside && isEditable(e.composedPath()[0] as Element)) return
     /* Shift on its own types nothing, so it measures even when one of the
        app's fields has the focus (an auto-focused search or message box). */
     if (e.key === 'Shift') { if (!this.pinned) this.setShift(true); return }

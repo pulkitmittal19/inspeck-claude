@@ -14,6 +14,10 @@
  *    opening, which are finished, so you measure the menu as it ends up.
  */
 
+import { splitList } from './css/rules'
+
+const EMPTY = document.createDocumentFragment()
+
 const PSEUDO: Array<[string, string]> = [
   [':hover', 'data-ix-hover'],
   [':focus-within', 'data-ix-focus-within'],
@@ -35,11 +39,33 @@ function rulesOf(sheet: CSSStyleSheet): CSSRuleList | null {
 }
 
 /** Copy the rules that style a pinned pseudo-state, keyed on our marks instead —
-    only those that apply to an element we marked, so the copy stays small and
-    the browser doesn't restyle the whole page (a big app has thousands of :hover rules). */
+    only those that apply right now, so the copy stays small and the browser
+    doesn't restyle the whole page (a big app has thousands of :hover rules).
+
+    A rule can style the hovered element itself (`.row:hover`) or something
+    near it (`.row:hover .actions`, the buttons that show on hover). So each
+    selector is checked in two steps: its hovered part must match an element
+    that is hovered now (cheap, and rules out nearly all of them); only then
+    is the whole selector looked for in the page. */
 function pinnedRules(marked: Element[]): string {
   const out: string[] = []
-  const applies = (sel: string) => marked.some(el => { try { return el.matches(sel) } catch { return false } })
+  const matchesMarked = (sel: string) => marked.some(el => { try { return el.matches(sel) } catch { return false } })
+  const one = (sel: string) => {
+    let cut = -1
+    for (const [, attr] of PSEUDO) {
+      const i = sel.indexOf(`[${attr}]`)
+      if (i >= 0 && (cut < 0 || i < cut)) cut = i + attr.length + 2
+    }
+    if (cut < 0) return false
+    const head = sel.slice(0, cut)
+    let headOk = true
+    /* An empty fragment only parses the selector: a cut inside :is() or :not() throws, and the whole is checked instead. */
+    try { EMPTY.querySelector(head); headOk = matchesMarked(head) } catch { /* not a selector on its own */ }
+    if (!headOk) return false
+    if (head.length === sel.length || matchesMarked(sel)) return true
+    try { return !!document.querySelector(sel) } catch { return false }
+  }
+  const applies = (sel: string) => splitList(sel).some(one)
   const walk = (list: CSSRuleList, wrap: (css: string) => string) => {
     for (const r of Array.from(list)) {
       if (r instanceof CSSStyleRule) {

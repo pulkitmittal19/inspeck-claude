@@ -1,4 +1,5 @@
 /* The circle in the corner that grows into the pill: Freeze · Clear · Close. */
+import { enter, leave } from './anim'
 import { h, svg } from './dom'
 import { ICONS, type IconName } from './icons'
 import { actionOf } from './router'
@@ -19,6 +20,8 @@ export interface Toolbar {
   armed(action: string): boolean
   /** A short word from a button, in its tip, e.g. "No notes on this page". */
   say(action: string, text: string): void
+  /** A line that stays above the pill while something lasts ("Frozen · F to release"); null clears it. */
+  setStatus(text: string | null): void
   /** Handle an event that happened inside the widget. Returns the action clicked, if any. */
   handle(e: Event): string | null
 }
@@ -36,7 +39,8 @@ export function createToolbar(ui: HTMLElement): Toolbar {
     svg(ICONS.inspect, 18, 1.5))
   const bar = h('div', { class: 'bar', role: 'toolbar', 'aria-label': 'Inspeck' }, logo, row)
   const tip = h('div', { class: 'tip', role: 'tooltip' })
-  ui.append(bar, tip)
+  const status = h('div', { class: 'bar-status', role: 'status', hidden: true })
+  ui.append(bar, tip, status)
 
   /* The open width is whatever the buttons need, plus the padding. */
   requestAnimationFrame(() => bar.style.setProperty('--ix-open-w', `${row.scrollWidth + 8}px`))
@@ -69,6 +73,11 @@ export function createToolbar(ui: HTMLElement): Toolbar {
     setFrozen(on) {
       bar.toggleAttribute('data-frozen', on)
     },
+    setStatus(text) {
+      if (!text) { leave(status, 140); return }
+      status.replaceChildren(text)
+      enter(status)
+    },
     arm(action, ask) {
       const el = bar.querySelector<HTMLElement>(`[data-action="${action}"]`)
       if (!el) return
@@ -96,6 +105,9 @@ export function createToolbar(ui: HTMLElement): Toolbar {
       bar.querySelector(`[data-action="${action}"]`)?.setAttribute('aria-pressed', String(on))
     },
     handle(e) {
+      /* The pill's buttons never take the keyboard: after clicking one, F,
+         Space and Shift still reach the page. */
+      if (e.type === 'mousedown' && e.composedPath().some(n => n === bar)) { e.preventDefault(); return null }
       if (e.type === 'pointerover') {
         const a = actionOf(e)
         showTip(a?.el ?? null)

@@ -61,7 +61,7 @@ Open your app and click the circle in the corner, or press **⌥ I** (Option + I
 | **↑ / ↓** | the element's parent or child |
 | **Hold Shift** | padding, margin and the gaps between children, with numbers. Keep holding and move to another element: the distance between the two |
 | **Hold Space** | clicks go to your app: open a menu, then note something inside it |
-| **F** or ❄ | freeze the page: menus, tooltips and hover states stay as they are. Writing a note freezes it too |
+| **F** or ❄ | freeze the page: menus, tooltips and hover states stay as they are, including what shows on hover (a row's buttons). F freezes at once, with the pointer where it is; ❄ counts 3 seconds first, so you can go back and hover what you want to keep. Writing a note freezes it too |
 | **Clear** (bin) | withdraw every note on this page; click twice to be sure |
 | **Esc** | close the note, then the freeze, then Inspeck |
 

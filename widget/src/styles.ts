@@ -329,6 +329,16 @@ button { appearance: none; background: none; border: 0; padding: 0; cursor: poin
 .guide.h { height: 0; border-top: 1px dashed var(--ix-accent); }
 .guide.v { width: 0; border-left: 1px dashed var(--ix-accent); }
 
+/* a line above the pill while something lasts: frozen, or counting down to it */
+.bar-status {
+  position: fixed; right: 20px; bottom: 70px; pointer-events: none; padding: 6px 10px; border-radius: 8px;
+  background: var(--ix-bg); color: var(--ix-text); font: 500 11.5px/1 var(--ix-sans); white-space: nowrap;
+  box-shadow: 0 0 0 1px rgba(255, 61, 138, 0.45), var(--ix-shadow);
+  transition: opacity 160ms ease, transform 200ms var(--ix-ease);
+}
+.bar-status[data-state="enter"] { opacity: 0; transform: translateY(4px); }
+.bar-status[data-state="out"] { opacity: 0; transition-duration: 120ms; }
+
 /* small label that appears above a toolbar button on hover */
 .tip {
   position: fixed; pointer-events: none; padding: 5px 8px; border-radius: 7px;
