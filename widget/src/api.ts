@@ -70,4 +70,11 @@ export const api = {
   async remove(id: string): Promise<void> {
     await call('DELETE', `/comments/${id}`)
   },
+  /** Whether the first-run tour has been seen on this machine, in any app. */
+  async tourSeen(): Promise<boolean> {
+    return (await call<{ seen: boolean }>('GET', '/tour')).seen
+  },
+  async markTourSeen(): Promise<void> {
+    await call('POST', '/tour', {})
+  },
 }

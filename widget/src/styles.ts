@@ -341,6 +341,32 @@ button { appearance: none; background: none; border: 0; padding: 0; cursor: poin
 .bar-status[data-state="enter"] { opacity: 0; transform: translateY(4px); }
 .bar-status[data-state="out"] { opacity: 0; transition-duration: 120ms; }
 
+/* the first-run tour: one card above the pill, a step at a time */
+.tour {
+  position: fixed; right: 20px; bottom: 70px; width: 248px; padding: 12px 13px 11px; border-radius: 11px;
+  background: var(--ix-bg); color: var(--ix-text); box-shadow: var(--ix-shadow); font-family: var(--ix-sans);
+  pointer-events: auto; transition: opacity 180ms ease, transform 240ms var(--ix-ease);
+}
+.tour[data-state="enter"] { opacity: 0; transform: translateY(6px); }
+.tour[data-state="out"] { opacity: 0; transform: translateY(4px); transition-duration: 140ms; }
+.tour-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.tour-dots { display: flex; gap: 4px; }
+.tour-dot { width: 5px; height: 5px; border-radius: 3px; background: rgba(255, 255, 255, 0.2); transition: width 200ms var(--ix-ease), background 200ms ease; }
+.tour-dot.on { width: 12px; background: var(--ix-accent); }
+.tour-link { font: 500 11px/1 var(--ix-sans); color: var(--ix-faint); padding: 2px 0; }
+.tour-link:hover { color: var(--ix-text); }
+.tour-body { animation: ix-fade-in 200ms ease both; }
+.tour-title { margin: 0 0 5px; font: 600 14px/1.2 var(--ix-sans); color: #fff; }
+.tour-line { margin: 0; font: 12.5px/1.55 var(--ix-sans); color: var(--ix-dim); }
+.tour-k { font: 500 11px/1 var(--ix-mono); padding: 2px 6px; border-radius: 5px; background: rgba(255, 61, 138, 0.16); color: #FF8AB8; white-space: nowrap; }
+.tour-foot { display: flex; justify-content: flex-end; margin-top: 11px; }
+.tour-next {
+  font: 600 11.5px/1 var(--ix-sans); padding: 7px 12px; border-radius: 7px; background: var(--ix-accent); color: #fff;
+  transition: background 120ms ease, transform 120ms var(--ix-ease);
+}
+.tour-next:hover { background: var(--ix-accent-ink); }
+.tour-next:active { transform: scale(0.96); }
+
 /* small label that appears above a toolbar button on hover */
 .tip {
   position: fixed; pointer-events: none; padding: 5px 8px; border-radius: 7px;

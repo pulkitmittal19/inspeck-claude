@@ -7196,7 +7196,7 @@ var require_dist = __commonJS({
 });
 
 // server/src/index.ts
-import { readFileSync as readFileSync5, writeFileSync as writeFileSync3, mkdirSync as mkdirSync3 } from "fs";
+import { readFileSync as readFileSync5, writeFileSync as writeFileSync4, mkdirSync as mkdirSync4 } from "fs";
 import { extname, join as join5 } from "path";
 
 // node_modules/zod/v3/helpers/util.js
@@ -36832,7 +36832,7 @@ function remove(id) {
 }
 
 // server/src/http.ts
-import { readFileSync as readFileSync4, statSync as statSync3 } from "fs";
+import { existsSync as existsSync4, mkdirSync as mkdirSync3, readFileSync as readFileSync4, statSync as statSync3, writeFileSync as writeFileSync3 } from "fs";
 import { createServer } from "http";
 import { dirname as dirname2, join as join4, normalize } from "path";
 import { fileURLToPath as fileURLToPath2 } from "url";
@@ -37191,6 +37191,14 @@ async function route2(req, res, version2, onNew) {
   if (DEV && req.method === "GET" && parts[0] === "__dev") {
     return devFile(req, res, parts.slice(1).join("/"));
   }
+  if (url2.pathname === "/tour" && (req.method === "GET" || req.method === "POST")) {
+    const flag2 = join4(HOME, "tour-seen");
+    if (req.method === "POST") {
+      mkdirSync3(HOME, { recursive: true });
+      writeFileSync3(flag2, (/* @__PURE__ */ new Date()).toISOString());
+    }
+    return send(res, 200, { seen: existsSync4(flag2) });
+  }
   if (req.method === "POST" && url2.pathname === "/bind") {
     const b = await body(req);
     if (typeof b.tabId !== "string" || typeof b.token !== "string" || b.tabId.length > 64) return send(res, 400, { error: "Send { tabId, token }" });
@@ -37324,7 +37332,7 @@ if (process.argv[2] === "wait") {
   await runWait(process.argv.slice(3));
   process.exit(0);
 }
-var VERSION = "0.7.1";
+var VERSION = "0.8.0";
 var log = (msg) => process.stderr.write(`inspeck: ${msg}
 `);
 var INSTRUCTIONS = `Inspeck lets a person hover any element of their web app to see its CSS, and click it to leave a note for you. Their notes arrive here.
@@ -37477,8 +37485,8 @@ server.registerTool("dismiss", {
 });
 function noteClient() {
   try {
-    mkdirSync3(HOME, { recursive: true });
-    writeFileSync3(join5(HOME, "last-client.json"), JSON.stringify({
+    mkdirSync4(HOME, { recursive: true });
+    writeFileSync4(join5(HOME, "last-client.json"), JSON.stringify({
       at: (/* @__PURE__ */ new Date()).toISOString(),
       client: server.server.getClientVersion(),
       capabilities: server.server.getClientCapabilities()

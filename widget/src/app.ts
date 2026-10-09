@@ -14,6 +14,7 @@ import { createRouter } from './router'
 import { selectorFor } from './selector'
 import { createSpacing, type Spacing } from './spacing'
 import { sourceOf, type SourceAt } from './source'
+import { createTour, type Tour } from './tour'
 import { createMarquee, MAX_MEMBERS, unionOf, type Box, type Marquee } from './marquee'
 import { labelOf } from './css/describe'
 import { createToolbar, type Toolbar } from './toolbar'
@@ -50,6 +51,7 @@ export class App {
   readonly notes: Notes
   readonly spacing: Spacing
   readonly marquee: Marquee
+  readonly tour: Tour
   readonly freeze: Freeze
   private frost: HTMLDivElement
   /** Shift is held: show the hovered element's spacing. */
@@ -89,6 +91,7 @@ export class App {
     this.host.ui.appendChild(this.frost)
     this.toolbar = createToolbar(this.host.ui)
     this.toolbar.setPressed('css', this.cssOnHover)
+    this.tour = createTour(this.host.ui)
     this.freeze = createFreeze(this.host.el, (active, manual) => {
       this.frost.hidden = !active
       this.toolbar.setFrozen(manual)
@@ -119,10 +122,12 @@ export class App {
     this.toolbar.setOpen(open)
     tabStore.set('open', open ? '1' : null)
     if (open) {
+      this.tour.start()
       warmUp()
       if (this.pointer.x >= 0) this.schedulePick()
     } else {
       this.unpin()
+      this.tour.hide()
       this.freeze.unfreeze(true)
       this.setTarget(null)
     }
@@ -439,6 +444,7 @@ export class App {
     }
     /* The pointer over our own UI (a marker, the pill) isn't pointing at the page. */
     if (e.type === 'pointerover' && this.open && !this.pinned) this.setTarget(null)
+    if (this.tour.handle(e)) return
     if (this.card.handle(e)) return
     if (this.notes.handle(e)) return
     const action = this.toolbar.handle(e)

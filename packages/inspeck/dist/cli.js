@@ -233,8 +233,8 @@ async function main(argv) {
   say("");
   await wireApp(flags);
   say("");
-  say("Next: start your dev server and open the app, in Chrome or in the Claude app's browser.");
-  say("Press \u2325 I (Alt+I) for Inspeck, click anything to leave a note, then ask Claude to check your Inspeck notes.");
+  say("Next, in Claude: /inspeck:start");
+  say("It opens your app, turns Inspeck on and links it to the chat. Or open the app in your own browser and press \u2325 I.");
   if (!plugin) say("(Install the Claude Code plugin first: the widget is served by it.)");
   return 0;
 }

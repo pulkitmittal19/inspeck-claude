@@ -188,6 +188,12 @@ test('a note on a dragged area lists each element inside it, or says it is empty
   await page(s.port, 'DELETE', `/comments/${empty.json.comment.id}`)
 })
 
+test('the first-run tour is seen once per machine: the server keeps the record', async () => {
+  assert.equal((await page(s.port, 'GET', '/tour')).json.seen, false)
+  assert.equal((await page(s.port, 'POST', '/tour', { body: {} })).json.seen, true)
+  assert.equal((await page(s.port, 'GET', '/tour', { origin: 'http://localhost:3000' })).json.seen, true, 'and any other app on this machine sees it')
+})
+
 test('Claude gets the line the element is written on, and where its component is used', async () => {
   const r = await page(s.port, 'POST', '/comments', { body: {
     note: 'Tag text is clipped', page: 'http://localhost:5173/conversations',

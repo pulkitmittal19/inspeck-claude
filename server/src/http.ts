@@ -13,11 +13,12 @@
  *     browser extensions are let in; anything else — a LAN address, staging —
  *     must be named in INSPECK_ALLOWED_ORIGINS.
  */
-import { readFileSync, statSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import { dirname, join, normalize } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import * as store from './store.js'
+import { HOME } from './store.js'
 import { bindTab, route as routeNote } from './sessions.js'
 import { isThisMachine, NewComment, type Comment } from './format.js'
 import { resolveSource } from './sourcemap.js'
@@ -126,6 +127,13 @@ async function route(req: IncomingMessage, res: ServerResponse, version: string,
 
   if (DEV && req.method === 'GET' && parts[0] === '__dev') {
     return devFile(req, res, parts.slice(1).join('/'))
+  }
+
+  /* The widget's first-run tour, seen once per machine rather than once per app. */
+  if (url.pathname === '/tour' && (req.method === 'GET' || req.method === 'POST')) {
+    const flag = join(HOME, 'tour-seen')
+    if (req.method === 'POST') { mkdirSync(HOME, { recursive: true }); writeFileSync(flag, new Date().toISOString()) }
+    return send(res, 200, { seen: existsSync(flag) })
   }
 
   /* A Claude session hands its pane's widget a code; from then on that tab's notes go to it. */

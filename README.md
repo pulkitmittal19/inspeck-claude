@@ -17,6 +17,8 @@ npx inspeck init
 
 That's all. It installs the Inspeck plugin into Claude Code (every session starts it from then on) and adds the widget to your app the way it's built: `inspeck()` in a Vite config, a development-only tag in a Next.js layout, or the tag in a plain `index.html` (it asks first). Running it again changes nothing. Requires Node.js 20 or later.
 
+Then, in Claude: **`/inspeck:start`**. It opens your app in the browser pane, turns Inspeck on and links it to the chat. The first time Inspeck opens, a four-step tour shows the basics.
+
 **Inside the Claude app you don't even need the second part.** When Claude opens your app in its browser pane, it adds Inspeck to the page itself, so with just the plugin installed your code stays untouched. The app step is for using Inspeck in your own browser (Chrome, Safari, Arc).
 
 <details>
