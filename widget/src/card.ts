@@ -87,7 +87,6 @@ const tool = (action: string, icon: keyof typeof ICONS, label: string) =>
 
 export const cssText = (d: Description) => d.lines.map(l => `${l.prop}: ${l.value};`).join('\n')
 
-let keysSeen = (() => { try { return localStorage.getItem('inspeck:keys-seen') === '1' } catch { return false } })()
 
 /** A section whose height animates open and closed. */
 function reveal(cls: string, open: boolean, ...children: Array<Node | null>): HTMLDivElement {
@@ -110,7 +109,7 @@ export function createCard(ui: HTMLElement): Card {
   let opts: PinOptions | null = null
   let parts: {
     cssWrap: HTMLElement | null; noteWrap: HTMLElement; statusWrap: HTMLElement; status: HTMLElement
-    keysWrap: HTMLElement | null; note: HTMLTextAreaElement; send: HTMLButtonElement
+    note: HTMLTextAreaElement; send: HTMLButtonElement
   } | null = null
   let busy = false
   let folded = false
@@ -164,10 +163,8 @@ export function createCard(ui: HTMLElement): Card {
     sync()
     try {
       const r = await opts.onSend(text)
-      if (!keysSeen) { keysSeen = true; try { localStorage.setItem('inspeck:keys-seen', '1') } catch { /* fine */ } }
       /* The note line gives way to the confirmation, then the card bows out. */
       setOpen(parts.noteWrap, false)
-      setOpen(parts.keysWrap, false)
       status(opts.existing ? 'Saved' : `Sent to Claude${r ? ` as #${r.n}` : ''}`, 'ok')
       const done = opts
       setTimeout(() => {
@@ -246,11 +243,9 @@ export function createCard(ui: HTMLElement): Card {
       const noteWrap = reveal('note-wrap', false, h('div', { class: 'note' }, svg(ICONS.note, 13), note, sendBtn))
       const statusEl = h('div', { class: 'status', role: 'status' })
       const statusWrap = reveal('status-wrap quick', false, statusEl)
-      const keysWrap = keysSeen ? null : reveal('keys-wrap', false, h('div', { class: 'keys' },
-        h('span', {}, h('span', { class: 'kbd' }, '↵'), ' send'), h('span', {}, h('span', { class: 'kbd' }, '⇧↵'), ' new line'), h('span', {}, h('span', { class: 'kbd' }, 'esc'), ' close')))
       const actionsWrap = o.onDelete ? reveal('actions-wrap', false, h('div', { class: 'note-actions' }, h('button', { type: 'button', class: 'link', 'data-action': 'delete' }, svg(ICONS.trash, 12), 'Delete'))) : null
-      el.append(head, ...(cssWrap ? [cssWrap] : []), noteWrap, statusWrap, ...(keysWrap ? [keysWrap] : []), ...(actionsWrap ? [actionsWrap] : []))
-      parts = { cssWrap, noteWrap, statusWrap, status: statusEl, keysWrap, note, send: sendBtn }
+      el.append(head, ...(cssWrap ? [cssWrap] : []), noteWrap, statusWrap, ...(actionsWrap ? [actionsWrap] : []))
+      parts = { cssWrap, noteWrap, statusWrap, status: statusEl, note, send: sendBtn }
       if (!wasShowing) enter(el)
       sync()
       /* Focus now, not on the next frame: on a busy page the next frame can be
@@ -259,7 +254,6 @@ export function createCard(ui: HTMLElement): Card {
       focusNote()
       requestAnimationFrame(() => {
         setOpen(noteWrap, true)
-        setOpen(keysWrap, true)
         setOpen(actionsWrap, true)
         if (parts?.note === note && (el.getRootNode() as ShadowRoot).activeElement !== note) focusNote()
       })

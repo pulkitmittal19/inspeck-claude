@@ -240,8 +240,6 @@ button { appearance: none; background: none; border: 0; padding: 0; cursor: poin
 .status svg { animation: ix-check 360ms var(--ix-spring) both; }
 @keyframes ix-check { from { transform: scale(0.4); opacity: 0; } to { transform: none; opacity: 1; } }
 .status-wrap .status { margin-top: 8px; }
-.keys { display: flex; gap: 12px; padding-top: 7px; font: 10.5px/1 var(--ix-sans); color: var(--ix-dim); }
-.keys .kbd { margin-right: 3px; }
 .note-actions { display: flex; padding-top: 6px; }
 .link { display: flex; align-items: center; gap: 5px; padding: 4px 6px; border-radius: 6px; font: 500 11px/1 var(--ix-sans); color: var(--ix-dim); }
 .link:hover { color: var(--ix-text); background: var(--ix-bg-2); }
