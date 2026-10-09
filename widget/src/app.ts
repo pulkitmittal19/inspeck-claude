@@ -10,11 +10,13 @@ import { createHost, type Host } from './host'
 import { anchorOf, createNotes, type Notes } from './notes'
 import { createOutline, type Outline } from './outline'
 import { childToward, elementAt, parentOf, pickable, snap, clickThroughAt, paints } from './pick'
-import { createRouter } from './router'
+import { actionOf, createRouter } from './router'
 import { selectorFor } from './selector'
 import { createSpacing, type Spacing } from './spacing'
 import { sourceOf, type SourceAt } from './source'
 import { createTour, type Tour } from './tour'
+import { createSettings, type Settings } from './settings'
+import { prefs } from './prefs'
 import { createMarquee, MAX_MEMBERS, unionOf, type Box, type Marquee } from './marquee'
 import { labelOf } from './css/describe'
 import { createToolbar, type Toolbar } from './toolbar'
@@ -53,6 +55,7 @@ export class App {
   readonly spacing: Spacing
   readonly marquee: Marquee
   readonly tour: Tour
+  readonly settings: Settings
   readonly freeze: Freeze
   private frost: HTMLDivElement
   /** Shift is held: show the hovered element's spacing. */
@@ -81,6 +84,8 @@ export class App {
   private drafts = new WeakMap<Element, string>()
   /** The open card's note was just sent: nothing to keep as a draft when it closes. */
   private sent = false
+  /** A press on the page that closed Settings: its up and click are swallowed too. */
+  private settingsPress = false
   /** Where the button went down on the page: a click if it comes up close by, a drag across a section if not. */
   private down: PointerEvent | null = null
   private unroute: () => void
@@ -93,6 +98,10 @@ export class App {
     this.toolbar = createToolbar(this.host.ui)
     this.toolbar.setPressed('css', this.cssOnHover)
     this.tour = createTour(this.host.ui)
+    this.settings = createSettings(this.host.ui, open => {
+      this.toolbar.setPressed('settings', open)
+      if (open) this.tour.hide()
+    })
     this.freeze = createFreeze(this.host.el, (active, manual) => {
       this.frost.hidden = !active
       this.toolbar.setFrozen(manual)
@@ -101,6 +110,8 @@ export class App {
     /* Markers first, so the card is drawn above them. */
     this.notes = createNotes(this.host.ui, (note, el) => this.openNote(note, el))
     this.card = createCard(this.host.ui)
+    /* Sizes or colours changed in Settings (here or in another app): the card says them the new way. */
+    prefs.onChange(() => this.card.refresh())
     this.outline = createOutline(this.host.ui, (el, r) => {
       /* A tooltip that faded out from under the pointer: let go of it. */
       if (el === this.overlay && !this.pinned && !paints(el)) { this.overlay = null; this.raw = null; this.schedulePick(); return }
@@ -123,12 +134,14 @@ export class App {
     this.toolbar.setOpen(open)
     tabStore.set('open', open ? '1' : null)
     if (open) {
+      prefs.sync()
       this.tour.start()
       warmUp()
       if (this.pointer.x >= 0) this.schedulePick()
     } else {
       this.unpin()
       this.tour.hide()
+      this.settings.hide()
       this.freeze.unfreeze(true)
       this.setTarget(null)
     }
@@ -140,6 +153,7 @@ export class App {
       case 'close': this.setOpen(false); break
       case 'css': this.setCssOnHover(!this.cssOnHover); break
       case 'clear': this.clearNotes(); break
+      case 'settings': this.settings.toggle(); break
     }
   }
 
@@ -445,6 +459,9 @@ export class App {
     }
     /* The pointer over our own UI (a marker, the pill) isn't pointing at the page. */
     if (e.type === 'pointerover' && this.open && !this.pinned) this.setTarget(null)
+    /* A press anywhere but the panel and its button puts Settings away. */
+    if (e.type === 'pointerdown' && this.settings.open && !this.settings.contains(e) && actionOf(e)?.action !== 'settings') this.settings.hide()
+    if (this.settings.handle(e)) return
     if (this.tour.handle(e)) return
     if (this.card.handle(e)) return
     if (this.notes.handle(e)) return
@@ -475,6 +492,13 @@ export class App {
       /* The pointer left the window (into the Claude chat, say). */
       this.setTarget(null)
       return this.freeze.active ? 'stop' : undefined
+    }
+    /* With Settings open, a press on the page only puts it away; it doesn't place a note. */
+    if (e.type === 'pointerdown') this.settingsPress = this.settings.open
+    if (PRESS.has(e.type) && this.settingsPress) {
+      if (e.type === 'pointerdown') this.settings.hide()
+      if (e.type === 'click') this.settingsPress = false
+      return 'swallow'
     }
     if (PRESS.has(e.type)) {
       if (this.through && !this.freeze.active) return
@@ -524,7 +548,8 @@ export class App {
     }
     switch (e.key) {
       case 'Escape':
-        if (this.pinned) this.unpin()
+        if (this.settings.open) this.settings.hide()
+        else if (this.pinned) this.unpin()
         else if (this.freeze.manual) this.freeze.unfreeze(true)
         else this.setOpen(false)
         return 'swallow'

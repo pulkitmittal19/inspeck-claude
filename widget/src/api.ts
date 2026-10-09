@@ -78,4 +78,11 @@ export const api = {
   async markTourSeen(): Promise<void> {
     await call('POST', '/tour', {})
   },
+  /** Settings kept by the plugin, so they follow you to every app and browser. */
+  async settings(): Promise<Record<string, unknown>> {
+    return call<Record<string, unknown>>('GET', '/settings')
+  },
+  async saveSettings(settings: Record<string, unknown>): Promise<void> {
+    await call('POST', '/settings', settings)
+  },
 }

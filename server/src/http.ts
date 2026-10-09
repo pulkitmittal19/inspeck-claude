@@ -23,6 +23,12 @@ import { bindTab, route as routeNote } from './sessions.js'
 import { isThisMachine, NewComment, type Comment } from './format.js'
 import { resolveSource } from './sourcemap.js'
 
+/** Settings the widget may keep, and the values each may take. */
+const SETTINGS: Record<string, string[]> = {
+  sizes: ['written', 'px', 'rem'],
+  colors: ['written', 'hex', 'rgb', 'oklch'],
+}
+
 export const PORT = Number(process.env.INSPECK_PORT) || 4848
 
 const EXTRA_ORIGINS = (process.env.INSPECK_ALLOWED_ORIGINS ?? '')
@@ -134,6 +140,24 @@ async function route(req: IncomingMessage, res: ServerResponse, version: string,
     const flag = join(HOME, 'tour-seen')
     if (req.method === 'POST') { mkdirSync(HOME, { recursive: true }); writeFileSync(flag, new Date().toISOString()) }
     return send(res, 200, { seen: existsSync(flag) })
+  }
+
+  /* The widget's settings (Settings in the pill), one set per machine. Only known keys and values are kept. */
+  if (url.pathname === '/settings' && (req.method === 'GET' || req.method === 'POST')) {
+    const file = join(HOME, 'settings.json')
+    const read = (): Record<string, string> => { try { return JSON.parse(readFileSync(file, 'utf8')) } catch { return {} } }
+    if (req.method === 'POST') {
+      const b = (await body(req)) as Record<string, unknown>
+      const next = read()
+      for (const [key, allowed] of Object.entries(SETTINGS)) {
+        const v = b?.[key]
+        if (typeof v === 'string' && allowed.includes(v)) next[key] = v
+      }
+      mkdirSync(HOME, { recursive: true })
+      writeFileSync(file, JSON.stringify(next, null, 2))
+      return send(res, 200, next)
+    }
+    return send(res, 200, read())
   }
 
   /* A Claude session hands its pane's widget a code; from then on that tab's notes go to it. */

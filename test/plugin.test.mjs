@@ -194,6 +194,14 @@ test('the first-run tour is seen once per machine: the server keeps the record',
   assert.equal((await page(s.port, 'GET', '/tour', { origin: 'http://localhost:3000' })).json.seen, true, 'and any other app on this machine sees it')
 })
 
+test('settings are kept per machine; only known keys and values are stored', async () => {
+  assert.deepEqual((await page(s.port, 'GET', '/settings')).json, {})
+  const saved = (await page(s.port, 'POST', '/settings', { body: { sizes: 'rem', colors: 'oklch', evil: 'x', __proto__: { a: 1 } } })).json
+  assert.deepEqual(saved, { sizes: 'rem', colors: 'oklch' })
+  assert.deepEqual((await page(s.port, 'POST', '/settings', { body: { sizes: 'furlongs', colors: 'hex' } })).json, { sizes: 'rem', colors: 'hex' }, 'an unknown value is ignored')
+  assert.deepEqual((await page(s.port, 'GET', '/settings', { origin: 'http://localhost:3000' })).json, { sizes: 'rem', colors: 'hex' }, 'every app on this machine sees them')
+})
+
 test('Claude gets the line the element is written on, and where its component is used', async () => {
   const r = await page(s.port, 'POST', '/comments', { body: {
     note: 'Tag text is clipped', page: 'http://localhost:5173/conversations',

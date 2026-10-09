@@ -4,6 +4,8 @@
  */
 import { describe, type Description } from './css/describe'
 import { highlight, middle, resolved } from './css/highlight'
+import { present, rootFontPx } from './css/units'
+import { prefs } from './prefs'
 import { splitList } from './css/rules'
 import { enter, leave, play } from './anim'
 import { clear, h, svg } from './dom'
@@ -51,21 +53,26 @@ export interface Card {
   readonly draft: string
   /** The open note is one already sent, being edited. */
   readonly editing: boolean
+  /** Draw the CSS again, after Settings changed how values are written. */
+  refresh(): void
 }
 
 export function renderCss(d: Description): HTMLDivElement {
   const box = h('div', { class: 'css' })
+  /* Sizes and colours as chosen in Settings. The title, the copy and the note keep the code as written. */
+  const fmt = { ...prefs.get(), rootPx: rootFontPx() }
   for (const l of d.lines) {
+    const value = present(l.value, l.prop, fmt)
     /* A long list (a font stack, layered shadows, a transition per property):
        the first item, and how many more. The whole value is in the title and the copy. */
-    const items = l.value.length > LIST_MAX ? splitList(l.value) : [l.value]
-    const shown = items.length > 1 ? items[0] : l.value
+    const items = value.length > LIST_MAX ? splitList(value) : [value]
+    const shown = items.length > 1 ? items[0] : value
     const row = h('div', { class: 'decl', title: `${l.prop}: ${l.value};${l.resolved ? `  ${l.resolved}` : ''}` },
       h('span', { class: 'c-prop' }, l.prop), h('span', { class: 'c-punct' }, ': '),
       /* The value may be cut short; the resolved value after it never is. */
       h('span', { class: 'val' }, highlight(shown)),
       items.length > 1 ? h('span', { class: 'more' }, `+${items.length - 1}`) : null,
-      l.resolved ? resolved(l.resolved) : null)
+      l.resolved ? resolved(present(l.resolved, l.prop, fmt)) : null)
     box.appendChild(row)
   }
   if (!d.lines.length) box.appendChild(h('div', { class: 'decl empty' }, 'No styles of its own'))
@@ -260,6 +267,10 @@ export function createCard(ui: HTMLElement): Card {
 
     focus() {
       parts?.note.focus({ preventScroll: true })
+    },
+
+    refresh() {
+      if (desc) for (const box of Array.from(el.querySelectorAll('.css'))) box.replaceWith(renderCss(desc))
     },
 
     pulse() {

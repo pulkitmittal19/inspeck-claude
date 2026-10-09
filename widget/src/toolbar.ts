@@ -1,4 +1,4 @@
-/* The circle in the corner that grows into the pill: CSS · Clear · Close.
+/* The circle in the corner that grows into the pill: CSS · Clear · Settings · Close.
    Freezing is the F key: the pill would mean leaving what you want to freeze.
 
    Drag it anywhere; it stays where it's dropped, remembered per site. It keeps
@@ -32,6 +32,7 @@ function savedSpot(): Spot {
 const BUTTONS: Array<{ action: string; icon: IconName; label: string; key?: string }> = [
   { action: 'css', icon: 'code', label: 'Show CSS on hover', key: 'C' },
   { action: 'clear', icon: 'trash', label: 'Clear notes on this page' },
+  { action: 'settings', icon: 'settings', label: 'Settings' },
   { action: 'close', icon: 'close', label: 'Close', key: 'Esc' },
 ]
 

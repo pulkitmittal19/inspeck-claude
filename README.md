@@ -68,7 +68,7 @@ If your app sets a Content Security Policy in development, allow `http://127.0.0
 
 ## Use
 
-Open your app and click the circle in the corner, or press **⌥ I** (Option + I). The pill opens to three buttons, CSS, Clear and Close, and you can start placing notes straight away. If the circle covers something, drag it anywhere; it stays there on that site:
+Open your app and click the circle in the corner, or press **⌥ I** (Option + I). The pill opens to four buttons, CSS, Clear, Settings and Close, and you can start placing notes straight away. Settings chooses how the CSS card writes values: sizes as written, in px or in rem (at the page's own root size), and colours as written, or as hex, rgb or oklch. Notes to Claude always carry the code as written. If the circle covers something, drag it anywhere; it stays there on that site:
 
 | | |
 |---|---|

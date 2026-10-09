@@ -192,6 +192,7 @@ button { appearance: none; background: none; border: 0; padding: 0; cursor: poin
 }
 .c-kw { color: var(--ix-c-kw); }
 .c-hex { color: var(--ix-c-hex); }
+.c-approx { margin-right: 1px; color: var(--ix-dim); cursor: help; }
 .c-fn, .c-punct { color: var(--ix-c-punct); }
 .res { margin-left: 12px; color: var(--ix-faint); }
 /* A colour chip that reads even when the colour is as dark as the card: a
@@ -361,8 +362,8 @@ button { appearance: none; background: none; border: 0; padding: 0; cursor: poin
   background: var(--ix-bg); color: var(--ix-text); box-shadow: var(--ix-shadow); font-family: var(--ix-sans);
   pointer-events: auto; transition: opacity 180ms ease, transform 240ms var(--ix-ease);
 }
-.ix[data-bar-h="left"] :is(.bar-status, .tour) { right: auto; left: var(--ix-bar-x); }
-.ix[data-bar-v="top"] :is(.bar-status, .tour) { bottom: auto; top: calc(var(--ix-bar-y) + 50px); }
+.ix[data-bar-h="left"] :is(.bar-status, .tour, .settings) { right: auto; left: var(--ix-bar-x); }
+.ix[data-bar-v="top"] :is(.bar-status, .tour, .settings) { bottom: auto; top: calc(var(--ix-bar-y) + 50px); }
 .tour[data-state="enter"] { opacity: 0; transform: translateY(6px); }
 .tour[data-state="out"] { opacity: 0; transform: translateY(4px); transition-duration: 140ms; }
 .tour-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
@@ -382,6 +383,30 @@ button { appearance: none; background: none; border: 0; padding: 0; cursor: poin
 }
 .tour-next:hover { background: var(--ix-accent-ink); }
 .tour-next:active { transform: scale(0.96); }
+
+/* Settings: a small panel from the pill, one segmented choice per row */
+.settings {
+  position: fixed; right: var(--ix-bar-x); bottom: calc(var(--ix-bar-y) + 50px); width: 236px; padding: 11px 12px 12px; border-radius: 11px;
+  background: var(--ix-bg); color: var(--ix-text); box-shadow: var(--ix-shadow); font-family: var(--ix-sans);
+  pointer-events: auto; transition: opacity 160ms ease, transform 220ms var(--ix-ease);
+}
+.settings[data-state="enter"] { opacity: 0; transform: translateY(5px) scale(0.98); }
+.settings[data-state="out"] { opacity: 0; transform: translateY(3px); transition-duration: 120ms; }
+/* The Frozen line sits where the panel opens: it steps aside while the panel is up. */
+.ix:has(.settings:not([hidden]):not([data-state="out"])) .bar-status { opacity: 0; }
+.set-title { margin: 0 0 10px; font: 600 12.5px/1 var(--ix-sans); color: #fff; }
+.set-row + .set-row { margin-top: 10px; }
+.set-label { display: block; margin-bottom: 5px; font: 500 11px/1 var(--ix-sans); color: var(--ix-dim); }
+.seg { display: flex; padding: 2px; gap: 2px; border-radius: 8px; background: rgba(255, 255, 255, 0.06); }
+.seg-opt {
+  flex: 1 1 auto; height: 24px; padding: 0 7px; border-radius: 6px; white-space: nowrap;
+  font: 500 11px/1 var(--ix-mono); color: var(--ix-dim);
+  transition: background 140ms ease, color 140ms ease, box-shadow 140ms ease;
+}
+.seg-opt:first-child { font-family: var(--ix-sans); }
+.seg-opt:hover { color: var(--ix-text); }
+.seg-opt[aria-checked="true"] { background: rgba(255, 61, 138, 0.22); color: #fff; box-shadow: 0 0 0 1px rgba(255, 61, 138, 0.45) inset; }
+.seg-opt:active { transform: scale(0.96); }
 
 /* small label that appears above a toolbar button on hover */
 .tip {

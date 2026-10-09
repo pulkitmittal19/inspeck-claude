@@ -1,10 +1,10 @@
 /* Syntax colours for a CSS value, as DOM (no innerHTML). A token reads as a
    chip with its name (`var(--text-sm)` → [text-sm]) so a linked value stands
    apart from a typed-in one at a glance; numbers are amber, keywords violet,
-   hex colours get a swatch. Copying still gives the CSS exactly as written. */
+   colours (hex, rgb, hsl, oklch…) get a swatch. Copying still gives the CSS exactly as written. */
 import { h } from '../dom'
 
-const PATTERN = /(var\()(--[\w-]+)(\s*,\s*[^)]*)?(\))|(#[0-9A-Fa-f]{3,8})\b|(-?\d*\.?\d+)(px|r?em|%|ms|s|deg|vh|vw|fr)?|([a-zA-Z-]+)(?=\()|([a-zA-Z-]+)|([^\w#-]+|-)/g
+const PATTERN = /(var\()(--[\w-]+)(\s*,\s*[^)]*)?(\))|(≈?#[0-9A-Fa-f]{3,8}\b|≈?(?:rgba?|hsla?|oklch|oklab|color)\([^()]*\))|(-?\d*\.?\d+)(px|r?em|%|ms|s|deg|vh|vw|fr)?|([a-zA-Z-]+)(?=\()|([a-zA-Z-]+)|([^\w#-]+|-)/g
 
 /** Longest token name shown whole in a chip. */
 const TOKEN_MAX = 30
@@ -51,8 +51,12 @@ export function highlight(value: string): DocumentFragment {
     if (m[1]) {
       f.appendChild(h('span', { class: 'tok', title: `var(${m[2]}${m[3] ?? ''})` }, shortName(m[2].slice(2))))
     } else if (m[5]) {
-      f.appendChild(swatch(m[5]))
-      span('c-hex', m[5])
+      /* ≈: written in a format that can't hold this colour exactly (see color.ts). */
+      const approx = m[5].startsWith('≈')
+      const c = approx ? m[5].slice(1) : m[5]
+      f.appendChild(swatch(c))
+      if (approx) f.appendChild(h('span', { class: 'c-approx', title: 'Nearest colour this format can show' }, '≈'))
+      span('c-hex', c)
     } else if (m[6]) span('c-num', m[6] + (m[7] ?? ''))
     else if (m[8]) span('c-fn', m[8])
     else if (m[9]) span('c-kw', m[9])
@@ -64,8 +68,8 @@ export function highlight(value: string): DocumentFragment {
 /** The resolved value after a token, dimmed; colours get a swatch. */
 export function resolved(value: string): HTMLSpanElement {
   const s = h('span', { class: 'res' })
-  const c = /^#[0-9A-Fa-f]{3,8}$|^(rgb|hsl|oklch|oklab|color)\(/.test(value)
-  if (c) s.appendChild(swatch(value))
+  const c = /^≈?(#[0-9A-Fa-f]{3,8}$|(rgba?|hsla?|oklch|oklab|color)\()/.test(value)
+  if (c) s.appendChild(swatch(value.replace(/^≈/, '')))
   s.append(value)
   return s
 }

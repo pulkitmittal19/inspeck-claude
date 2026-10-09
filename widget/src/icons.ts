@@ -15,6 +15,8 @@ export const ICONS = {
   check: [p('M5 12.5l4.5 4.5L19 7.5')],
   trash: [p('M4.5 7h15M9.5 7V4.5h5V7M6.5 7l1 12.5h9l1-12.5')],
   chevron: [p('M9.5 6l6 6-6 6')],
+  /* Two sliders: Settings. */
+  settings: [p('M4.5 8h8M18.5 8h1'), ['circle', { cx: '15.5', cy: '8', r: '2.25' }], p('M4.5 16h1M11.5 16h8'), ['circle', { cx: '8.5', cy: '16', r: '2.25' }]],
 } satisfies Record<string, IconSpec>
 
 export type IconName = keyof typeof ICONS

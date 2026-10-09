@@ -37092,6 +37092,10 @@ function resolveSource(at) {
 }
 
 // server/src/http.ts
+var SETTINGS = {
+  sizes: ["written", "px", "rem"],
+  colors: ["written", "hex", "rgb", "oklch"]
+};
 var PORT = Number(process.env.INSPECK_PORT) || 4848;
 var EXTRA_ORIGINS = (process.env.INSPECK_ALLOWED_ORIGINS ?? "").split(",").map((s) => s.trim()).filter(Boolean);
 function originAllowed(origin) {
@@ -37198,6 +37202,28 @@ async function route2(req, res, version2, onNew) {
       writeFileSync3(flag2, (/* @__PURE__ */ new Date()).toISOString());
     }
     return send(res, 200, { seen: existsSync4(flag2) });
+  }
+  if (url2.pathname === "/settings" && (req.method === "GET" || req.method === "POST")) {
+    const file2 = join4(HOME, "settings.json");
+    const read2 = () => {
+      try {
+        return JSON.parse(readFileSync4(file2, "utf8"));
+      } catch {
+        return {};
+      }
+    };
+    if (req.method === "POST") {
+      const b = await body(req);
+      const next = read2();
+      for (const [key, allowed] of Object.entries(SETTINGS)) {
+        const v = b?.[key];
+        if (typeof v === "string" && allowed.includes(v)) next[key] = v;
+      }
+      mkdirSync3(HOME, { recursive: true });
+      writeFileSync3(file2, JSON.stringify(next, null, 2));
+      return send(res, 200, next);
+    }
+    return send(res, 200, read2());
   }
   if (req.method === "POST" && url2.pathname === "/bind") {
     const b = await body(req);
@@ -37332,7 +37358,7 @@ if (process.argv[2] === "wait") {
   await runWait(process.argv.slice(3));
   process.exit(0);
 }
-var VERSION = "0.10.0";
+var VERSION = "0.11.0";
 var log = (msg) => process.stderr.write(`inspeck: ${msg}
 `);
 var INSTRUCTIONS = `Inspeck lets a person hover any element of their web app to see its CSS, and click it to leave a note for you. Their notes arrive here.
