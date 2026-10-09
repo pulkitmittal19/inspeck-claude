@@ -396,7 +396,7 @@ button { appearance: none; background: none; border: 0; padding: 0; cursor: poin
 
 /* Settings: a small panel from the pill, one segmented choice per row */
 .settings {
-  position: fixed; right: var(--ix-bar-x); bottom: calc(var(--ix-bar-y) + 50px); width: 236px; padding: 11px 12px 12px; border-radius: 11px;
+  position: fixed; right: var(--ix-bar-x); bottom: calc(var(--ix-bar-y) + 50px); width: 236px; padding: 14px 14px 16px; border-radius: 12px;
   background: var(--ix-bg); color: var(--ix-text); box-shadow: var(--ix-shadow); font-family: var(--ix-sans);
   pointer-events: auto; transition: opacity 160ms ease, transform 220ms var(--ix-ease);
 }
@@ -404,9 +404,9 @@ button { appearance: none; background: none; border: 0; padding: 0; cursor: poin
 .settings[data-state="out"] { opacity: 0; transform: translateY(3px); transition-duration: 120ms; }
 /* The Frozen line sits where the panel opens: it steps aside while the panel is up. */
 .ix:has(.settings:not([hidden]):not([data-state="out"])) .bar-status { opacity: 0; }
-.set-title { margin: 0 0 10px; font: 600 12.5px/1 var(--ix-sans); color: #fff; }
-.set-row + .set-row { margin-top: 10px; }
-.set-label { display: block; margin-bottom: 5px; font: 500 11px/1 var(--ix-sans); color: var(--ix-dim); }
+.set-title { margin: 0 0 16px; font: 600 12.5px/1 var(--ix-sans); color: #fff; }
+.set-row + .set-row { margin-top: 16px; }
+.set-label { display: block; margin-bottom: 8px; font: 500 11px/1 var(--ix-sans); color: var(--ix-dim); }
 .seg { display: flex; padding: 2px; gap: 2px; border-radius: 8px; background: rgba(255, 255, 255, 0.06); }
 .seg-opt {
   flex: 1 1 auto; height: 24px; padding: 0 7px; border-radius: 6px; white-space: nowrap;
@@ -418,7 +418,7 @@ button { appearance: none; background: none; border: 0; padding: 0; cursor: poin
 .seg-opt[aria-checked="true"] { background: rgba(255, 61, 138, 0.22); color: #fff; box-shadow: 0 0 0 1px rgba(255, 61, 138, 0.45) inset; }
 .seg-opt:active { transform: scale(0.96); }
 /* An on/off row: the label, and a switch at the end. */
-.set-toggle { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding-top: 10px; border-top: 1px solid var(--ix-line); }
+.set-toggle { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding-top: 16px; border-top: 1px solid var(--ix-line); }
 .set-toggle .set-label { margin: 0; color: var(--ix-text); }
 .switch {
   position: relative; flex: none; width: 30px; height: 18px; border-radius: 9px; background: rgba(255, 255, 255, 0.14);
