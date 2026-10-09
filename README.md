@@ -58,7 +58,7 @@ Open your app and click the circle in the corner, or press **⌥ I** (Option + I
 | **Hover** | an outline on the element, nothing else: Inspeck stays out of the way while you look for what to note |
 | **C** or `</>` | CSS on hover: the element's key CSS follows the pointer (5–6 declarations for its kind; a value from a token shows the token's name in a chip, with the real value beside it). Remembered across reloads |
 | **Drag** | across a section, as in Figma: every element the box covers is outlined, and one note goes on all of them. Over empty space, the note is on that area |
-| **Click** | pin a card to it and write a note. Its CSS is there, folded to one line of key values; click that line (or the card's top line) to open it. With CSS on hover on, it opens spread out. **Enter** sends it to Claude, **Shift+Enter** adds a line, **Esc** or a click anywhere else closes it (an unsent note is kept: click the same element again to carry on) |
+| **Click** | pin a card to it and write a note. Its CSS is there, folded: click the card's top line (the › chevron) to open it. With CSS on hover on, it opens spread out. **Enter** sends it to Claude, **Shift+Enter** adds a line, **Esc** or a click anywhere else closes it (an unsent note is kept: click the same element again to carry on) |
 | **↑ / ↓** | the element's parent or child |
 | **Hold Shift** | padding, margin and the gaps between children, with numbers. Keep holding and move to another element: the distance between the two |
 | **Hold Space** | clicks go to your app: open a menu, then note something inside it |
