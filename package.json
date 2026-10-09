@@ -1,6 +1,6 @@
 {
   "name": "inspeck-claude",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "private": true,
   "description": "Inspeck: hover any element to see its CSS, click to leave a note for Claude.",
   "type": "module",
