@@ -480,6 +480,8 @@ export class App {
     }
     /* The pointer over our own UI (a marker, the pill) isn't pointing at the page. */
     if (e.type === 'pointerover' && this.open && !this.pinned) this.setTarget(null)
+    /* Escape puts Settings away first, wherever the focus is (even in a note's text box). */
+    if (e.type === 'keydown' && (e as KeyboardEvent).key === 'Escape' && this.settings.open) { e.preventDefault(); this.settings.hide(); return }
     /* A press anywhere but the panel and its button puts Settings away. */
     if (e.type === 'pointerdown' && this.settings.open && !this.settings.contains(e) && actionOf(e)?.action !== 'settings') this.settings.hide()
     if (this.settings.handle(e)) return
