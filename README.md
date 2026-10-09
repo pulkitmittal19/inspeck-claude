@@ -66,7 +66,7 @@ If your app sets a Content Security Policy in development, allow `http://127.0.0
 
 ## Use
 
-Open your app and click the circle in the corner, or press **⌥ I** (Option + I). The pill opens to three buttons, CSS, Clear and Close, and you can start placing notes straight away:
+Open your app and click the circle in the corner, or press **⌥ I** (Option + I). The pill opens to three buttons, CSS, Clear and Close, and you can start placing notes straight away. If the circle covers something, drag it anywhere; it stays there on that site:
 
 | | |
 |---|---|

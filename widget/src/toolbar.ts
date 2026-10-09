@@ -1,10 +1,33 @@
 /* The circle in the corner that grows into the pill: CSS · Clear · Close.
-   Freezing is the F key: the pill would mean leaving what you want to freeze. */
+   Freezing is the F key: the pill would mean leaving what you want to freeze.
+
+   Drag it anywhere; it stays where it's dropped, remembered per site. It keeps
+   its distance from the nearest side and the nearest top or bottom, so a
+   resized window doesn't lose it, and the pill, its tips, the Frozen line and
+   the tour open toward the middle of the screen. */
 import { enter, leave } from './anim'
 import { h, svg } from './dom'
 import { ICONS, type IconName } from './icons'
 import { actionOf } from './router'
 import { nextFrame } from './native'
+
+const SPOT_KEY = 'inspeck:pill'
+/** Closest the circle comes to the window's edge. */
+const MARGIN = 12
+/** A press that moves this far is a drag, not a click. */
+const DRAG_PX = 4
+
+/** Where the circle sits: its distance from the nearer side and the nearer top or bottom. */
+interface Spot { h: 'left' | 'right'; dx: number; v: 'top' | 'bottom'; dy: number }
+const HOME: Spot = { h: 'right', dx: 20, v: 'bottom', dy: 20 }
+
+function savedSpot(): Spot {
+  try {
+    const s = JSON.parse(localStorage.getItem(SPOT_KEY) ?? 'null') as Spot | null
+    if (s && (s.h === 'left' || s.h === 'right') && (s.v === 'top' || s.v === 'bottom') && Number.isFinite(s.dx) && Number.isFinite(s.dy)) return s
+  } catch { /* blocked or broken: home */ }
+  return HOME
+}
 
 const BUTTONS: Array<{ action: string; icon: IconName; label: string; key?: string }> = [
   { action: 'css', icon: 'code', label: 'Show CSS on hover', key: 'C' },
@@ -32,8 +55,9 @@ export function createToolbar(ui: HTMLElement): Toolbar {
   const btns = BUTTONS.map((b, i) => {
     const el = h('button', { type: 'button', class: 'btn', 'data-action': b.action, 'aria-label': b.label, 'data-tip': b.label, 'data-key': b.key },
       svg(ICONS[b.icon], 16))
-    /* Icons land one after another, starting from the corner. */
+    /* Icons land one after another, starting from the circle: --i on the right, --j on the left. */
     el.style.setProperty('--i', String(BUTTONS.length - 1 - i))
+    el.style.setProperty('--j', String(i))
     return el
   })
   const row = h('div', { class: 'row' }, ...btns)
@@ -43,6 +67,41 @@ export function createToolbar(ui: HTMLElement): Toolbar {
   const tip = h('div', { class: 'tip', role: 'tooltip' })
   const status = h('div', { class: 'bar-status', role: 'status', hidden: true })
   ui.append(bar, tip, status)
+
+  /* Where it sits: custom properties the pill, the Frozen line and the tour all read. */
+  let spot = savedSpot()
+  const place = (s: Spot) => {
+    spot = s
+    ui.dataset.barH = s.h
+    ui.dataset.barV = s.v
+    ui.style.setProperty('--ix-bar-dx', `${Math.round(s.dx)}px`)
+    ui.style.setProperty('--ix-bar-dy', `${Math.round(s.dy)}px`)
+  }
+  place(spot)
+
+  /* Dragging: from a press that moves a few pixels, the pill follows the pointer. */
+  let press: { id: number; x: number; y: number; ox: number; oy: number; held: Element } | null = null
+  let dragging = false
+  let eatClick = false
+  const follow = (p: PointerEvent) => {
+    const r = bar.getBoundingClientRect()
+    const W = window.innerWidth, H = window.innerHeight
+    const left = Math.min(Math.max(p.clientX - press!.ox, MARGIN), W - r.width - MARGIN)
+    const top = Math.min(Math.max(p.clientY - press!.oy, MARGIN), H - r.height - MARGIN)
+    const toLeft = left + r.width / 2 < W / 2
+    const toTop = top + r.height / 2 < H / 2
+    place({ h: toLeft ? 'left' : 'right', dx: toLeft ? left : W - left - r.width, v: toTop ? 'top' : 'bottom', dy: toTop ? top : H - top - r.height })
+  }
+  const drop = () => {
+    if (!press) return
+    try { press.held.releasePointerCapture(press.id) } catch { /* already gone */ }
+    press = null
+    if (!dragging) return
+    dragging = false
+    eatClick = true
+    bar.removeAttribute('data-dragging')
+    try { localStorage.setItem(SPOT_KEY, JSON.stringify(spot)) } catch { /* private window: this visit only */ }
+  }
 
   /* The open width is whatever the buttons need, plus the padding. */
   nextFrame(() => bar.style.setProperty('--ix-open-w', `${row.scrollWidth + 8}px`))
@@ -62,7 +121,8 @@ export function createToolbar(ui: HTMLElement): Toolbar {
     const r = el.getBoundingClientRect()
     const w = tip.offsetWidth
     tip.style.left = `${Math.min(window.innerWidth - w - 8, Math.max(8, r.left + r.width / 2 - w / 2))}px`
-    tip.style.top = `${r.top - 34}px`
+    /* Above, unless the pill was dragged to the top of the window. */
+    tip.style.top = `${r.top - 34 < 8 ? r.bottom + 8 : r.top - 34}px`
     tip.setAttribute('data-show', '')
   }
 
@@ -111,6 +171,35 @@ export function createToolbar(ui: HTMLElement): Toolbar {
       /* The pill's buttons never take the keyboard: after clicking one, F,
          Space and Shift still reach the page. */
       if (e.type === 'mousedown' && e.composedPath().some(n => n === bar)) { e.preventDefault(); return null }
+      if (e.type === 'pointerdown') {
+        const p = e as PointerEvent
+        eatClick = false
+        if (p.button !== 0 || !e.composedPath().includes(bar)) return null
+        const r = bar.getBoundingClientRect()
+        /* Hold the pointer on what was pressed: the moves come here even once it leaves the
+           pill, and a press without a drag is still a click on that button. */
+        const held = e.composedPath()[0] as Element
+        try { held.setPointerCapture(p.pointerId) } catch { /* a synthetic pointer */ }
+        press = { id: p.pointerId, x: p.clientX, y: p.clientY, ox: p.clientX - r.left, oy: p.clientY - r.top, held }
+        return null
+      }
+      if (e.type === 'pointermove' && press && (e as PointerEvent).pointerId === press.id) {
+        const p = e as PointerEvent
+        if (!dragging && Math.hypot(p.clientX - press.x, p.clientY - press.y) >= DRAG_PX) {
+          dragging = true
+          bar.setAttribute('data-dragging', '')
+          showTip(null)
+        }
+        if (dragging) follow(p)
+        return null
+      }
+      if ((e.type === 'pointerup' || e.type === 'pointercancel') && press && (e as PointerEvent).pointerId === press.id) {
+        drop()
+        return null
+      }
+      /* The click that ends a drag isn't a click on the pill. */
+      if (e.type === 'click' && eatClick) { eatClick = false; return null }
+      if (dragging) return null
       if (e.type === 'pointerover') {
         const a = actionOf(e)
         showTip(a?.el ?? null)

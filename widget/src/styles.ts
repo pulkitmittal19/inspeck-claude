@@ -64,9 +64,15 @@ button { appearance: none; background: none; border: 0; padding: 0; cursor: poin
    then the buttons arrive one by one from the corner.
    Closing: the buttons let go together, then the pill draws back in and the
    glyph returns. Closing is quicker than opening. */
+/* Where the pill sits (toolbar.ts sets the distances; dragged, it can be anywhere).
+   Kept on screen if the window shrinks. */
+.ix {
+  --ix-bar-x: min(var(--ix-bar-dx, 20px), calc(100vw - 52px));
+  --ix-bar-y: min(var(--ix-bar-dy, 20px), calc(100vh - 52px));
+}
 .bar {
-  position: fixed; right: 20px; bottom: 20px; height: 40px; width: 40px;
-  border-radius: 20px; background: var(--ix-bg); overflow: hidden; pointer-events: auto;
+  position: fixed; right: var(--ix-bar-x); bottom: var(--ix-bar-y); height: 40px; width: 40px;
+  border-radius: 20px; background: var(--ix-bg); overflow: hidden; pointer-events: auto; touch-action: none;
   box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.07) inset, 0 8px 24px rgba(0, 0, 0, 0.24), 0 1px 3px rgba(0, 0, 0, 0.2);
   transition: width 260ms var(--ix-ease-io) 70ms, transform 180ms var(--ix-ease), box-shadow 200ms ease;
 }
@@ -75,6 +81,13 @@ button { appearance: none; background: none; border: 0; padding: 0; cursor: poin
 .bar:not([data-open]):active { transform: scale(0.94); transition-duration: 90ms; }
 /* Frozen: a quiet pink ring around the whole pill, so you know the page is held. */
 .bar[data-frozen] { box-shadow: 0 0 0 1.5px rgba(255, 61, 138, 0.75) inset, 0 8px 24px rgba(0, 0, 0, 0.24), 0 0 0 4px rgba(255, 61, 138, 0.14); }
+/* Picked up: it lifts a little and follows the pointer. */
+.ix .bar[data-dragging] { transform: scale(1.08); cursor: grabbing; box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.07) inset, 0 16px 36px rgba(0, 0, 0, 0.32), 0 2px 6px rgba(0, 0, 0, 0.2); }
+/* On the left half of the screen it opens to the right; on the top half its lines sit below it. */
+.ix[data-bar-h="left"] .bar { right: auto; left: var(--ix-bar-x); }
+.ix[data-bar-v="top"] .bar { bottom: auto; top: var(--ix-bar-y); }
+.ix[data-bar-h="left"] .bar .logo { right: auto; left: 0; }
+.ix[data-bar-h="left"] .bar .row { right: auto; left: 4px; }
 
 .bar .logo {
   position: absolute; right: 0; top: 0; width: 40px; height: 40px; border-radius: 20px;
@@ -103,6 +116,9 @@ button { appearance: none; background: none; border: 0; padding: 0; cursor: poin
   transition: opacity 220ms ease, transform 420ms var(--ix-ease), background 140ms ease, color 140ms ease;
   transition-delay: calc(90ms + var(--i, 0) * 45ms), calc(90ms + var(--i, 0) * 45ms), 0ms, 0ms;
 }
+.ix[data-bar-h="left"] .bar .btn { transform: translateX(-8px) scale(0.86); }
+.ix[data-bar-h="left"] .bar[data-open] .btn { transform: none; transition-delay: calc(90ms + var(--j, 0) * 45ms), calc(90ms + var(--j, 0) * 45ms), 0ms, 0ms; }
+.ix[data-bar-h="left"] .bar[data-open] .btn:active { transform: scale(0.9); }
 .bar .btn:hover { background: rgba(255, 255, 255, 0.1); color: #fff; }
 .bar .btn:active { transform: scale(0.9); transition-duration: 80ms; }
 .bar .btn[aria-pressed="true"] { background: rgba(255, 61, 138, 0.26); color: #fff; }
@@ -331,7 +347,7 @@ button { appearance: none; background: none; border: 0; padding: 0; cursor: poin
 
 /* a line above the pill while something lasts: frozen, or counting down to it */
 .bar-status {
-  position: fixed; right: 20px; bottom: 70px; pointer-events: none; padding: 6px 10px; border-radius: 8px;
+  position: fixed; right: var(--ix-bar-x); bottom: calc(var(--ix-bar-y) + 50px); pointer-events: none; padding: 6px 10px; border-radius: 8px;
   background: var(--ix-bg); color: var(--ix-text); font: 500 11.5px/1 var(--ix-sans); white-space: nowrap;
   box-shadow: 0 0 0 1px rgba(255, 61, 138, 0.45), var(--ix-shadow);
   transition: opacity 160ms ease, transform 200ms var(--ix-ease);
@@ -341,10 +357,12 @@ button { appearance: none; background: none; border: 0; padding: 0; cursor: poin
 
 /* the first-run tour: one card above the pill, a step at a time */
 .tour {
-  position: fixed; right: 20px; bottom: 70px; width: 248px; padding: 12px 13px 11px; border-radius: 11px;
+  position: fixed; right: var(--ix-bar-x); bottom: calc(var(--ix-bar-y) + 50px); width: 248px; padding: 12px 13px 11px; border-radius: 11px;
   background: var(--ix-bg); color: var(--ix-text); box-shadow: var(--ix-shadow); font-family: var(--ix-sans);
   pointer-events: auto; transition: opacity 180ms ease, transform 240ms var(--ix-ease);
 }
+.ix[data-bar-h="left"] :is(.bar-status, .tour) { right: auto; left: var(--ix-bar-x); }
+.ix[data-bar-v="top"] :is(.bar-status, .tour) { bottom: auto; top: calc(var(--ix-bar-y) + 50px); }
 .tour[data-state="enter"] { opacity: 0; transform: translateY(6px); }
 .tour[data-state="out"] { opacity: 0; transform: translateY(4px); transition-duration: 140ms; }
 .tour-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
