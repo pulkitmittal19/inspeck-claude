@@ -118,15 +118,14 @@ button { appearance: none; background: none; border: 0; padding: 0; cursor: poin
 
 /* ---------- the outline that follows the element under the pointer ---------- */
 .outline {
-  position: fixed; left: 0; top: 0; pointer-events: none; will-change: transform;
+  position: fixed; left: 0; top: 0; pointer-events: none; will-change: transform, width, height;
   border: 1.5px solid var(--ix-accent); border-radius: 3px;
   box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.5);
-  transition: opacity 120ms ease;
+  transition: opacity 120ms ease, border-radius 180ms var(--ix-ease);
 }
 .outline[data-state="enter"] { opacity: 0; }
 .outline[data-state="out"] { opacity: 0; transition-duration: 90ms; }
-/* Moving to another element: glide there. While scrolling it follows instantly. */
-.outline[data-glide] { transition: transform 150ms var(--ix-ease), width 150ms var(--ix-ease), height 150ms var(--ix-ease), border-radius 150ms var(--ix-ease), opacity 120ms ease; }
+/* Its movement is eased frame by frame in outline.ts; only the corner rounding is a transition. */
 .outline[data-through] { border-style: dashed; opacity: 0.6; }
 
 /* ---------- the CSS card ---------- */
@@ -140,7 +139,6 @@ button { appearance: none; background: none; border: 0; padding: 0; cursor: poin
 }
 .card[data-state="enter"] { opacity: 0; transform: translateY(var(--ix-rise, 4px)) scale(0.985); }
 .card[data-state="out"] { opacity: 0; transform: translateY(2px) scale(0.98); transition: opacity 110ms var(--ix-ease-in), transform 140ms var(--ix-ease-in); }
-.card[data-glide] { transition: opacity 160ms ease, transform 220ms var(--ix-ease), box-shadow 200ms ease, left 150ms var(--ix-ease), top 150ms var(--ix-ease); }
 .card[data-pinned] { pointer-events: auto; box-shadow: 0 0 0 1.5px rgba(255, 255, 255, 0.2) inset, 0 16px 40px rgba(0, 0, 0, 0.36); }
 /* Sent: the card bows out toward its marker. */
 .card[data-state="out"][data-sent] { transform: scale(0.94); transition: opacity 180ms var(--ix-ease-in), transform 220ms var(--ix-ease-in); }

@@ -95,7 +95,6 @@ function reveal(cls: string, open: boolean, ...children: Array<Node | null>): HT
 }
 const setOpen = (el: HTMLElement | null | undefined, open: boolean) => el?.toggleAttribute('data-open', open)
 
-const GLIDE_MS = 170
 /** Fold the CSS away on the first keystroke of a note. Off while we try the card with the CSS always showing. */
 const AUTO_FOLD = false
 const SENT_HOLD_MS = 750
@@ -115,14 +114,6 @@ export function createCard(ui: HTMLElement): Card {
   let folded = false
   /** The CSS folds by itself once, on the first keystroke; after that only you fold or open it. */
   let autoFolded = false
-  let glide = 0
-
-  const glideNow = () => {
-    el.setAttribute('data-glide', '')
-    clearTimeout(glide)
-    glide = window.setTimeout(() => el.removeAttribute('data-glide'), GLIDE_MS)
-  }
-
   const setFolded = (f: boolean) => {
     if (!parts) return
     folded = f
@@ -190,7 +181,6 @@ export function createCard(ui: HTMLElement): Card {
 
     showHover(target) {
       if (mode === 'pinned') return
-      const visible = !el.hidden && el.dataset.state !== 'out'
       if (target !== lastTarget || mode !== 'hover') {
         lastTarget = target
         desc = describe(target)
@@ -198,9 +188,8 @@ export function createCard(ui: HTMLElement): Card {
         el.removeAttribute('data-pinned')
         el.removeAttribute('data-sent')
         el.removeAttribute('data-folded')
+        /* Already showing for another element, it moves with the outline's glide (see place). */
         el.append(renderHead(desc), renderCss(desc))
-        /* Already showing for another element: glide over rather than blink. */
-        if (visible) glideNow()
       }
       mode = 'hover'
       enter(el)
