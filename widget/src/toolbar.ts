@@ -100,7 +100,8 @@ export function createToolbar(ui: HTMLElement): Toolbar {
       armedFor = null
       el.dataset.say = text
       showTip(el, true)
-      window.setTimeout(() => { delete el.dataset.say; if (tipFor === el) showTip(el, true) }, 1800)
+      /* When the word has been said: back to the usual tip if the pointer is on the button, else gone. */
+      window.setTimeout(() => { delete el.dataset.say; if (tipFor === el) showTip(el.matches(':hover') ? el : null, true) }, 1800)
     },
     setPressed(action, on) {
       bar.querySelector(`[data-action="${action}"]`)?.setAttribute('aria-pressed', String(on))
