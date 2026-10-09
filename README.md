@@ -69,7 +69,7 @@ Open your app and click the circle in the corner, or press **⌥ I** (Option + I
 
 Each note also tells Claude where the element is written in your code (`convo-tag.jsx:22`) and where its component is used. It reads this in development from React (including React 19 on big pages, by finding each component in your source), Vue, Svelte, or any app using code-inspector-plugin, react-dev-inspector or vite-plugin-vue-inspector. Without any of these (a page rendered by Rails, Django or PHP), Claude finds the code by the element's text, classes and selector instead. Notes are kept per page, and a hash route (`#/settings`) counts as its own page.
 
-Your notes stay on the page as numbered markers. Hover one to read it, click it to edit or delete. A marker leaves the page as soon as Claude has read its note; Claude still has it until it's marked done. A note on something inside a menu remembers the way in ("in More › Share"); when the menu closes, its marker waits on the button that opens it.
+Your notes stay on the page as numbered markers. Hover one to read it, click it to edit or delete. When you ask Claude to check your notes, it reads every new one, and their markers leave the page: you never clear what you've handed over. Claude keeps each note until it marks it done. A note on something inside a menu remembers the way in ("in More › Share"); when the menu closes, its marker waits on the button that opens it.
 
 ## Claude's side
 
@@ -79,7 +79,7 @@ In your own browser (Chrome, Safari, Arc), Inspeck works the same way. To tell C
 
 | Shown as | Tool | |
 |---|---|---|
-| Check comments | `pending` | what's waiting for this session, by page |
+| Check comments | `pending` | every new note in full; reading them clears their markers from the page |
 | Open comment | `get` | one note in full |
 | Wait for comments | `watch` | wait in the foreground until one arrives |
 | Link browser tab | `bind` | send a browser tab's notes to this session |

@@ -36,7 +36,7 @@ async function session(name) {
   const client = new Client({ name: `claude-${name}`, version: '0' })
   await client.connect(new StdioClientTransport({ command: process.execPath, args: [join(dir, 'inspeck.mjs')], cwd: dir, env, stderr: 'ignore' }))
   cleanup.push(() => { void client.close(); rmSync(dir, { recursive: true, force: true }) })
-  return { name, dir, pid, env, client, tool: async (n, a = {}) => (await client.callTool({ name: n, arguments: a })).content[0].text }
+  return { name, dir, pid, env, client, tool: async (n, a = {}) => (await client.callTool({ name: n, arguments: a })).content.filter(c => c.type === 'text').map(c => c.text).join('\n') }
 }
 
 function post(path, body, origin = 'http://localhost:5173') {
@@ -84,8 +84,8 @@ test('a code no session owns binds nothing', async () => {
 test('the background watcher wakes for its own session’s note and leaves others alone', async () => {
   const bindA = await post('/bind', { tabId: 'tab-a', token: tokenFrom(await A.tool('bind')) })
   assert.equal(bindA.status, 200)
-  /* B picks up what's already waiting for it, so the watcher starts clean. */
-  assert.match(await B.tool('watch', { seconds: 5 }), /Only for B/)
+  /* B has read what was waiting for it (checking its notes, above), so the watcher starts clean. */
+  await B.tool('pending')
   const waiter = spawn(process.execPath, [join(B.dir, 'inspeck.mjs'), 'wait', '--minutes', '1'], { env: B.env, cwd: B.dir })
   let out = ''
   waiter.stdout.on('data', c => { out += c })
@@ -159,6 +159,6 @@ test('with one session open, an unbound tab’s note goes to it', async () => {
   }
   assert.equal(r.status, 201)
   assert.equal(r.json.comment.to.how, 'only')
-  const pending = (await S.client.callTool({ name: 'pending', arguments: {} })).content[0].text
+  const pending = (await S.client.callTool({ name: 'pending', arguments: {} })).content.map(c => c.text ?? '').join('\n')
   assert.match(pending, /Unbound tab/)
 })

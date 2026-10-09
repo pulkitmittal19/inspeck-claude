@@ -46,7 +46,7 @@ Setting up, once per session, when you open the person's app in your browser pan
    It finishes, printing the notes, the moment one arrives. Handle them, then start it again.
 If the person uses their own browser (Chrome, Safari) instead of your pane, call bind with page set to the app's address instead of running a line: every note from that site, in any browser, then comes here. Saying "check my Inspeck notes" (pending) also takes notes no other session could have picked up, and links their site to you.
 
-Working through notes: pending lists what's waiting, get opens one, watch waits for new ones in the foreground, a note's marker leaves the page once you've read it (get, watch or the watcher); resolve closes it with one line saying what changed, dismiss declines with a reason.
+Working through notes: pending gives every new note in full (and lists ones read before), get opens one again, watch waits for new ones in the foreground. Reading a note (pending, get, watch or the watcher) clears its marker from the page, so the person never clears notes by hand. resolve closes a note with one line saying what changed, dismiss declines with a reason.
 
 Talk to the person only here in the chat. The page shows their notes, never your answers: if a note is unclear, ask in the chat.
 
@@ -90,7 +90,7 @@ const server = new McpServer(
 
 server.registerTool('pending', {
   title: 'Check comments',
-  description: 'List open Inspeck comments — fixes and references that have not been resolved or declined — grouped by page. Pass page (a URL) to see one page only.',
+  description: 'Read the person\'s Inspeck comments: every one you haven\'t read yet, in full, and a line for each you already have that is still open. Reading them clears their markers from the page. Pass page (a URL) for one page only.',
   inputSchema: { page: z.string().optional().describe('Only this page, as a URL') },
   annotations: { readOnlyHint: true },
 }, async ({ page }) => {
@@ -105,11 +105,24 @@ server.registerTool('pending', {
     : ''
   const list = store.open(page).filter(mine)
   if (!list.length) return text(took + (page ? `Nothing open on ${pageLabel(page)}.` : 'Nothing open. When the person places a comment, it will show up here.'))
-  const byPage = new Map<string, Comment[]>()
-  for (const c of list) byPage.set(c.page, [...(byPage.get(c.page) ?? []), c])
-  const blocks = [...byPage].map(([p, cs]) =>
-    `${pageLabel(p)} — ${cs.length} open\n${cs.map(summaryLine).join('\n')}`)
-  return text(`${took}${blocks.join('\n\n')}\n\nOpen one with get and its id.`)
+  /* Asking to read the notes reads them: each new one comes in full, and is
+     marked read, so its marker leaves the page. The person never has to clear
+     what they've handed over. Ones read before get a line each. */
+  const fresh = list.filter(c => c.status === 'new')
+  const earlier = list.filter(c => c.status !== 'new')
+  store.markAllSeen(fresh.map(c => c.id))
+  const pages = [...new Set(fresh.map(c => pageLabel(c.page)))]
+  const head = fresh.length
+    ? `${fresh.length} new note${fresh.length === 1 ? '' : 's'}${pages.length ? ` from ${pages.join(', ')}` : ''}. They're cleared from the page now; resolve or dismiss each when you've dealt with it.`
+    : 'No new notes.'
+  const tail = earlier.length
+    ? [{ type: 'text' as const, text: `Read before, still open:\n${earlier.map(summaryLine).join('\n')}\n\nOpen one again with get and its id.` }]
+    : []
+  return { content: [
+    { type: 'text' as const, text: took + head },
+    ...fresh.flatMap(c => [{ type: 'text' as const, text: '———' }, ...contentFor({ ...c, status: 'seen' })]),
+    ...tail,
+  ] }
 })
 
 server.registerTool('get', {

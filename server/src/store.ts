@@ -200,6 +200,12 @@ export function adopt(which: (c: Comment) => boolean, to: NonNullable<Comment['t
   })
 }
 
+/** Mark these as read in one write: their markers leave the page. */
+export function markAllSeen(ids: string[]): void {
+  if (!ids.length) return
+  change(inbox => { for (const c of inbox.comments) if (ids.includes(c.id) && c.status === 'new') c.status = 'seen' })
+}
+
 export function markSeen(id: string): Comment | undefined {
   return change(inbox => {
     const c = inbox.comments.find(x => x.id === id)

@@ -16,6 +16,8 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
+/** Every text block of a tool's reply, as one string. */
+const allText = r => r.content.filter(c => c.type === 'text').map(c => c.text).join('\n')
 const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='
 
 /* A page, over HTTP. node:http rather than fetch so Origin and Host can be set
@@ -269,13 +271,19 @@ test('a malformed comment is refused with a reason', async () => {
   assert.match(r.json.error, /Inspeck format/)
 })
 
-test('Check comments lists both kinds, grouped by page', async () => {
+test('Check comments hands over every new note in full, and that clears them from the page', async () => {
   const r = await s.client.callTool({ name: 'pending', arguments: {} })
-  const out = r.content[0].text
-  assert.match(out, /localhost:5173\/v2\/conversations — 1 open/)
-  assert.match(out, /linear\.app\/team\/issues — 1 open/)
-  assert.match(out, /Fix\s+Row padding is tight/)
-  assert.match(out, /Reference\s+Filter chips/)
+  const out = allText(r)
+  assert.match(out, /^2 new notes from .*localhost:5173\/v2\/conversations/m)
+  assert.match(out, /linear\.app\/team\/issues/)
+  assert.match(out, /Row padding is tight/)
+  assert.match(out, /Filter chips/)
+  assert.match(out, /source\s+ConversationList › ConversationRow › Meta/, 'in full, not a summary')
+  const after = await page(s.port, 'GET', '/comments?page=' + encodeURIComponent(fix.page))
+  assert.equal(after.json.comments[0].status, 'seen', 'read: its marker leaves the page')
+  const again = allText(await s.client.callTool({ name: 'pending', arguments: {} }))
+  assert.match(again, /^No new notes\./m)
+  assert.match(again, /Read before, still open:[\s\S]*Row padding is tight/)
 })
 
 test('Open comment gives Claude the words and the picture', async () => {
@@ -364,7 +372,7 @@ test('a pushed comment stays open, so a session not listening still finds it', a
   await page(s.port, 'POST', '/comments', { body: { ...fix, note: 'Pushed but maybe unheard', screenshot: undefined } })
   await new Promise(r => setTimeout(r, 300))
   const r = await s.client.callTool({ name: 'pending', arguments: {} })
-  assert.match(r.content[0].text, /Pushed but maybe unheard\s+· new/)
+  assert.match(allText(r), /Pushed but maybe unheard/)
 })
 
 test('two sessions share one inbox, and a comment is pushed to only one', async () => {
@@ -378,7 +386,7 @@ test('two sessions share one inbox, and a comment is pushed to only one', async 
     assert.equal(first.pushed.length + second.pushed.length, 1, 'pushed once, not twice')
     for (const session of [first, second]) {
       const r = await session.client.callTool({ name: 'pending', arguments: {} })
-      assert.match(r.content[0].text, /Seen by both, pushed to one/, 'both sessions can find it')
+      assert.match(allText(r), /Seen by both, pushed to one/, 'both sessions can find it')
     }
   } finally {
     await second.stop()

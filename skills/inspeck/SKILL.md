@@ -46,7 +46,7 @@ For a note `inside` a menu, open that menu in the pane (click the button the lin
 ## Working through several
 
 - **Notes arrive from the watcher:** handle each, resolve each, then start the watcher again in the background.
-- **Asked to check:** `pending`, then handle each open note oldest first.
+- **Asked to check:** `pending`. It gives you every new note in full and clears them from the person's page, so read them all from that one reply; handle them oldest first.
 - **Asked to watch in the foreground:** `watch`, handle what it returns, then `watch` again until the person says stop.
 
 The widget doesn't show replies on the page, so ask questions here in the chat. Use `dismiss` with a reason when you won't make a change.

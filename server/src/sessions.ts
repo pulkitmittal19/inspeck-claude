@@ -220,6 +220,8 @@ export function belongsTo(to: Route | undefined, me: number | null, myCwd: strin
   if (to.pid && to.pid === me) return true
   /* Addressed to a session that is still open: theirs. */
   if (to.pid && alive(to.pid)) return false
-  /* Its session closed, or nobody had it yet: any session in the same project may take it. */
-  return !to.cwd || sameProject(myCwd, to.cwd)
+  /* Its session closed, or nobody had it yet: any session in the same project may take it.
+     With no project known (a page whose server isn't on this machine's ports), only a session
+     that asks for its notes takes it (see `unclaimed`), never a watcher by itself. */
+  return !!to.cwd && sameProject(myCwd, to.cwd)
 }
