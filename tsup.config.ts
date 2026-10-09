@@ -42,6 +42,16 @@ export default defineConfig([
     outExtension: ({ format }) => ({ js: format === 'cjs' ? '.cjs' : '.js' }),
     platform: 'node',
     target: 'node18',
-    clean: true,
+    clean: ['vite.js', 'vite.cjs'],
+  },
+  /* `npx inspeck init`: the command, and its parts on their own for the tests. */
+  {
+    entry: { bin: 'packages/inspeck/src/bin.ts', cli: 'packages/inspeck/src/cli.ts' },
+    outDir: 'packages/inspeck/dist',
+    format: ['esm'],
+    outExtension: () => ({ js: '.js' }),
+    platform: 'node',
+    target: 'node18',
+    splitting: false,
   },
 ])

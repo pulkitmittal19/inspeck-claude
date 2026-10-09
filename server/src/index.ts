@@ -41,7 +41,7 @@ const INSTRUCTIONS = `Inspeck lets a person hover any element of their web app t
 Each note carries the element's selector, the React component that rendered it, its key CSS exactly as written (tokens as var(--x), with the resolved value), and, for things inside a menu, the buttons that open it ("inside More › Share"). A note on a dragged area lists each element inside it (or says it's empty space) with the area's position; treat it as one request about all of them.
 
 Setting up, once per session, when you open the person's app in your browser pane:
-1. Call bind. It returns one line of JavaScript; run it in the browser pane tab showing the app. Notes from that tab now come to this session.
+1. Call bind. It returns one line of JavaScript; run it in the browser pane tab showing the app. If the app doesn't load Inspeck itself, the line adds it to the page (run it again after a full reload). Notes from that tab now come to this session.
 2. Start the watcher as a background task: ${WAIT_COMMAND}
    It finishes, printing the notes, the moment one arrives. Handle them, then start it again.
 If the person uses their own browser (Chrome, Safari) instead of your pane, call bind with page set to the app's address instead of running a line: every note from that site, in any browser, then comes here. Saying "check my Inspeck notes" (pending) also takes notes no other session could have picked up, and links their site to you.
@@ -156,6 +156,23 @@ server.registerTool('watch', {
   return text(`No new comments in ${seconds} seconds. Call watch again to keep waiting.`)
 })
 
+/**
+ * The one line Claude runs in its browser pane. The person's app may not load
+ * Inspeck at all (no script tag, no npm package): the line adds the widget to
+ * the page, waits for it to start, then links the tab. Nothing in the app's
+ * code changes, so inside the Claude app the plugin is all a person installs.
+ */
+function paneLine(token: string): string {
+  const src = `http://127.0.0.1:${PORT}/inspeck.js`
+  return `(async () => { const src = ${JSON.stringify(src)}; ` +
+    `if (!window.__INSPECK__) { ` +
+      `if (![...document.scripts].some(s => s.src === src)) await new Promise((ok, no) => { const s = document.createElement('script'); s.src = src; s.async = true; s.onload = ok; s.onerror = () => no(new Error('Inspeck isn\\'t answering on ' + src + ': is a Claude session with the Inspeck plugin open?')); document.head.appendChild(s) }); ` +
+      `for (let i = 0; i < 60 && !window.__INSPECK__; i++) await new Promise(r => setTimeout(r, 100)); ` +
+      `if (!window.__INSPECK__) return 'Inspeck did not start here. The page may block outside scripts (a Content-Security-Policy), or not be on this machine. Add <script src=' + JSON.stringify(src) + '></script> to its dev HTML instead.' ` +
+    `} ` +
+    `return window.__INSPECK__.bind(${JSON.stringify(token)}) })()`
+}
+
 server.registerTool('bind', {
   title: 'Link browser tab',
   description: 'Link the person\'s app to this session, so the notes they place on it come here. With no page: returns one line of JavaScript to run in the browser pane tab showing the app. With page (its URL): links that whole site, for when the person uses their own browser (Chrome, Safari) instead of the pane.',
@@ -168,9 +185,9 @@ server.registerTool('bind', {
     return text(`Notes from ${new URL(page).origin} now come to this session, in any browser.\n\nStart the watcher in the background: ${WAIT_COMMAND}`)
   }
   return text([
-    'Run this in the browser tab showing the app:',
+    'Run this in the browser pane tab showing the app. If the app doesn\'t load Inspeck itself, this adds it to the page (until the page fully reloads: run it again then), and links the tab to this session:',
     '',
-    `window.__INSPECK__ ? window.__INSPECK__.bind(${JSON.stringify(SESSION.token)}) : 'Inspeck is not on this page yet: add <script src="http://127.0.0.1:${PORT}/inspeck.js"></script> to its dev HTML'`,
+    paneLine(SESSION.token),
     '',
     `Then start the watcher in the background: ${WAIT_COMMAND}`,
   ].join('\n'))

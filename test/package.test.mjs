@@ -32,9 +32,9 @@ test('a port can be set, by option or by INSPECK_PORT, and the tag turned off', 
   assert.deepEqual(esm({ enabled: false }).transformIndexHtml(), [])
 })
 
-test('the tarball carries the plugin, its types, the README and the license, and nothing else', () => {
+test('the tarball carries the Vite plugin, its types, the init command, the README and the license, and nothing else', () => {
   const [packed] = JSON.parse(execFileSync('npm', ['pack', '--dry-run', '--json'], { cwd: pkg, encoding: 'utf8' }))
   const files = packed.files.map(f => f.path).sort()
-  assert.deepEqual(files, ['LICENSE', 'README.md', 'dist/vite.cjs', 'dist/vite.js', 'package.json', 'vite.d.ts'])
+  assert.deepEqual(files, ['LICENSE', 'README.md', 'dist/bin.js', 'dist/cli.js', 'dist/vite.cjs', 'dist/vite.js', 'package.json', 'vite.d.ts'])
   assert.equal(packed.name, 'inspeck')
 })

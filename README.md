@@ -9,21 +9,31 @@ Inspeck is two pieces in one plugin:
 
 ## Install
 
+In your app's folder:
+
+```bash
+npx inspeck init
+```
+
+That's all. It installs the Inspeck plugin into Claude Code (every session starts it from then on) and adds the widget to your app the way it's built: `inspeck()` in a Vite config, a development-only tag in a Next.js layout, or the tag in a plain `index.html` (it asks first). Running it again changes nothing. Requires Node.js 20 or later.
+
+**Inside the Claude app you don't even need the second part.** When Claude opens your app in its browser pane, it adds Inspeck to the page itself, so with just the plugin installed your code stays untouched. The app step is for using Inspeck in your own browser (Chrome, Safari, Arc).
+
+<details>
+<summary>Doing it by hand</summary>
+
+The plugin:
+
 ```bash
 claude plugin marketplace add pulkitmittal19/inspeck-claude
 claude plugin install inspeck@inspeck
 ```
 
-Requires Node.js 20 or later. From then on every Claude Code session starts Inspeck.
-
-Then add one line to your app, in development only:
+Then one line in your app, in development only:
 
 ```html
 <script src="http://127.0.0.1:4848/inspeck.js"></script>
 ```
-
-<details>
-<summary>Vite, Next.js, plain HTML</summary>
 
 **Vite**: install the [`inspeck`](packages/inspeck) package, which adds the tag only while serving, never to a build.
 
