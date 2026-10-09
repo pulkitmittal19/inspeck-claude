@@ -1,7 +1,9 @@
 /* `npx inspeck init`: everything a new user needs, in one command.
  *
  *  1. The Claude Code plugin: added from GitHub and installed, unless it's
- *     already there. It serves the widget and hands notes to Claude.
+ *     already there. It serves the widget and hands notes to Claude. Its
+ *     marketplace is set to auto-update in Claude Code's settings, so new
+ *     versions arrive by themselves (--no-auto-update leaves that off).
  *  2. The app in this folder: the widget's script tag, added the way the app
  *     is built, in development only.
  *       - Vite:     `inspeck()` in vite.config, from this package.
@@ -14,15 +16,16 @@
  * Node 18+.
  */
 import { spawnSync } from 'node:child_process'
-import { existsSync, readFileSync, writeFileSync } from 'node:fs'
-import { join, relative } from 'node:path'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { homedir } from 'node:os'
+import { dirname, join, relative } from 'node:path'
 import { createInterface } from 'node:readline/promises'
 
 const MARKETPLACE = 'pulkitmittal19/inspeck-claude'
 const PLUGIN = 'inspeck@inspeck'
 const TAG_SRC = 'http://127.0.0.1:4848/inspeck.js'
 
-interface Flags { yes: boolean; skipPlugin: boolean; skipInstall: boolean; cwd: string }
+interface Flags { yes: boolean; skipPlugin: boolean; skipInstall: boolean; autoUpdate: boolean; cwd: string }
 
 const say = (s = '') => process.stdout.write(s + '\n')
 const done = (s: string) => say(`  ✓ ${s}`)
@@ -58,6 +61,46 @@ function installPlugin(): boolean {
   if (!installed.ok) { warn(`couldn't install the plugin:\n${installed.out.trim()}`); return false }
   done('installed; new Claude sessions start with it')
   return true
+}
+
+/* Auto-update. A marketplace can't turn it on for itself; the user's settings
+   can, with an entry in extraKnownMarketplaces. Claude Code then checks it a
+   few minutes into each session and updates the installed plugin. */
+
+const MARKETPLACE_NAME = 'inspeck'
+const settingsFile = () => join(process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude'), 'settings.json')
+
+/** The settings with Inspeck's marketplace set to auto-update. 'other': it's already
+    there from another source (a local folder, say), so it's left as it is. */
+export function withAutoUpdate(src: string | null): { src: string; result: 'added' | 'present' | 'other' | 'manual' } {
+  let settings: Record<string, any>
+  try { settings = src?.trim() ? JSON.parse(src) : {} } catch { return { src: src ?? '', result: 'manual' } }
+  if (!settings || typeof settings !== 'object' || Array.isArray(settings)) return { src: src ?? '', result: 'manual' }
+  const known = settings.extraKnownMarketplaces ?? {}
+  if (typeof known !== 'object' || Array.isArray(known)) return { src: src ?? '', result: 'manual' }
+  const entry = known[MARKETPLACE_NAME]
+  const ours = !entry?.source || (entry.source.source === 'github' && entry.source.repo === MARKETPLACE)
+  if (!ours) return { src: src ?? '', result: 'other' }
+  if (entry?.autoUpdate === true) return { src: src ?? '', result: 'present' }
+  known[MARKETPLACE_NAME] = { ...entry, source: { source: 'github', repo: MARKETPLACE }, autoUpdate: true }
+  settings.extraKnownMarketplaces = known
+  return { src: JSON.stringify(settings, null, 2) + '\n', result: 'added' }
+}
+
+function turnOnAutoUpdate(): void {
+  const file = settingsFile()
+  const { src, result } = withAutoUpdate(existsSync(file) ? readFileSync(file, 'utf8') : null)
+  if (result === 'added') {
+    mkdirSync(dirname(file), { recursive: true })
+    writeFileSync(file, src)
+    done(`auto-update on: new versions arrive by themselves (${file.replace(homedir(), '~')})`)
+  } else if (result === 'present') {
+    done('auto-update on')
+  } else if (result === 'other') {
+    note('auto-update left as it is: your inspeck marketplace isn\'t the GitHub one')
+  } else {
+    warn(`couldn't read ${file}; to get new versions by themselves, turn on auto-update in Claude: /plugin › Marketplaces › inspeck`)
+  }
 }
 
 /* ---------- 2. the app ---------- */
@@ -216,20 +259,23 @@ export async function main(argv: string[]): Promise<number> {
     yes: rest.includes('--yes') || rest.includes('-y'),
     skipPlugin: rest.includes('--skip-plugin'),
     skipInstall: rest.includes('--skip-install'),
+    autoUpdate: !rest.includes('--no-auto-update'),
     cwd: process.cwd(),
   }
   if (command !== 'init') {
-    say('Usage: npx inspeck init [--yes] [--skip-plugin] [--skip-install]')
+    say('Usage: npx inspeck init [--yes] [--skip-plugin] [--skip-install] [--no-auto-update]')
     say('')
     say('  Installs the Inspeck plugin for Claude Code and adds the widget to the app in this folder.')
-    say('  --yes           add the tag to a plain HTML page without asking')
-    say('  --skip-plugin   leave Claude Code alone')
-    say('  --skip-install  don\'t install the npm package (Vite)')
+    say('  --yes             add the tag to a plain HTML page without asking')
+    say('  --skip-plugin     leave Claude Code alone')
+    say('  --skip-install    don\'t install the npm package (Vite)')
+    say('  --no-auto-update  don\'t turn on auto-update for the plugin')
     return command === undefined || command === '--help' || command === '-h' ? 0 : 1
   }
   say('Inspeck')
   say('')
   const plugin = flags.skipPlugin ? true : installPlugin()
+  if (!flags.skipPlugin && plugin && flags.autoUpdate) turnOnAutoUpdate()
   say('')
   await wireApp(flags)
   say('')

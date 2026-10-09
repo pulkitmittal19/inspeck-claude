@@ -3,14 +3,14 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
-import { chmodSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, dirname } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
 const pkg = join(dirname(fileURLToPath(import.meta.url)), '..', 'packages', 'inspeck')
 const BIN = join(pkg, 'dist/bin.js')
-const { wireVite, wireNext, wireHtml } = await import(pathToFileURL(join(pkg, 'dist/cli.js')).href)
+const { wireVite, wireNext, wireHtml, withAutoUpdate } = await import(pathToFileURL(join(pkg, 'dist/cli.js')).href)
 
 test('Vite: inspeck() goes first in the plugins list, the import after the others; twice changes nothing', () => {
   const src = `import { defineConfig } from 'vite'\nimport react from '@vitejs/plugin-react'\n\nexport default defineConfig({\n  plugins: [react()],\n})\n`
@@ -50,6 +50,19 @@ test('HTML: the tag before </body>', () => {
   assert.match(src, /\n {4}<script src="http:\/\/127\.0\.0\.1:4848\/inspeck\.js" async><\/script>\n {2}<\/body>/)
 })
 
+test('auto-update: added to empty or existing settings, kept once on, and a local-folder marketplace left alone', () => {
+  const fresh = withAutoUpdate(null)
+  assert.equal(fresh.result, 'added')
+  assert.deepEqual(JSON.parse(fresh.src).extraKnownMarketplaces.inspeck, { source: { source: 'github', repo: 'pulkitmittal19/inspeck-claude' }, autoUpdate: true })
+  const mixed = withAutoUpdate(JSON.stringify({ model: 'opus', extraKnownMarketplaces: { other: { source: { source: 'github', repo: 'a/b' } } } }))
+  const out = JSON.parse(mixed.src)
+  assert.equal(out.model, 'opus', 'the rest of the settings are kept')
+  assert.ok(out.extraKnownMarketplaces.other && out.extraKnownMarketplaces.inspeck.autoUpdate)
+  assert.equal(withAutoUpdate(fresh.src).result, 'present')
+  assert.equal(withAutoUpdate(JSON.stringify({ extraKnownMarketplaces: { inspeck: { source: { source: 'directory', path: '/x' } } } })).result, 'other')
+  assert.equal(withAutoUpdate('{ not json').result, 'manual')
+})
+
 /* ---------- full runs ---------- */
 
 /** A throwaway project, and a `claude` on PATH that logs its arguments and answers like the real one. */
@@ -71,11 +84,14 @@ esac
 exit 0
 `)
   chmodSync(join(bin, 'claude'), 0o755)
+  /* Claude Code's settings go to a throwaway folder, never the real ~/.claude. */
+  const config = mkdtempSync(join(tmpdir(), 'inspeck-config-'))
   const run = (...args) => execFileSync(process.execPath, [BIN, 'init', ...args], {
-    cwd: dir, encoding: 'utf8', env: { ...process.env, PATH: `${bin}:${process.env.PATH}` }, stdio: ['ignore', 'pipe', 'pipe'],
+    cwd: dir, encoding: 'utf8', env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, CLAUDE_CONFIG_DIR: config }, stdio: ['ignore', 'pipe', 'pipe'],
   })
+  const settings = () => { try { return JSON.parse(readFileSync(join(config, 'settings.json'), 'utf8')) } catch { return null } }
   const calls = () => { try { return readFileSync(log, 'utf8').trim().split('\n') } catch { return [] } }
-  return { dir, run, calls, read: name => readFileSync(join(dir, name), 'utf8') }
+  return { dir, run, calls, settings, read: name => readFileSync(join(dir, name), 'utf8') }
 }
 
 test('a Vite app: the plugin is installed from GitHub and the config gets inspeck(); a second run does nothing', () => {
@@ -88,6 +104,8 @@ test('a Vite app: the plugin is installed from GitHub and the config gets inspec
   assert.match(out, /✓ installed; new Claude sessions start with it/)
   assert.match(p.read('vite.config.ts'), /import inspeck from 'inspeck\/vite'[\s\S]*plugins: \[inspeck\(\)\]/)
   assert.match(out, /✓ added inspeck\(\) to vite\.config\.ts/)
+  assert.equal(p.settings()?.extraKnownMarketplaces?.inspeck?.autoUpdate, true, 'auto-update turned on')
+  assert.match(out, /✓ auto-update on/)
 
   const again = project({ 'package.json': '{}', 'vite.config.ts': p.read('vite.config.ts') }, { pluginInstalled: true })
   const out2 = again.run('--skip-install')
@@ -119,8 +137,16 @@ test('a plain HTML page is only changed when asked (--yes); otherwise the tag is
 test('no Claude Code on the machine: it says how to get it, and still wires the app', () => {
   const dir = mkdtempSync(join(tmpdir(), 'inspeck-init-'))
   writeFileSync(join(dir, 'vite.config.js'), `export default { plugins: [] }\n`)
-  const out = execFileSync(process.execPath, [BIN, 'init', '--skip-install'], { cwd: dir, encoding: 'utf8', env: { ...process.env, PATH: '/usr/bin:/bin' } })
+  const config = mkdtempSync(join(tmpdir(), 'inspeck-config-'))
+  const out = execFileSync(process.execPath, [BIN, 'init', '--skip-install'], { cwd: dir, encoding: 'utf8', env: { ...process.env, PATH: '/usr/bin:/bin', CLAUDE_CONFIG_DIR: config } })
   assert.match(out, /Claude Code isn't installed/)
   assert.match(out, /claude plugin marketplace add pulkitmittal19\/inspeck-claude/)
   assert.match(readFileSync(join(dir, 'vite.config.js'), 'utf8'), /inspeck\(\)/)
+  assert.ok(!existsSync(join(config, 'settings.json')), 'no Claude Code: its settings untouched')
+})
+
+test('--no-auto-update leaves Claude Code\'s settings alone', () => {
+  const p = project({ 'vite.config.js': `export default { plugins: [] }\n` }, { pluginInstalled: true })
+  p.run('--skip-install', '--no-auto-update')
+  assert.equal(p.settings(), null)
 })

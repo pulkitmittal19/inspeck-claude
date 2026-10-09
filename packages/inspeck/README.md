@@ -10,7 +10,7 @@ In your app's folder:
 npx inspeck init
 ```
 
-It installs the [Inspeck plugin for Claude Code](https://github.com/pulkitmittal19/inspeck-claude), which serves the widget and hands your notes to Claude, and adds the widget to your app in development only: `inspeck()` in a Vite config, a development-only tag in a Next.js layout, or the tag in a plain `index.html` (it asks first). Running it again changes nothing.
+It installs the [Inspeck plugin for Claude Code](https://github.com/pulkitmittal19/inspeck-claude), which serves the widget and hands your notes to Claude, with auto-update on so new versions arrive by themselves (`--no-auto-update` to skip), and adds the widget to your app in development only: `inspeck()` in a Vite config, a development-only tag in a Next.js layout, or the tag in a plain `index.html` (it asks first). Running it again changes nothing.
 
 Inside the Claude app's browser pane you only need the plugin: Claude adds the widget to the page when it opens your app.
 

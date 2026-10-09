@@ -15,7 +15,7 @@ In your app's folder:
 npx inspeck init
 ```
 
-That's all. It installs the Inspeck plugin into Claude Code (every session starts it from then on) and adds the widget to your app the way it's built: `inspeck()` in a Vite config, a development-only tag in a Next.js layout, or the tag in a plain `index.html` (it asks first). Running it again changes nothing. Requires Node.js 20 or later.
+That's all. It installs the Inspeck plugin into Claude Code (every session starts it from then on), turns on auto-update so new versions arrive by themselves (`--no-auto-update` to skip), and adds the widget to your app the way it's built: `inspeck()` in a Vite config, a development-only tag in a Next.js layout, or the tag in a plain `index.html` (it asks first). Running it again changes nothing, so if you installed before auto-update existed, run it once more to turn it on. Requires Node.js 20 or later.
 
 Then, in Claude: **`/inspeck:start`**. It opens your app in the browser pane, turns Inspeck on and links it to the chat. The first time Inspeck opens, a four-step tour shows the basics.
 
@@ -30,6 +30,8 @@ The plugin:
 claude plugin marketplace add pulkitmittal19/inspeck-claude
 claude plugin install inspeck@inspeck
 ```
+
+For new versions by themselves, turn on auto-update in Claude: `/plugin` › Marketplaces › inspeck › Enable auto-update.
 
 Then one line in your app, in development only:
 
