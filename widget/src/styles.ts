@@ -202,6 +202,13 @@ button { appearance: none; background: none; border: 0; padding: 0; cursor: poin
 }
 .card[data-folded] .chev { transform: rotate(0deg); }
 @keyframes ix-chev-in { from { opacity: 0; margin-left: -13px; } to { opacity: 1; margin-left: 0; } }
+/* The folded CSS: its key values on one quiet line under the head; click to open it. */
+.peek {
+  padding: 1px 0 2px; font: 11px/1.6 var(--ix-mono); color: var(--ix-faint);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer;
+  transition: color 120ms ease;
+}
+.peek:hover { color: var(--ix-dim); }
 /* Spacing lives on the child, never on .inner: padding there would survive the collapse. */
 .note-wrap .note { margin-top: 8px; }
 .note {

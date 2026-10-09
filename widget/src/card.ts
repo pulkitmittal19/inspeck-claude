@@ -3,7 +3,7 @@
  * describes: below it when there's room, above it otherwise.
  */
 import { describe, type Description } from './css/describe'
-import { highlight, middle, resolved } from './css/highlight'
+import { highlight, middle, resolved, shortName } from './css/highlight'
 import { splitList } from './css/rules'
 import { enter, leave, play } from './anim'
 import { clear, h, svg } from './dom'
@@ -22,6 +22,8 @@ export interface PinOptions {
   existing?: { n: number; note: string }
   /** Text you'd started before, to carry on with. */
   draft?: string
+  /** Open with the CSS spread out (when it was already showing on hover); otherwise it opens folded to one line. */
+  cssOpen?: boolean
   /** A note on a dragged area rather than one element: what the head says. No CSS. */
   group?: { label: string; size: string }
   onSend(note: string): Promise<{ n: number } | void>
@@ -83,6 +85,21 @@ function renderHead(d: Pick<Description, 'label' | 'size' | 'component'>, extra:
 const tool = (action: string, icon: keyof typeof ICONS, label: string) =>
   h('button', { type: 'button', class: 'tool', 'data-action': action, 'aria-label': label, title: label }, svg(ICONS[icon], 13))
 
+/* The folded line's short names, so more of the values fit. */
+const PEEK_NAMES: Record<string, string> = {
+  'background': 'bg', 'border-radius': 'radius', 'font-size': 'size', 'font-weight': 'weight',
+  'line-height': 'leading', 'letter-spacing': 'tracking', 'column-gap': 'gap', 'row-gap': 'gap',
+}
+
+/** `padding 0 12px · radius radius-200 · bg bg-surface`: tokens by name, one line. */
+function peekOf(d: Description): string {
+  return d.lines.map(l => {
+    const value = l.value.replace(/var\(--([\w-]+)[^)]*\)/g, (_, name: string) => shortName(name, 18))
+    const first = splitList(value)[0]
+    return `${PEEK_NAMES[l.prop] ?? l.prop} ${first}`
+  }).join('  ·  ')
+}
+
 export const cssText = (d: Description) => d.lines.map(l => `${l.prop}: ${l.value};`).join('\n')
 
 let keysSeen = (() => { try { return localStorage.getItem('inspeck:keys-seen') === '1' } catch { return false } })()
@@ -107,7 +124,7 @@ export function createCard(ui: HTMLElement): Card {
   let desc: Description | null = null
   let opts: PinOptions | null = null
   let parts: {
-    cssWrap: HTMLElement | null; noteWrap: HTMLElement; statusWrap: HTMLElement; status: HTMLElement
+    cssWrap: HTMLElement | null; peekWrap: HTMLElement | null; noteWrap: HTMLElement; statusWrap: HTMLElement; status: HTMLElement
     keysWrap: HTMLElement | null; note: HTMLTextAreaElement; send: HTMLButtonElement
   } | null = null
   let busy = false
@@ -126,6 +143,7 @@ export function createCard(ui: HTMLElement): Card {
     if (!parts) return
     folded = f
     setOpen(parts.cssWrap, !f)
+    setOpen(parts.peekWrap, f)
     el.toggleAttribute('data-folded', f)
   }
 
@@ -214,8 +232,8 @@ export function createCard(ui: HTMLElement): Card {
       desc = target && !o.group ? describe(target) : null
       mode = 'pinned'
       busy = false
-      /* A note you're editing opens with its CSS folded; a new one with it open. */
-      folded = AUTO_FOLD && !!o.existing
+      /* Folded to one line unless the CSS was already showing on hover. */
+      folded = !o.cssOpen || (AUTO_FOLD && !!o.existing)
       autoFolded = folded || !desc
       clear(el)
       el.removeAttribute('data-sent')
@@ -224,6 +242,7 @@ export function createCard(ui: HTMLElement): Card {
       const close = tool('close-card', 'close', 'Close')
       let head: HTMLDivElement
       let cssWrap: HTMLDivElement | null = null
+      let peekWrap: HTMLDivElement | null = null
       if (desc) {
         /* The whole head is the fold toggle, so it's always in the same place. */
         const chevron = h('span', { class: 'chev', 'aria-hidden': 'true' }, svg(ICONS.chevron, 10, 2.4))
@@ -232,6 +251,8 @@ export function createCard(ui: HTMLElement): Card {
         head.setAttribute('role', 'button')
         head.setAttribute('aria-label', 'Show or hide the CSS')
         cssWrap = reveal('css-wrap', !folded, renderCss(desc))
+        /* Folded, the CSS is still there: its key values on one quiet line. */
+        peekWrap = desc.lines.length ? reveal('peek-wrap quick', folded, h('div', { class: 'peek', 'data-action': 'fold', title: 'Show the CSS' }, peekOf(desc))) : null
       } else {
         head = renderHead(o.group ?? { label: 'Area', size: '' }, [h('span', { class: 'tools' }, close)], o.existing?.n)
       }
@@ -247,8 +268,8 @@ export function createCard(ui: HTMLElement): Card {
       const keysWrap = keysSeen ? null : reveal('keys-wrap', false, h('div', { class: 'keys' },
         h('span', {}, h('span', { class: 'kbd' }, '↵'), ' send'), h('span', {}, h('span', { class: 'kbd' }, '⇧↵'), ' new line'), h('span', {}, h('span', { class: 'kbd' }, 'esc'), ' close')))
       const actionsWrap = o.onDelete ? reveal('actions-wrap', false, h('div', { class: 'note-actions' }, h('button', { type: 'button', class: 'link', 'data-action': 'delete' }, svg(ICONS.trash, 12), 'Delete'))) : null
-      el.append(head, ...(cssWrap ? [cssWrap] : []), noteWrap, statusWrap, ...(keysWrap ? [keysWrap] : []), ...(actionsWrap ? [actionsWrap] : []))
-      parts = { cssWrap, noteWrap, statusWrap, status: statusEl, keysWrap, note, send: sendBtn }
+      el.append(head, ...(peekWrap ? [peekWrap] : []), ...(cssWrap ? [cssWrap] : []), noteWrap, statusWrap, ...(keysWrap ? [keysWrap] : []), ...(actionsWrap ? [actionsWrap] : []))
+      parts = { cssWrap, peekWrap, noteWrap, statusWrap, status: statusEl, keysWrap, note, send: sendBtn }
       if (!wasShowing) enter(el)
       sync()
       /* Focus now, not on the next frame: on a busy page the next frame can be

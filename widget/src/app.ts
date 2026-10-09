@@ -23,6 +23,8 @@ import { openPathOf } from './transient'
 const PRESS = new Set(['pointerdown', 'pointerup', 'mousedown', 'mouseup', 'click', 'dblclick', 'auxclick',
   'contextmenu', 'touchstart', 'touchend', 'dragstart'])
 
+const CSS_KEY = 'inspeck:css-on-hover'
+
 /** Seconds the ❄ button counts before it freezes. */
 const FREEZE_COUNT = 3
 
@@ -68,6 +70,8 @@ export class App {
   /** The element under the pointer when a note closed: it stays quiet until the pointer moves off it. */
   private rest: Element | null = null
   private pickFrame = 0
+  /** Hovering shows the CSS card (the pill's </> button, or C). */
+  private cssOnHover = (() => { try { return localStorage.getItem(CSS_KEY) === '1' } catch { return false } })()
   /** The ❄ button's count before it freezes, while it runs. */
   private countdown = 0
   /** Half-written notes, kept when the card closes, given back when you click the same element again. */
@@ -84,6 +88,7 @@ export class App {
     this.frost = h('div', { class: 'frost', hidden: true })
     this.host.ui.appendChild(this.frost)
     this.toolbar = createToolbar(this.host.ui)
+    this.toolbar.setPressed('css', this.cssOnHover)
     this.freeze = createFreeze(this.host.el, (active, manual) => {
       this.frost.hidden = !active
       this.toolbar.setPressed('freeze', manual)
@@ -128,6 +133,7 @@ export class App {
       case 'open': this.setOpen(true); break
       case 'close': this.setOpen(false); break
       case 'freeze': this.freezeFromPill(); break
+      case 'css': this.setCssOnHover(!this.cssOnHover); break
       case 'clear': this.clearNotes(); break
     }
   }
@@ -139,6 +145,19 @@ export class App {
     if (!this.toolbar.armed('clear')) { this.toolbar.arm('clear', `Click again to clear ${n} note${n === 1 ? '' : 's'}`); return }
     this.unpin()
     void this.notes.clear().then(() => this.toolbar.say('clear', 'Cleared'))
+  }
+
+  /**
+   * Whether hovering shows the CSS card. Off by default: most of the time
+   * Inspeck is for leaving notes, and a card following the pointer is noise.
+   * Remembered across reloads.
+   */
+  private setCssOnHover(on: boolean): void {
+    this.cssOnHover = on
+    try { localStorage.setItem(CSS_KEY, on ? '1' : '0') } catch { /* private window: this page only */ }
+    this.toolbar.setPressed('css', on)
+    this.toolbar.say('css', on ? 'CSS on hover' : 'Notes only: the CSS comes with the note')
+    if (!this.pinned) this.setTarget(this.target)
   }
 
   /** F: freeze or release at once, with the pointer where it is. */
@@ -210,8 +229,11 @@ export class App {
     if (!pickable(el, this.host.el)) el = null
     this.target = el
     if (el) {
-      this.card.showHover(el)
-      if (this.shift) this.card.el.hidden = true
+      /* Notes mode: just the outline. The CSS comes with the note, folded. */
+      if (this.cssOnHover) {
+        this.card.showHover(el)
+        if (this.shift) this.card.el.hidden = true
+      } else if (this.card.mode === 'hover') this.card.hide()
       this.outline.show(el)
     } else {
       this.outline.hide()
@@ -255,6 +277,7 @@ export class App {
     this.card.pin(el, {
       existing: existing ? { n: existing.n, note: existing.note } : undefined,
       draft: existing ? undefined : this.drafts.get(el),
+      cssOpen: this.cssOnHover,
       onSend: async text => {
         if (existing) {
           await api.edit(existing.id, text)
@@ -504,6 +527,11 @@ export class App {
         if (this.pinned) this.unpin()
         else if (this.freeze.manual) this.freeze.unfreeze(true)
         else this.setOpen(false)
+        return 'swallow'
+      case 'c':
+      case 'C':
+        if (e.metaKey || e.ctrlKey || e.altKey) return
+        this.setCssOnHover(!this.cssOnHover)
         return 'swallow'
       case 'f':
       case 'F':
