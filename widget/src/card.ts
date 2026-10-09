@@ -3,13 +3,17 @@
  * describes: below it when there's room, above it otherwise.
  */
 import { describe, type Description } from './css/describe'
-import { highlight, resolved } from './css/highlight'
+import { highlight, middle, resolved } from './css/highlight'
+import { splitList } from './css/rules'
 import { enter, leave, play } from './anim'
 import { clear, h, svg } from './dom'
 import { ICONS } from './icons'
 import { actionOf } from './router'
 
 const GAP = 8
+/** A value longer than this that is a comma list shows its first item and a count. */
+const LIST_MAX = 34
+const LABEL_MAX = 34
 const EDGE = 8
 const MAX_NOTE_LINES = 4
 
@@ -49,9 +53,16 @@ export interface Card {
 export function renderCss(d: Description): HTMLDivElement {
   const box = h('div', { class: 'css' })
   for (const l of d.lines) {
-    const row = h('div', { class: 'decl' }, h('span', { class: 'c-prop' }, l.prop), h('span', { class: 'c-punct' }, ': '))
-    row.appendChild(highlight(l.value))
-    if (l.resolved) row.appendChild(resolved(l.resolved))
+    /* A long list (a font stack, layered shadows, a transition per property):
+       the first item, and how many more. The whole value is in the title and the copy. */
+    const items = l.value.length > LIST_MAX ? splitList(l.value) : [l.value]
+    const shown = items.length > 1 ? items[0] : l.value
+    const row = h('div', { class: 'decl', title: `${l.prop}: ${l.value};${l.resolved ? `  ${l.resolved}` : ''}` },
+      h('span', { class: 'c-prop' }, l.prop), h('span', { class: 'c-punct' }, ': '),
+      /* The value may be cut short; the resolved value after it never is. */
+      h('span', { class: 'val' }, highlight(shown)),
+      items.length > 1 ? h('span', { class: 'more' }, `+${items.length - 1}`) : null,
+      l.resolved ? resolved(l.resolved) : null)
     box.appendChild(row)
   }
   if (!d.lines.length) box.appendChild(h('div', { class: 'decl empty' }, 'No styles of its own'))
@@ -62,8 +73,9 @@ function renderHead(d: Pick<Description, 'label' | 'size' | 'component'>, extra:
   return h('div', { class: 'card-head' },
     lead ?? null,
     num ? h('span', { class: 'num' }, `#${num}`) : null,
-    h('span', { class: 'label' }, d.label),
-    d.component ? h('span', { class: 'comp' }, d.component) : null,
+    /* A long label (a stack of utility classes) keeps its start and its end. */
+    h('span', { class: 'label', title: d.label }, middle(d.label, LABEL_MAX)),
+    d.component ? h('span', { class: 'comp', title: d.component }, d.component) : null,
     h('span', { class: 'size' }, d.size),
     ...extra)
 }

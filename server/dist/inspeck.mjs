@@ -36774,6 +36774,14 @@ function claimNew(page, mine2 = () => true) {
     return claimed.map((c) => ({ ...c }));
   });
 }
+function adopt(which, to) {
+  if (!read().comments.some((c) => (c.status === "new" || c.status === "seen") && which(c))) return [];
+  return change((inbox) => {
+    const moved = inbox.comments.filter((c) => (c.status === "new" || c.status === "seen") && which(c));
+    for (const c of moved) c.to = { ...to };
+    return moved.map((c) => ({ ...c }));
+  });
+}
 function markSeen(id) {
   return change((inbox) => {
     const c = inbox.comments.find((x) => x.id === id);
@@ -36898,14 +36906,28 @@ function sessionOf(pid) {
 function bindTab(tabId, token) {
   const s = liveSessions().find((x) => x.token === token);
   if (!s) return null;
+  saveBinding(tabId, s.pid);
+  return s;
+}
+function siteKey(page) {
+  try {
+    return `site:${new URL(page).origin}`;
+  } catch {
+    return null;
+  }
+}
+function bindSite(page, pid) {
+  const key = siteKey(page);
+  if (key) saveBinding(key, pid);
+}
+function saveBinding(key, pid) {
   const all = readJson(BINDINGS) ?? {};
-  all[tabId] = { pid: s.pid, at: (/* @__PURE__ */ new Date()).toISOString() };
+  all[key] = { pid, at: (/* @__PURE__ */ new Date()).toISOString() };
   const kept = Object.fromEntries(Object.entries(all).sort((a, b) => b[1].at.localeCompare(a[1].at)).slice(0, 200));
   mkdirSync2(HOME, { recursive: true });
   const tmp = `${BINDINGS}.${process.pid}.tmp`;
   writeFileSync2(tmp, JSON.stringify(kept, null, 2));
   renameSync2(tmp, BINDINGS);
-  return s;
 }
 function boundPid(tabId) {
   const b = (readJson(BINDINGS) ?? {})[tabId];
@@ -36951,6 +36973,9 @@ function route(page, tabId) {
     const pid = boundPid(tabId);
     if (pid) return { pid, cwd: sessionOf(pid)?.cwd, how: "bound" };
   }
+  const site = siteKey(page);
+  const sitePid = site ? boundPid(site) : null;
+  if (sitePid) return { pid: sitePid, cwd: sessionOf(sitePid)?.cwd, how: "site" };
   const live = liveSessions();
   if (live.length === 1) return { pid: live[0].pid, cwd: live[0].cwd, how: "only" };
   const cwd = projectOf(page);
@@ -36960,6 +36985,11 @@ function route(page, tabId) {
     return { cwd, how: "waiting" };
   }
   return { how: "waiting" };
+}
+function unclaimed(to, live = liveSessions()) {
+  if (!to) return false;
+  if (to.pid && alive(to.pid)) return false;
+  return !to.cwd || !live.some((s) => sameProject(s.cwd, to.cwd));
 }
 function belongsTo(to, me, myCwd) {
   if (!to) return true;
@@ -37198,7 +37228,7 @@ if (process.argv[2] === "wait") {
   await runWait(process.argv.slice(3));
   process.exit(0);
 }
-var VERSION = "0.3.0";
+var VERSION = "0.4.0";
 var log = (msg) => process.stderr.write(`inspeck: ${msg}
 `);
 var INSTRUCTIONS = `Inspeck lets a person hover any element of their web app to see its CSS, and click it to leave a note for you. Their notes arrive here.
@@ -37209,6 +37239,7 @@ Setting up, once per session, when you open the person's app in your browser pan
 1. Call bind. It returns one line of JavaScript; run it in the browser pane tab showing the app. Notes from that tab now come to this session.
 2. Start the watcher as a background task: ${WAIT_COMMAND}
    It finishes, printing the notes, the moment one arrives. Handle them, then start it again.
+If the person uses their own browser (Chrome, Safari) instead of your pane, call bind with page set to the app's address instead of running a line: every note from that site, in any browser, then comes here. Saying "check my Inspeck notes" (pending) also takes notes no other session could have picked up, and links their site to you.
 
 Working through notes: pending lists what's waiting, get opens one, watch waits for new ones in the foreground, a note's marker leaves the page once you've read it (get, watch or the watcher); resolve closes it with one line saying what changed, dismiss declines with a reason.
 
@@ -37249,13 +37280,25 @@ server.registerTool("pending", {
   inputSchema: { page: external_exports.string().optional().describe("Only this page, as a URL") },
   annotations: { readOnlyHint: true }
 }, async ({ page }) => {
+  const adopted = ME ? adopt((c) => unclaimed(c.to), { pid: ME, cwd: MY_CWD, how: "claimed" }) : [];
+  const sites = [...new Set(adopted.map((c) => {
+    try {
+      return new URL(c.page).origin;
+    } catch {
+      return c.page;
+    }
+  }))];
+  for (const c of adopted) bindSite(c.page, ME);
+  const took = adopted.length ? `Took ${adopted.length} note${adopted.length === 1 ? "" : "s"} no other session had, from ${sites.join(", ")}. Notes from ${sites.length === 1 ? "there" : "those sites"} now come to this session, in any browser.
+
+` : "";
   const list = open2(page).filter(mine);
-  if (!list.length) return text(page ? `Nothing open on ${pageLabel(page)}.` : "Nothing open. When the person places a comment, it will show up here.");
+  if (!list.length) return text(took + (page ? `Nothing open on ${pageLabel(page)}.` : "Nothing open. When the person places a comment, it will show up here."));
   const byPage = /* @__PURE__ */ new Map();
   for (const c of list) byPage.set(c.page, [...byPage.get(c.page) ?? [], c]);
   const blocks = [...byPage].map(([p, cs]) => `${pageLabel(p)} \u2014 ${cs.length} open
 ${cs.map(summaryLine).join("\n")}`);
-  return text(`${blocks.join("\n\n")}
+  return text(`${took}${blocks.join("\n\n")}
 
 Open one with get and its id.`);
 });
@@ -37290,11 +37333,17 @@ server.registerTool("watch", {
 });
 server.registerTool("bind", {
   title: "Link browser tab",
-  description: "Link the browser tab that shows the person's app to this session, so the notes they place there come here. Returns one line of JavaScript to run in that tab (the browser pane), after the page has loaded.",
-  inputSchema: {},
+  description: "Link the person's app to this session, so the notes they place on it come here. With no page: returns one line of JavaScript to run in the browser pane tab showing the app. With page (its URL): links that whole site, for when the person uses their own browser (Chrome, Safari) instead of the pane.",
+  inputSchema: { page: external_exports.string().url().optional().describe("The app's address, e.g. http://localhost:5173, to link the whole site in any browser") },
   annotations: { readOnlyHint: true }
-}, async () => {
+}, async ({ page }) => {
   if (!SESSION) return { ...text("This session could not be identified, so notes go to whichever session checks first. They will still arrive."), isError: true };
+  if (page) {
+    bindSite(page, SESSION.pid);
+    return text(`Notes from ${new URL(page).origin} now come to this session, in any browser.
+
+Start the watcher in the background: ${WAIT_COMMAND}`);
+  }
   return text([
     "Run this in the browser tab showing the app:",
     "",

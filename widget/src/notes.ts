@@ -16,6 +16,8 @@ import { unionOf, type Box } from './marquee'
 import { actionOf } from './router'
 
 const POLL_MS = 4000
+/** How far a marker steps aside from another on the same spot: its width and a hair. */
+const MARKER_STEP = 24
 
 /** Where a marker sits: the element's top-right corner, or for a line of text
     in a wide block (a heading across the page), the end of the text itself. */
@@ -135,6 +137,15 @@ export function createNotes(ui: HTMLElement, onOpen: (note: Note, el: Element | 
   function frame() {
     raf = 0
     if (!markers.size) return
+    /* Several notes on one corner (an element and its text, a button noted
+       twice) would stack into one badge: each next one steps to the right. */
+    const placed: Array<[number, number]> = []
+    const put = (m: HTMLElement, x: number, y: number) => {
+      const k = placed.filter(([px, py]) => Math.abs(px - x) < 12 && Math.abs(py - y) < 12).length
+      placed.push([x, y])
+      m.style.left = `${Math.round(x - 2 + k * MARKER_STEP)}px`
+      m.style.top = `${Math.round(y - 20)}px`
+    }
     for (const n of notes) {
       const m = markers.get(n.id)
       if (!m) continue
@@ -142,8 +153,7 @@ export function createNotes(ui: HTMLElement, onOpen: (note: Note, el: Element | 
         const b = areaOf(n)
         if (!b) continue
         m.removeAttribute('data-lost')
-        m.style.left = `${Math.round(b.right - 2)}px`
-        m.style.top = `${Math.round(b.top - 20)}px`
+        put(m, b.right, b.top)
         if (n.id === hovered) { ghost.style.cssText = `left:${b.left - 2}px;top:${b.top - 2}px;width:${b.right - b.left + 4}px;height:${b.bottom - b.top + 4}px`; enter(ghost) }
         continue
       }
@@ -167,8 +177,7 @@ export function createNotes(ui: HTMLElement, onOpen: (note: Note, el: Element | 
       } else continue
       m.toggleAttribute('data-nested', !el && !!anchor)
       /* The badge sits up and to the right, its pointed corner on the spot. */
-      m.style.left = `${Math.round(x - 2)}px`
-      m.style.top = `${Math.round(y - 20)}px`
+      put(m, x, y)
       if (n.id === hovered) {
         const box = el ?? anchor
         if (box && (el ? a?.visible : true)) {

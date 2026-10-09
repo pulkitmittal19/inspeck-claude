@@ -8,7 +8,13 @@
  * project folder and a short code. A browser tab is bound to a session when
  * Claude hands that code to the widget in its own pane (the `bind` tool).
  *
- * A note from a tab that isn't bound is routed by elimination:
+ * A site can be linked too (`site:http://localhost:5180`): that's how a page in
+ * an ordinary browser, which Claude can't hand a code to, finds its session.
+ * The link is made when a session takes notes nobody else could, or by `bind`
+ * with the page's address.
+ *
+ * A note from a tab that isn't bound, on a site that isn't linked, is routed by
+ * elimination:
  *   - only one session open → that one;
  *   - else the project serving the page (the process listening on its port,
  *     and the folder it runs in) → the session opened in that project;
@@ -33,7 +39,7 @@ export interface Route {
   pid?: number
   /** The project the note belongs to, when known. */
   cwd?: string
-  how: 'bound' | 'only' | 'project' | 'waiting'
+  how: 'bound' | 'site' | 'only' | 'project' | 'waiting' | 'claimed'
 }
 
 const DIR = join(HOME, 'sessions')
@@ -113,15 +119,30 @@ type Bindings = Record<string, { pid: number; at: string }>
 export function bindTab(tabId: string, token: string): Session | null {
   const s = liveSessions().find(x => x.token === token)
   if (!s) return null
+  saveBinding(tabId, s.pid)
+  return s
+}
+
+/** The site a page is on, as its link is stored: `site:http://localhost:5180`. */
+export function siteKey(page: string): string | null {
+  try { return `site:${new URL(page).origin}` } catch { return null }
+}
+
+/** Send every later note from this page's site to session `pid`, in any browser. */
+export function bindSite(page: string, pid: number): void {
+  const key = siteKey(page)
+  if (key) saveBinding(key, pid)
+}
+
+function saveBinding(key: string, pid: number): void {
   const all = readJson<Bindings>(BINDINGS) ?? {}
-  all[tabId] = { pid: s.pid, at: new Date().toISOString() }
+  all[key] = { pid, at: new Date().toISOString() }
   /* Keep the newest 200; old tabs are long gone. */
   const kept = Object.fromEntries(Object.entries(all).sort((a, b) => b[1].at.localeCompare(a[1].at)).slice(0, 200))
   mkdirSync(HOME, { recursive: true })
   const tmp = `${BINDINGS}.${process.pid}.tmp`
   writeFileSync(tmp, JSON.stringify(kept, null, 2))
   renameSync(tmp, BINDINGS)
-  return s
 }
 
 function boundPid(tabId: string): number | null {
@@ -168,6 +189,9 @@ export function route(page: string, tabId?: string): Route {
     const pid = boundPid(tabId)
     if (pid) return { pid, cwd: sessionOf(pid)?.cwd, how: 'bound' }
   }
+  const site = siteKey(page)
+  const sitePid = site ? boundPid(site) : null
+  if (sitePid) return { pid: sitePid, cwd: sessionOf(sitePid)?.cwd, how: 'site' }
   const live = liveSessions()
   if (live.length === 1) return { pid: live[0].pid, cwd: live[0].cwd, how: 'only' }
   const cwd = projectOf(page)
@@ -177,6 +201,17 @@ export function route(page: string, tabId?: string): Route {
     return { cwd, how: 'waiting' }
   }
   return { how: 'waiting' }
+}
+
+/**
+ * Whether no open session will ever pick this note up by itself: its session
+ * closed (or it never had one) and no session is open in its project. Such a
+ * note goes to the first session that asks for its notes.
+ */
+export function unclaimed(to: Route | undefined, live: Session[] = liveSessions()): boolean {
+  if (!to) return false
+  if (to.pid && alive(to.pid)) return false
+  return !to.cwd || !live.some(s => sameProject(s.cwd, to.cwd!))
 }
 
 /** Whether a note routed this way belongs to the session `me` (in folder `myCwd`). */

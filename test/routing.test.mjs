@@ -103,6 +103,33 @@ test('the background watcher wakes for its own session’s note and leaves other
   assert.match(out, /inspeck\.mjs" wait/, 'tells Claude how to keep listening')
 })
 
+test('a note from an ordinary browser that no session can place goes to the first session that checks, and so does the rest of that site', async () => {
+  /* Nothing listens on this port, so no project can be found for the page: as
+     with an app in Chrome when no session is open in its folder. */
+  const page = 'http://localhost:5199/inbox'
+  const first = await post('/comments', note('From Chrome', { page }))
+  assert.equal(first.json.comment.to.how, 'waiting')
+  assert.doesNotMatch(await A.tool('watch', { seconds: 5 }), /From Chrome/, 'nobody picks it up by themselves')
+
+  const checked = await B.tool('pending')
+  assert.match(checked, /Took 1 note no other session had, from http:\/\/localhost:5199/)
+  assert.match(checked, /From Chrome/)
+  assert.doesNotMatch(await A.tool('pending'), /From Chrome/)
+
+  const next = await post('/comments', note('Second from Chrome', { page: 'http://localhost:5199/settings' }))
+  assert.equal(next.json.comment.to.how, 'site')
+  assert.equal(next.json.comment.to.pid, B.pid)
+})
+
+test('bind with a page links that whole site to the session', async () => {
+  assert.match(await A.tool('bind', { page: 'http://localhost:5198' }), /Notes from http:\/\/localhost:5198 now come to this session/)
+  const r = await post('/comments', note('Site linked to A', { page: 'http://localhost:5198/x' }))
+  assert.equal(r.json.comment.to.how, 'site')
+  assert.equal(r.json.comment.to.pid, A.pid)
+  assert.match(await A.tool('pending'), /Site linked to A/)
+  assert.doesNotMatch(await B.tool('pending'), /Site linked to A/)
+})
+
 test('with one session open, an unbound tab’s note goes to it', async () => {
   const solo = mkdtempSync(join(tmpdir(), 'inspeck-solo-'))
   const S = await (async () => {

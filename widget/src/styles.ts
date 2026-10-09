@@ -150,11 +150,19 @@ button { appearance: none; background: none; border: 0; padding: 0; cursor: poin
   display: flex; align-items: center; gap: 8px; padding-bottom: 6px; margin-bottom: 4px;
   border-bottom: 1px solid var(--ix-line); white-space: nowrap;
 }
-.card-head .label { font: 650 11.5px/1.2 var(--ix-mono); color: var(--ix-text); overflow: hidden; text-overflow: ellipsis; }
-.card-head .comp { font: 500 11px/1.2 var(--ix-sans); color: var(--ix-dim); }
-.card-head .size { margin-left: auto; padding-left: 8px; font: 500 10.5px/1 var(--ix-mono); color: var(--ix-dim); }
+.card-head .label { flex: 0 1 auto; min-width: 0; font: 650 11.5px/1.2 var(--ix-mono); color: var(--ix-text); overflow: hidden; text-overflow: ellipsis; }
+/* A long component name gives way before the label does. */
+.card-head .comp { flex: 0 3 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; font: 500 11px/1.2 var(--ix-sans); color: var(--ix-dim); }
+.card-head .size { flex: none; margin-left: auto; padding-left: 8px; font: 500 10.5px/1 var(--ix-mono); color: var(--ix-dim); }
 .css { font: 11px/1.75 var(--ix-mono); color: var(--ix-text); }
-.decl { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.decl { display: flex; align-items: baseline; white-space: nowrap; min-width: 0; }
+.decl > .c-prop, .decl > .c-punct, .decl > .more { flex: none; }
+/* A flex row drops a trailing space, so the gap after the colon is kept here. */
+.decl > .c-punct { white-space: pre; }
+/* The written value gives way first; the resolved value after it stays. */
+.decl > .val { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.decl > .more { margin-left: 5px; color: var(--ix-faint); }
+.decl > .res { flex: none; max-width: 45%; overflow: hidden; text-overflow: ellipsis; }
 .decl.empty { color: var(--ix-dim); font-family: var(--ix-sans); }
 .c-prop { color: var(--ix-c-prop); }
 .c-num { color: var(--ix-c-num); }
@@ -271,7 +279,11 @@ button { appearance: none; background: none; border: 0; padding: 0; cursor: poin
 .preview[data-state="out"] { opacity: 0; transition-duration: 90ms; }
 .preview-head { font: 600 10.5px/1.3 var(--ix-sans); color: var(--ix-dim); margin-bottom: 3px; }
 .preview-head span { font-family: var(--ix-mono); font-weight: 500; }
-.preview-text { font: 12px/1.45 var(--ix-sans); color: var(--ix-text); white-space: pre-wrap; overflow-wrap: anywhere; }
+.preview-text {
+  font: 12px/1.45 var(--ix-sans); color: var(--ix-text); white-space: pre-wrap; overflow-wrap: anywhere;
+  /* A long note: its first lines, then a fade; the whole of it opens with a click. */
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 6; overflow: hidden;
+}
 .preview-lost { margin-top: 5px; font: 11px/1.3 var(--ix-sans); color: var(--ix-faint); }
 
 /* ---------- hold Shift: spacing ---------- */

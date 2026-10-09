@@ -6,6 +6,7 @@
  *   border-radius: var(--radius-200);                  8px
  *   background: #17171C;
  */
+import { splitList } from './rules'
 import { logicalPart, ownWinner, parts, sideOf, winner, type Written } from './cascade'
 
 export type Kind = 'control' | 'text' | 'image' | 'box'
@@ -217,6 +218,16 @@ function backgroundLine(el: Element, cs: CSSStyleDeclaration): Line | null {
   const img = cs.backgroundImage
   if (transparent(cs.backgroundColor) && (!img || img === 'none')) return null
   const w = ownWinner(el, 'background-color')
+  /* Gradients or images on top: they are what you see, so they lead, then the
+     colour under them. The card shows the first layer and how many more. */
+  if (img && img !== 'none') {
+    const written = ownWinner(el, 'background-image')?.value ?? clean(img)
+    /* A layer that is only a colour reads back as an empty image (`initial`, `none`): drop those. */
+    const layers = splitList(written).filter(l => !/^(initial|none)$/.test(l))
+    const under = transparent(cs.backgroundColor) ? null : (w?.value ?? clean(cs.backgroundColor))
+    /* No resolved value after it: written out, a gradient is as long as the value itself. */
+    return { prop: 'background', value: hex(unplumb([...layers, ...(under ? [under] : [])].join(', '))) }
+  }
   if (!w) return { prop: 'background', value: clean(cs.backgroundColor) }
   /* Designers say "background"; the colour longhand and the shorthand read the same here. */
   return line('background', w.value, cs.backgroundColor)
@@ -269,8 +280,37 @@ export function labelOf(el: Element): string {
   return tag
 }
 
-/** The React component that rendered an element (dev builds keep names). */
+/** The component that rendered an element, in React, Vue, Svelte or Angular (dev builds keep names). */
 export function componentOf(el: Element): string | undefined {
+  return reactComponentOf(el) ?? otherComponentOf(el)
+}
+
+const fileStem = (file?: string) => file ? file.split(/[\\/]/).pop()!.replace(/\.[^.]+$/, '') : undefined
+
+function otherComponentOf(el: Element): string | undefined {
+  type VueInstance = { type?: { name?: string; __name?: string; __file?: string } }
+  const any = el as unknown as {
+    __vueParentComponent?: VueInstance
+    __vue__?: { $options?: { name?: string; __file?: string } }
+    __svelte_meta?: { loc?: { file?: string } }
+  }
+  /* Vue 3, then Vue 2: the component this element sits in. */
+  const v3 = any.__vueParentComponent?.type
+  if (v3) return v3.name || v3.__name || fileStem(v3.__file)
+  for (let n: Element | null = el; n; n = n.parentElement) {
+    const v2 = (n as unknown as typeof any).__vue__?.$options
+    if (v2) return v2.name || fileStem(v2.__file)
+  }
+  /* Svelte: the file the markup is written in is the component. */
+  const svelte = fileStem(any.__svelte_meta?.loc?.file)
+  if (svelte) return svelte
+  /* Angular, in development: its debugging API names the owning component. */
+  const ng = (window as unknown as { ng?: { getOwningComponent?(e: Element): object | null; getComponent?(e: Element): object | null } }).ng
+  const owner = ng?.getComponent?.(el) ?? ng?.getOwningComponent?.(el)
+  return owner ? owner.constructor.name.replace(/^_+/, '') : undefined
+}
+
+function reactComponentOf(el: Element): string | undefined {
   const key = Object.keys(el).find(k => k.startsWith('__reactFiber$'))
   if (!key) return
   type Fiber = { type?: unknown; return?: Fiber | null }

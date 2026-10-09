@@ -121,7 +121,7 @@ export interface Comment {
   client?: { name: string; version: string }
   tabId?: string
   /** The session it's for, decided by the server when it arrives. */
-  to?: { pid?: number; cwd?: string; how: 'bound' | 'only' | 'project' | 'waiting' }
+  to?: { pid?: number; cwd?: string; how: 'bound' | 'site' | 'only' | 'project' | 'waiting' | 'claimed' }
   /** Absolute path to the PNG on this machine. */
   screenshot?: string
   thread: Message[]

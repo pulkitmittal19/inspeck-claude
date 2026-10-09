@@ -27,6 +27,10 @@ When you open the person's app in your browser pane and Inspeck is on the page:
 1. Call `bind`, and run the line of JavaScript it returns in that browser tab. Notes from that tab now come to this session, even with other Claude sessions open.
 2. Start the watcher **in the background** with the command `bind` gives you (`node ".../inspeck.mjs" wait`). It finishes, printing the notes, the moment the person places one. Handle them, then start it again.
 
+When the person uses their own browser (Chrome, Safari) instead of your pane, there's no tab to run that line in. Call `bind` with `page` set to the app's address (e.g. `http://localhost:5173`): every note from that site, in any browser, now comes to this session. Then start the watcher as above. If they just say "check my Inspeck notes", `pending` also takes any notes no other session could have picked up and links their site to you; it says so at the top when it does.
+
+Notes may carry `code` (the file and line the element is written on) and `used in` (where the component around it is placed). Open those first. They come from React, Vue, Svelte or a dev plugin such as code-inspector-plugin; when a note has none (a server-rendered page, say), search the code with the selector, the classes and the quoted text.
+
 If the person hasn't added Inspeck to their app yet, the line is:
 `<script src="http://127.0.0.1:4848/inspeck.js"></script>` in the dev HTML (only in development).
 

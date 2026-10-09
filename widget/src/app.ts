@@ -13,7 +13,7 @@ import { childToward, elementAt, parentOf, pickable, snap } from './pick'
 import { createRouter } from './router'
 import { selectorFor } from './selector'
 import { createSpacing, type Spacing } from './spacing'
-import { sourceOf } from './source'
+import { sourceOf, type SourceAt } from './source'
 import { createMarquee, MAX_MEMBERS, unionOf, type Box, type Marquee } from './marquee'
 import { labelOf } from './css/describe'
 import { createToolbar, type Toolbar } from './toolbar'
@@ -22,6 +22,10 @@ import { openPathOf } from './transient'
 /* Presses that would act on the app. While Inspeck is open they pick instead. */
 const PRESS = new Set(['pointerdown', 'pointerup', 'mousedown', 'mouseup', 'click', 'dblclick', 'auxclick',
   'contextmenu', 'touchstart', 'touchend', 'dragstart'])
+
+/** After Enter, how long a note waits for its place in the code before going without it. */
+const SOURCE_WAIT_MS = 2500
+const wait = <T>(ms: number, value: T) => new Promise<T>(r => setTimeout(() => r(value), ms))
 
 /** How far the pointer moves with the button down before a click becomes a drag. */
 const DRAG_PX = 5
@@ -213,6 +217,8 @@ export class App {
     this.target = el
     this.outline.show(el)
     this.sent = false
+    /* Start looking for where it's written now; it's usually found before Enter. */
+    const where = sourceOf(el)
     this.card.pin(el, {
       existing: existing ? { n: existing.n, note: existing.note } : undefined,
       draft: existing ? undefined : this.drafts.get(el),
@@ -222,7 +228,7 @@ export class App {
           void this.notes.refresh()
           return
         }
-        const source = await sourceOf(el)
+        const source = await Promise.race([where, wait(SOURCE_WAIT_MS, [] as SourceAt[])])
         const note = await api.add({ ...this.noteFor(el, text), ...(source.length ? { source } : {}) })
         this.sent = true
         this.drafts.delete(el)
@@ -274,6 +280,8 @@ export class App {
   /** Pin a note to a dragged area: the elements inside it, or the bare area. `box` is in viewport coordinates. */
   pinGroup(members: Element[], box: Box, existing?: Note): void {
     this.freeze.freeze(false)
+    /* Start looking for where each is written now, as for a single element. */
+    for (const m of members.slice(0, 12)) void sourceOf(m)
     const holder = commonAncestor(members) ?? document.body
     this.pinned = holder
     this.target = holder
@@ -292,7 +300,7 @@ export class App {
         }
         const payload = this.noteForGroup(holder, members, box, text)
         /* Where each element is written, so Claude can line them up in the code too. */
-        const places = await Promise.all(members.slice(0, 12).map(m => sourceOf(m)))
+        const places = await Promise.race([Promise.all(members.slice(0, 12).map(m => sourceOf(m))), wait(SOURCE_WAIT_MS, [] as SourceAt[][])])
         payload.group.forEach((g, i) => { const at = places[i]?.[0]; if (at) (g as GroupMember).source = at })
         const note = await api.add(payload)
         this.sent = true

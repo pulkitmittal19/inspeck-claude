@@ -190,6 +190,16 @@ export function claimNew(page?: string, mine: (c: Comment) => boolean = () => tr
   })
 }
 
+/** Give every open note that matches to `to`, in one write. Returns those it moved. */
+export function adopt(which: (c: Comment) => boolean, to: NonNullable<Comment['to']>): Comment[] {
+  if (!read().comments.some(c => (c.status === 'new' || c.status === 'seen') && which(c))) return []
+  return change(inbox => {
+    const moved = inbox.comments.filter(c => (c.status === 'new' || c.status === 'seen') && which(c))
+    for (const c of moved) c.to = { ...to }
+    return moved.map(c => ({ ...c }))
+  })
+}
+
 export function markSeen(id: string): Comment | undefined {
   return change(inbox => {
     const c = inbox.comments.find(x => x.id === id)

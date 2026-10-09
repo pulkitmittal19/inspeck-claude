@@ -22,7 +22,7 @@ import { z } from 'zod'
 import * as store from './store.js'
 import { listen, PORT } from './http.js'
 import { heading, pageLabel, render, summaryLine, type Comment } from './format.js'
-import { belongsTo, claudePid, register } from './sessions.js'
+import { belongsTo, bindSite, claudePid, register, unclaimed } from './sessions.js'
 import { runWait, WAIT_COMMAND } from './wait.js'
 
 /* `node inspeck.mjs wait`: the background watcher, not the MCP server. */
@@ -44,6 +44,7 @@ Setting up, once per session, when you open the person's app in your browser pan
 1. Call bind. It returns one line of JavaScript; run it in the browser pane tab showing the app. Notes from that tab now come to this session.
 2. Start the watcher as a background task: ${WAIT_COMMAND}
    It finishes, printing the notes, the moment one arrives. Handle them, then start it again.
+If the person uses their own browser (Chrome, Safari) instead of your pane, call bind with page set to the app's address instead of running a line: every note from that site, in any browser, then comes here. Saying "check my Inspeck notes" (pending) also takes notes no other session could have picked up, and links their site to you.
 
 Working through notes: pending lists what's waiting, get opens one, watch waits for new ones in the foreground, a note's marker leaves the page once you've read it (get, watch or the watcher); resolve closes it with one line saying what changed, dismiss declines with a reason.
 
@@ -93,13 +94,22 @@ server.registerTool('pending', {
   inputSchema: { page: z.string().optional().describe('Only this page, as a URL') },
   annotations: { readOnlyHint: true },
 }, async ({ page }) => {
+  /* Notes no open session will pick up (say, from a page in Chrome, with no
+     session opened in its project) come to whoever asks first, and so does
+     every later note from that site. */
+  const adopted = ME ? store.adopt(c => unclaimed(c.to), { pid: ME, cwd: MY_CWD, how: 'claimed' }) : []
+  const sites = [...new Set(adopted.map(c => { try { return new URL(c.page).origin } catch { return c.page } }))]
+  for (const c of adopted) bindSite(c.page, ME!)
+  const took = adopted.length
+    ? `Took ${adopted.length} note${adopted.length === 1 ? '' : 's'} no other session had, from ${sites.join(', ')}. Notes from ${sites.length === 1 ? 'there' : 'those sites'} now come to this session, in any browser.\n\n`
+    : ''
   const list = store.open(page).filter(mine)
-  if (!list.length) return text(page ? `Nothing open on ${pageLabel(page)}.` : 'Nothing open. When the person places a comment, it will show up here.')
+  if (!list.length) return text(took + (page ? `Nothing open on ${pageLabel(page)}.` : 'Nothing open. When the person places a comment, it will show up here.'))
   const byPage = new Map<string, Comment[]>()
   for (const c of list) byPage.set(c.page, [...(byPage.get(c.page) ?? []), c])
   const blocks = [...byPage].map(([p, cs]) =>
     `${pageLabel(p)} — ${cs.length} open\n${cs.map(summaryLine).join('\n')}`)
-  return text(`${blocks.join('\n\n')}\n\nOpen one with get and its id.`)
+  return text(`${took}${blocks.join('\n\n')}\n\nOpen one with get and its id.`)
 })
 
 server.registerTool('get', {
@@ -135,11 +145,15 @@ server.registerTool('watch', {
 
 server.registerTool('bind', {
   title: 'Link browser tab',
-  description: 'Link the browser tab that shows the person\'s app to this session, so the notes they place there come here. Returns one line of JavaScript to run in that tab (the browser pane), after the page has loaded.',
-  inputSchema: {},
+  description: 'Link the person\'s app to this session, so the notes they place on it come here. With no page: returns one line of JavaScript to run in the browser pane tab showing the app. With page (its URL): links that whole site, for when the person uses their own browser (Chrome, Safari) instead of the pane.',
+  inputSchema: { page: z.string().url().optional().describe('The app\'s address, e.g. http://localhost:5173, to link the whole site in any browser') },
   annotations: { readOnlyHint: true },
-}, async () => {
+}, async ({ page }) => {
   if (!SESSION) return { ...text('This session could not be identified, so notes go to whichever session checks first. They will still arrive.'), isError: true }
+  if (page) {
+    bindSite(page, SESSION.pid)
+    return text(`Notes from ${new URL(page).origin} now come to this session, in any browser.\n\nStart the watcher in the background: ${WAIT_COMMAND}`)
+  }
   return text([
     'Run this in the browser tab showing the app:',
     '',
