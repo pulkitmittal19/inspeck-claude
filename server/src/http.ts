@@ -22,6 +22,7 @@ import { HOME } from './store.js'
 import { bindTab, route as routeNote } from './sessions.js'
 import { isThisMachine, NewComment, pageKey, type Comment } from './format.js'
 import { resolveSource } from './sourcemap.js'
+import { listenStream, stopListening, voiceAvailable } from './voice.js'
 
 /** Settings the widget may keep, and the values each may take. */
 const SETTINGS: Record<string, string[]> = {
@@ -161,6 +162,11 @@ async function route(req: IncomingMessage, res: ServerResponse, version: string,
     }
     return send(res, 200, read())
   }
+
+  /* Voice for notes: whether it works here, a listening session streamed as it goes, and stopping it. */
+  if (url.pathname === '/voice' && req.method === 'GET') return send(res, 200, voiceAvailable())
+  if (url.pathname === '/voice/listen' && req.method === 'POST') return listenStream(req, res)
+  if (url.pathname === '/voice/stop' && req.method === 'POST') return send(res, 200, { stopping: stopListening() })
 
   /* A Claude session hands its pane's widget a code; from then on that tab's notes go to it. */
   if (req.method === 'POST' && url.pathname === '/bind') {

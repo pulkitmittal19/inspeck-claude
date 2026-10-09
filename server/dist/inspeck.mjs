@@ -7197,7 +7197,7 @@ var require_dist = __commonJS({
 
 // server/src/index.ts
 import { readFileSync as readFileSync5, writeFileSync as writeFileSync4, mkdirSync as mkdirSync4 } from "fs";
-import { extname, join as join5 } from "path";
+import { extname, join as join6 } from "path";
 
 // node_modules/zod/v3/helpers/util.js
 var util;
@@ -36850,10 +36850,10 @@ function remove(id) {
 }
 
 // server/src/http.ts
-import { existsSync as existsSync4, mkdirSync as mkdirSync3, readFileSync as readFileSync4, statSync as statSync3, writeFileSync as writeFileSync3 } from "fs";
+import { existsSync as existsSync5, mkdirSync as mkdirSync3, readFileSync as readFileSync4, statSync as statSync3, writeFileSync as writeFileSync3 } from "fs";
 import { createServer } from "http";
-import { dirname as dirname2, join as join4, normalize } from "path";
-import { fileURLToPath as fileURLToPath2 } from "url";
+import { dirname as dirname3, join as join5, normalize } from "path";
+import { fileURLToPath as fileURLToPath3 } from "url";
 
 // server/src/sessions.ts
 import { execFileSync } from "child_process";
@@ -37109,6 +37109,74 @@ function resolveSource(at) {
   }
 }
 
+// server/src/voice.ts
+import { spawn } from "child_process";
+import { existsSync as existsSync4 } from "fs";
+import { release as release2 } from "os";
+import { dirname as dirname2, join as join4 } from "path";
+import { fileURLToPath as fileURLToPath2 } from "url";
+var HELPER = process.env.INSPECK_LISTEN || join4(dirname2(fileURLToPath2(import.meta.url)), "..", "bin", "inspeck-listen");
+function voiceAvailable() {
+  if (process.platform !== "darwin") return { available: false, reason: "Voice needs a Mac for now." };
+  if (Number(release2().split(".")[0]) < 25) return { available: false, reason: "Voice needs macOS 26 or later." };
+  if (!existsSync4(HELPER)) return { available: false, reason: "The voice listener isn't built (npm run build:listen)." };
+  return { available: true };
+}
+var current = null;
+function listenStream(req, res) {
+  const can = voiceAvailable();
+  res.writeHead(200, { "content-type": "application/x-ndjson", "cache-control": "no-store", "x-content-type-options": "nosniff" });
+  const out = (o) => {
+    if (!res.writableEnded) res.write(JSON.stringify(o) + "\n");
+  };
+  if (!can.available) {
+    out({ type: "error", code: "unsupported", message: can.reason });
+    res.end();
+    return;
+  }
+  current?.kill("SIGTERM");
+  const child = spawn(HELPER, [], { stdio: ["pipe", "pipe", "ignore"] });
+  current = child;
+  let rest = "";
+  let ended = false;
+  child.stdout.setEncoding("utf8");
+  child.stdout.on("data", (chunk) => {
+    rest += chunk;
+    let i;
+    while ((i = rest.indexOf("\n")) >= 0) {
+      const line = rest.slice(0, i).trim();
+      rest = rest.slice(i + 1);
+      if (!line) continue;
+      try {
+        const ev = JSON.parse(line);
+        out(ev);
+        if (ev.type === "done" || ev.type === "error") ended = true;
+      } catch {
+      }
+    }
+  });
+  child.on("error", (err) => {
+    out({ type: "error", code: "failed", message: `Couldn't start the voice listener: ${err.message}` });
+    ended = true;
+  });
+  child.on("exit", () => {
+    if (current === child) current = null;
+    if (!ended) out({ type: "error", code: "failed", message: "The voice listener stopped unexpectedly." });
+    res.end();
+  });
+  res.on("close", () => {
+    if (child.exitCode === null) child.kill("SIGTERM");
+  });
+  req.on("aborted", () => {
+    if (child.exitCode === null) child.kill("SIGTERM");
+  });
+}
+function stopListening() {
+  if (!current || current.exitCode !== null) return false;
+  current.stdin?.write("stop\n");
+  return true;
+}
+
 // server/src/http.ts
 var SETTINGS = {
   sizes: ["written", "px", "rem"],
@@ -37163,8 +37231,8 @@ function body(req) {
     req.on("error", reject);
   });
 }
-var HERE = dirname2(fileURLToPath2(import.meta.url));
-var WIDGET = process.env.INSPECK_WIDGET || join4(HERE, "widget", "inspeck.js");
+var HERE = dirname3(fileURLToPath3(import.meta.url));
+var WIDGET = process.env.INSPECK_WIDGET || join5(HERE, "widget", "inspeck.js");
 function sendFile(req, res, path, type) {
   let stat;
   try {
@@ -37189,9 +37257,9 @@ function sendFile(req, res, path, type) {
   res.writeHead(200, headers).end(readFileSync4(path));
 }
 var DEV = process.env.INSPECK_DEV === "1";
-var DEV_DIR = join4(HERE, "..", "..", "widget", "dev");
+var DEV_DIR = join5(HERE, "..", "..", "widget", "dev");
 function devFile(req, res, name) {
-  const path = normalize(join4(DEV_DIR, name || "index.html"));
+  const path = normalize(join5(DEV_DIR, name || "index.html"));
   if (!path.startsWith(DEV_DIR)) {
     send(res, 404, { error: "Not found" });
     return;
@@ -37216,15 +37284,15 @@ async function route2(req, res, version2, onNew) {
     return devFile(req, res, parts.slice(1).join("/"));
   }
   if (url2.pathname === "/tour" && (req.method === "GET" || req.method === "POST")) {
-    const flag2 = join4(HOME, "tour-seen");
+    const flag2 = join5(HOME, "tour-seen");
     if (req.method === "POST") {
       mkdirSync3(HOME, { recursive: true });
       writeFileSync3(flag2, (/* @__PURE__ */ new Date()).toISOString());
     }
-    return send(res, 200, { seen: existsSync4(flag2) });
+    return send(res, 200, { seen: existsSync5(flag2) });
   }
   if (url2.pathname === "/settings" && (req.method === "GET" || req.method === "POST")) {
-    const file2 = join4(HOME, "settings.json");
+    const file2 = join5(HOME, "settings.json");
     const read2 = () => {
       try {
         return JSON.parse(readFileSync4(file2, "utf8"));
@@ -37245,6 +37313,9 @@ async function route2(req, res, version2, onNew) {
     }
     return send(res, 200, read2());
   }
+  if (url2.pathname === "/voice" && req.method === "GET") return send(res, 200, voiceAvailable());
+  if (url2.pathname === "/voice/listen" && req.method === "POST") return listenStream(req, res);
+  if (url2.pathname === "/voice/stop" && req.method === "POST") return send(res, 200, { stopping: stopListening() });
   if (req.method === "POST" && url2.pathname === "/bind") {
     const b = await body(req);
     if (typeof b.tabId !== "string" || typeof b.token !== "string" || b.tabId.length > 64) return send(res, 400, { error: "Send { tabId, token }" });
@@ -37359,8 +37430,8 @@ function listen(version2, log2, onNew = () => {
 }
 
 // server/src/wait.ts
-import { fileURLToPath as fileURLToPath3 } from "url";
-var SELF = fileURLToPath3(import.meta.url);
+import { fileURLToPath as fileURLToPath4 } from "url";
+var SELF = fileURLToPath4(import.meta.url);
 var WAIT_COMMAND = `node "${SELF}" wait`;
 var flag = (args, name) => {
   const i = args.indexOf(name);
@@ -37400,7 +37471,7 @@ if (process.argv[2] === "wait") {
   await runWait(process.argv.slice(3));
   process.exit(0);
 }
-var VERSION = "0.12.2";
+var VERSION = "0.13.0";
 var log = (msg) => process.stderr.write(`inspeck: ${msg}
 `);
 var INSTRUCTIONS = `Inspeck lets a person hover any element of their web app to see its CSS, and click it to leave a note for you. Their notes arrive here.
@@ -37555,7 +37626,7 @@ server.registerTool("dismiss", {
 function noteClient() {
   try {
     mkdirSync4(HOME, { recursive: true });
-    writeFileSync4(join5(HOME, "last-client.json"), JSON.stringify({
+    writeFileSync4(join6(HOME, "last-client.json"), JSON.stringify({
       at: (/* @__PURE__ */ new Date()).toISOString(),
       client: server.server.getClientVersion(),
       capabilities: server.server.getClientCapabilities()

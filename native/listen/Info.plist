@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleIdentifier</key>
+  <string>dev.inspeck.listen</string>
+  <key>CFBundleName</key>
+  <string>Inspeck</string>
+  <key>CFBundleDisplayName</key>
+  <string>Inspeck</string>
+  <key>CFBundleVersion</key>
+  <string>1</string>
+  <key>NSMicrophoneUsageDescription</key>
+  <string>Inspeck listens while you hold the mic in a note, and turns what you say into text on this Mac.</string>
+  <key>NSSpeechRecognitionUsageDescription</key>
+  <string>Inspeck turns what you say into the text of your note, on this Mac.</string>
+</dict>
+</plist>

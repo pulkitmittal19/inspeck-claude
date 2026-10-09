@@ -113,11 +113,11 @@ test('the widget is served to a plain script tag, and an unchanged reload is a 3
   assert.equal(again.status, 304)
 })
 
-test('the widget stays small: under 40 KB gzipped', async () => {
+test('the widget stays small: under 45 KB gzipped (it was 40 before Settings and voice)', async () => {
   const { gzipSync } = await import('node:zlib')
   const { readFileSync } = await import('node:fs')
   const size = gzipSync(readFileSync(join(root, 'server/dist/widget/inspeck.js')), { level: 9 }).length
-  assert.ok(size < 40 * 1024, `widget is ${Math.round(size / 1024)} KB gzipped`)
+  assert.ok(size < 45 * 1024, `widget is ${Math.round(size / 1024)} KB gzipped`)
 })
 
 test('the dev test page only exists with INSPECK_DEV=1', async () => {
@@ -200,6 +200,26 @@ test('settings are kept per machine; only known keys and values are stored', asy
   assert.deepEqual(saved, { sizes: 'rem', colors: 'oklch' })
   assert.deepEqual((await page(s.port, 'POST', '/settings', { body: { sizes: 'furlongs', colors: 'hex' } })).json, { sizes: 'rem', colors: 'hex' }, 'an unknown value is ignored')
   assert.deepEqual((await page(s.port, 'GET', '/settings', { origin: 'http://localhost:3000' })).json, { sizes: 'rem', colors: 'hex' }, 'every app on this machine sees them')
+})
+
+test('voice: the server says whether it can listen, and a session it can\'t run ends with a reason', async () => {
+  const v = (await page(s.port, 'GET', '/voice')).json
+  assert.equal(typeof v.available, 'boolean')
+  /* The test copy of the server has no listener next to it, so this machine can't listen through it. */
+  assert.equal(v.available, false)
+  assert.match(v.reason, /Mac|macOS|listener/)
+  const r = await new Promise((resolve, reject) => {
+    const req = http.request({ host: '127.0.0.1', port: s.port, method: 'POST', path: '/voice/listen', headers: { origin: 'http://localhost:5173' } }, res => {
+      let raw = ''; res.on('data', c => { raw += c }); res.on('end', () => resolve({ status: res.statusCode, type: res.headers['content-type'], lines: raw.trim().split('\n').map(l => JSON.parse(l)) }))
+    })
+    req.on('error', reject); req.end()
+  })
+  assert.equal(r.status, 200)
+  assert.match(r.type, /ndjson/)
+  assert.deepEqual(r.lines.map(l => l.type), ['error'])
+  assert.equal(r.lines[0].code, 'unsupported')
+  assert.equal((await page(s.port, 'POST', '/voice/stop', { body: {} })).json.stopping, false, 'nothing to stop')
+  assert.equal((await page(s.port, 'POST', '/voice/listen', { origin: 'https://evil.example' })).status, 403, 'an ordinary website can\'t start the mic')
 })
 
 test('Claude gets the line the element is written on, and where its component is used', async () => {

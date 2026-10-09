@@ -11,7 +11,8 @@ import { enter, leave, play } from './anim'
 import { clear, h, svg } from './dom'
 import { ICONS } from './icons'
 import { actionOf } from './router'
-import { nextFrame } from './native'
+import { cancelFrame, nextFrame } from './native'
+import { listen, voiceReady, type Listening, type VoiceEvent } from './voice'
 
 const GAP = 8
 /** A value longer than this that is a comma list shows its first item and a count. */
@@ -19,6 +20,11 @@ const LIST_MAX = 34
 const LABEL_MAX = 34
 const EDGE = 8
 const MAX_NOTE_LINES = 4
+const PLACEHOLDER = 'Add a note for Claude…'
+/** If the last words haven't settled this long after you stop, keep what came through. */
+const FINISH_MS = 5000
+/** How much each of the five bars moves with your voice: the middle most. */
+const BAR_GAIN = [0.55, 0.8, 1, 0.8, 0.55]
 
 export interface PinOptions {
   /** Editing an existing note: its text and number. */
@@ -120,6 +126,11 @@ export function createCard(ui: HTMLElement): Card {
   } | null = null
   let busy = false
   let folded = false
+  /* Speaking a note: what was typed before, the session, how loud (and how loud the bars show), and whether Enter asked to send. */
+  let voice: {
+    session: Listening; base: string; state: 'loading' | 'listening' | 'finishing'
+    level: number; shown: number; raf: number; sendAfter: boolean; timer: number
+  } | null = null
   /** The CSS folds by itself once, on the first keystroke; after that only you fold or open it. */
   let autoFolded = false
   const setFolded = (f: boolean) => {
@@ -152,6 +163,124 @@ export function createCard(ui: HTMLElement): Card {
     parts.status.append(...(kind === 'ok' ? [svg(ICONS.check, 13, 2.4)] : []), text)
     parts.status.dataset.kind = kind
     setOpen(parts.statusWrap, true)
+  }
+
+  /* ---------- voice ---------- */
+
+  const voiceState = (state: 'loading' | 'listening' | 'finishing' | null) => {
+    const row = parts?.note.parentElement
+    if (!row) return
+    if (state) row.setAttribute('data-voice', state)
+    else row.removeAttribute('data-voice')
+    const mic = row.querySelector<HTMLElement>('.mic')
+    mic?.setAttribute('aria-pressed', String(state === 'listening'))
+    mic?.setAttribute('aria-label', state === 'listening' ? 'Stop and keep the text' : state ? 'Cancel' : 'Speak your note')
+  }
+  const hint = (text: string) => { if (parts) parts.note.placeholder = text }
+
+  /* The bars and the glow follow your voice, eased so they breathe rather than flicker. */
+  const animate = () => {
+    if (!voice || !parts) return
+    const v = voice
+    v.shown += (v.level - v.shown) * (v.level > v.shown ? 0.45 : 0.18)
+    const row = parts.note.parentElement!
+    row.style.setProperty('--lvl', v.shown.toFixed(3))
+    const t = performance.now()
+    row.querySelectorAll<HTMLElement>('.wave i').forEach((bar, i) => {
+      const wobble = 0.72 + 0.28 * Math.sin(t / 130 + i * 1.7)
+      bar.style.transform = `scaleY(${Math.min(1, 0.18 + v.shown * BAR_GAIN[i] * wobble).toFixed(3)})`
+    })
+    v.raf = nextFrame(animate)
+  }
+
+  const endVoice = () => {
+    if (!voice) return
+    cancelFrame(voice.raf)
+    clearTimeout(voice.timer)
+    voice = null
+    voiceState(null)
+    hint(PLACEHOLDER)
+    parts?.note.parentElement?.style.removeProperty('--lvl')
+  }
+
+  /** The words so far, after what you'd typed. */
+  const showWords = (text: string) => {
+    if (!parts || !voice) return
+    const t = parts.note
+    t.value = voice.base + text
+    t.setSelectionRange(t.value.length, t.value.length)
+    grow()
+    t.scrollTop = t.scrollHeight
+    sync()
+  }
+
+  const onVoice = (e: VoiceEvent) => {
+    if (!voice || !parts) return
+    switch (e.type) {
+      case 'loading':
+        hint(e.what === 'model' ? `Getting the speech model${e.progress ? ` · ${Math.round(e.progress * 100)}%` : ''}…` : 'Getting the mic ready…')
+        break
+      case 'listening':
+        voice.state = 'listening'
+        voiceState('listening')
+        hint('Listening…')
+        break
+      case 'level':
+        voice.level = e.value
+        break
+      case 'text':
+        showWords(e.final + e.partial)
+        break
+      case 'done': {
+        const sendAfter = voice.sendAfter
+        showWords(e.text)
+        parts.note.value = parts.note.value.trim()
+        endVoice()
+        sync()
+        play(parts.note, 'data-settle', 520)
+        parts.note.focus({ preventScroll: true })
+        if (sendAfter && parts.note.value) void send()
+        break
+      }
+      case 'error':
+        endVoice()
+        sync()
+        status(e.message, 'error')
+        play(el, 'data-pulse', 300)
+        break
+    }
+  }
+
+  const startVoice = () => {
+    if (!parts || voice || busy) return
+    const typed = parts.note.value.replace(/\s+$/, '')
+    setOpen(parts.statusWrap, false)
+    voice = { session: listen(onVoice), base: typed ? `${typed} ` : '', state: 'loading', level: 0, shown: 0, raf: 0, sendAfter: false, timer: 0 }
+    voiceState('loading')
+    hint('Getting the mic ready…')
+    parts.note.focus({ preventScroll: true })
+    animate()
+  }
+
+  /** Stop listening and keep the words; with Enter, send them too. Before it hears anything, it's just a cancel. */
+  const stopVoice = (sendAfter: boolean) => {
+    if (!voice) return
+    if (voice.state === 'loading') { cancelVoice(); return }
+    voice.sendAfter ||= sendAfter
+    if (voice.state === 'finishing') return
+    voice.state = 'finishing'
+    voiceState('finishing')
+    voice.session.stop()
+    const v = voice
+    v.timer = window.setTimeout(() => { if (voice === v) { v.session.cancel(); onVoice({ type: 'done', text: parts?.note.value.slice(v.base.length) ?? '' }) } }, FINISH_MS)
+  }
+
+  /** Drop the session; what's in the box stays. */
+  const cancelVoice = () => {
+    if (!voice) return
+    voice.session.cancel()
+    endVoice()
+    sync()
   }
 
   const send = async () => {
@@ -233,13 +362,20 @@ export function createCard(ui: HTMLElement): Card {
       } else {
         head = renderHead(o.group ?? { label: 'Area', size: '' }, [h('span', { class: 'tools' }, close)], o.existing?.n)
       }
-      const note = h('textarea', { class: 'note-input', rows: 1, placeholder: 'Add a note for Claude…', 'aria-label': 'Note for Claude', spellcheck: 'true' })
+      cancelVoice()
+      const note = h('textarea', { class: 'note-input', rows: 1, placeholder: PLACEHOLDER, 'aria-label': 'Note for Claude', spellcheck: 'true' })
       if (o.existing) note.value = o.existing.note
       else if (o.draft) note.value = o.draft
       const sendBtn = h('button', { type: 'button', class: 'send', 'data-action': 'send', 'aria-label': o.existing ? 'Save note' : prefs.get().send === 'ask' ? 'Add note' : 'Send to Claude', disabled: true }, svg(ICONS.enter, 13, 2.2))
       /* The pinned parts start closed and open on the next frame, so the card
          grows from what you were just hovering into the note. */
-      const noteWrap = reveal('note-wrap', false, h('div', { class: 'note' }, svg(ICONS.note, 13), note, sendBtn))
+      /* Voice, where this Mac can do it: a mic beside send, and five bars that take the note icon's place while it listens. */
+      const mic = voiceReady()
+        ? h('button', { type: 'button', class: 'mic', 'data-action': 'mic', 'aria-label': 'Speak your note', 'aria-pressed': 'false', title: 'Speak your note' },
+          h('span', { class: 'mic-glow', 'aria-hidden': 'true' }), svg(ICONS.mic, 14, 1.9), svg(ICONS.stop, 12))
+        : null
+      const wave = mic ? h('span', { class: 'wave', 'aria-hidden': 'true' }, ...BAR_GAIN.map(() => h('i', {}))) : null
+      const noteWrap = reveal('note-wrap', false, h('div', { class: 'note' }, svg(ICONS.note, 13), wave, note, mic, sendBtn))
       const statusEl = h('div', { class: 'status', role: 'status' })
       const statusWrap = reveal('status-wrap quick', false, statusEl)
       const actionsWrap = o.onDelete ? reveal('actions-wrap', false, h('div', { class: 'note-actions' }, h('button', { type: 'button', class: 'link', 'data-action': 'delete' }, svg(ICONS.trash, 12), 'Delete'))) : null
@@ -259,6 +395,7 @@ export function createCard(ui: HTMLElement): Card {
     },
 
     hide() {
+      cancelVoice()
       mode = null
       lastTarget = null
       desc = null
@@ -299,7 +436,15 @@ export function createCard(ui: HTMLElement): Card {
     handle(e) {
       if (mode !== 'pinned' || !parts || !opts) return false
       if (!e.composedPath().includes(el)) return false
-      if (e.type === 'input') { sync(); return true }
+      /* Typing (or pasting, or the Mac's own dictation) takes over from the mic; Inspeck's own words don't fire input. */
+      if (e.type === 'input') { if (voice) cancelVoice(); sync(); return true }
+      /* While it listens: Enter stops and sends, Escape cancels, and typing takes over from the mic. */
+      if (e.type === 'keydown' && voice) {
+        const k = e as KeyboardEvent
+        if (k.key === 'Enter' && !k.shiftKey) { k.preventDefault(); stopVoice(true); return true }
+        if (k.key === 'Escape') { k.preventDefault(); cancelVoice(); return true }
+        if (!['Shift', 'Meta', 'Control', 'Alt'].includes(k.key)) cancelVoice()
+      }
       /* A press anywhere else on the card (its head, the CSS, a button) leaves
          the cursor in the note, so you can click and carry on typing. */
       if (e.type === 'mousedown' && !(e.composedPath()[0] instanceof HTMLTextAreaElement)) { e.preventDefault(); return true }
@@ -313,7 +458,8 @@ export function createCard(ui: HTMLElement): Card {
       if (e.type === 'click') {
         const a = actionOf(e)
         switch (a?.action) {
-          case 'send': void send(); break
+          case 'send': if (voice) stopVoice(true); else void send(); break
+          case 'mic': if (voice) stopVoice(false); else startVoice(); break
           case 'close-card': opts.onClose(); break
           case 'fold': {
             setFolded(!folded)

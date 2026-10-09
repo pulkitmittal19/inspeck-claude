@@ -17,6 +17,7 @@ import { sourceOf, type SourceAt } from './source'
 import { createTour, type Tour } from './tour'
 import { createSettings, type Settings } from './settings'
 import { prefs } from './prefs'
+import { checkVoice } from './voice'
 import { createMarquee, MAX_MEMBERS, unionOf, type Box, type Marquee } from './marquee'
 import { labelOf } from './css/describe'
 import { createToolbar, type Toolbar } from './toolbar'
@@ -142,6 +143,7 @@ export class App {
     tabStore.set('open', open ? '1' : null)
     if (open) {
       prefs.sync()
+      void checkVoice()
       this.tour.start()
       warmUp()
       if (this.pointer.x >= 0) this.schedulePick()

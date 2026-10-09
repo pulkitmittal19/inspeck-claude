@@ -86,6 +86,14 @@ export const api = {
   async markTourSeen(): Promise<void> {
     await call('POST', '/tour', {})
   },
+  /** Whether this machine can turn speech into text for notes (a Mac on macOS 26+). */
+  async voice(): Promise<{ available: boolean; reason?: string }> {
+    return call('GET', '/voice')
+  },
+  /** Finish listening: the last words settle, then the session sends done. */
+  async stopVoice(): Promise<void> {
+    await call('POST', '/voice/stop', {})
+  },
   /** Settings kept by the plugin, so they follow you to every app and browser. */
   async settings(): Promise<Record<string, unknown>> {
     return call<Record<string, unknown>>('GET', '/settings')

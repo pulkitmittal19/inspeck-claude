@@ -257,6 +257,51 @@ button { appearance: none; background: none; border: 0; padding: 0; cursor: poin
 .send[data-ready]:hover { filter: brightness(1.1); }
 .send:active:not(:disabled) { transform: scale(0.9); }
 .send:disabled { cursor: default; }
+
+/* ---------- voice: the mic beside send, and what it does while it listens ----------
+   Getting ready: a ring spins round the mic. Listening: the mic turns pink and
+   breathes, a glow grows with your voice (--lvl, 0–1), the note box lights up
+   and five bars take the note icon's place. Finishing: the ring again, briefly.
+   Done: the words settle in with a soft flash. */
+.mic {
+  position: relative; align-self: flex-end; width: 24px; height: 24px; flex-shrink: 0; border-radius: 7px;
+  display: flex; align-items: center; justify-content: center; background: rgba(255, 255, 255, 0.07); color: var(--ix-dim);
+  transition: background 180ms ease, color 180ms ease, transform 140ms var(--ix-ease);
+}
+.mic:hover { background: rgba(255, 255, 255, 0.14); color: #fff; }
+.mic:active { transform: scale(0.88); }
+.mic svg { position: relative; transition: transform 220ms var(--ix-spring), opacity 160ms ease; }
+.mic svg + svg { position: absolute; opacity: 0; transform: scale(0.4); }
+.mic-glow { position: absolute; inset: 0; border-radius: inherit; pointer-events: none; }
+/* Getting ready, and finishing: a ring turns round the mic. */
+.note:is([data-voice="loading"], [data-voice="finishing"]) .mic::before {
+  content: ''; position: absolute; inset: -3px; border-radius: 9px; pointer-events: none;
+  border: 1.5px solid rgba(255, 255, 255, 0.12); border-top-color: var(--ix-accent); border-right-color: var(--ix-accent);
+  animation: ix-spin 760ms linear infinite;
+}
+.note[data-voice="loading"] .mic svg:first-of-type { opacity: 0.55; }
+@keyframes ix-spin { to { transform: rotate(360deg); } }
+/* Listening: pink, the stop square in place of the mic, a breathing ring, a glow that follows your voice. */
+.note:is([data-voice="listening"], [data-voice="finishing"]) .mic { background: var(--ix-accent); color: #fff; }
+.note:is([data-voice="listening"], [data-voice="finishing"]) .mic svg:first-of-type { opacity: 0; transform: scale(0.4); }
+.note:is([data-voice="listening"], [data-voice="finishing"]) .mic svg + svg { opacity: 1; transform: none; }
+.note[data-voice="listening"] .mic::after {
+  content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  border: 1.5px solid var(--ix-accent); animation: ix-breathe 1.6s var(--ix-ease) infinite;
+}
+@keyframes ix-breathe { 0% { transform: scale(1); opacity: 0.7; } 100% { transform: scale(1.75); opacity: 0; } }
+.note[data-voice="listening"] .mic-glow { box-shadow: 0 0 calc(4px + var(--lvl, 0) * 14px) calc(var(--lvl, 0) * 4px) rgba(255, 61, 138, 0.55); }
+.note[data-voice] { box-shadow: 0 0 0 1.5px var(--ix-accent) inset, 0 0 0 calc(2px + var(--lvl, 0) * 3px) rgba(255, 61, 138, 0.12); }
+/* Five bars where the note icon was. */
+.wave { display: none; flex: none; align-items: center; gap: 1.5px; height: 13px; margin-top: 3.5px; }
+.wave i { display: block; width: 2px; height: 13px; border-radius: 1px; background: var(--ix-accent); transform: scaleY(0.18); }
+.note:is([data-voice="listening"], [data-voice="finishing"]) .wave { display: flex; animation: ix-fade-up 200ms var(--ix-ease) both; }
+.note:is([data-voice="listening"], [data-voice="finishing"]) > svg:first-child { display: none; }
+.note[data-voice="finishing"] .wave i { transition: transform 300ms ease; transform: scaleY(0.18) !important; }
+@keyframes ix-fade-up { from { opacity: 0; transform: translateY(2px); } to { opacity: 1; transform: none; } }
+/* The words land: a soft flash, then plain text. */
+.note-input[data-settle] { animation: ix-settle 520ms ease both; }
+@keyframes ix-settle { 0% { color: #FF9CC4; } 100% { color: var(--ix-text); } }
 .status {
   display: flex; align-items: center; gap: 7px; padding: 7px 9px; border-radius: 8px;
   background: var(--ix-bg-2); font: 12px/1.35 var(--ix-sans); color: var(--ix-text);
