@@ -430,6 +430,19 @@ button { appearance: none; background: none; border: 0; padding: 0; cursor: poin
 }
 .switch[aria-checked="true"] { background: var(--ix-accent); }
 .switch[aria-checked="true"] .knob { transform: translateX(12px); }
+.set-toggle .set-label { display: inline-flex; align-items: center; gap: 5px; }
+.set-toggle { position: relative; }
+/* The explanation spans the row, above it, so it never runs off the panel's edge. */
+.info { display: inline-flex; color: var(--ix-faint); cursor: help; outline: none; }
+.info:hover, .info:focus-visible { color: var(--ix-text); }
+.info-tip {
+  position: absolute; left: -2px; right: -2px; bottom: calc(100% + 2px); padding: 8px 10px; border-radius: 8px;
+  display: flex; flex-direction: column; gap: 4px; background: #26262B; color: var(--ix-dim);
+  font: 500 11px/1.45 var(--ix-sans); white-space: normal; box-shadow: var(--ix-shadow);
+  opacity: 0; transform: translateY(3px); pointer-events: none; transition: opacity 120ms ease, transform 120ms ease;
+}
+.info-tip b { color: var(--ix-text); font-weight: 600; }
+.info:hover .info-tip, .info:focus-visible .info-tip { opacity: 1; transform: none; }
 
 /* small label that appears above a toolbar button on hover */
 .tip {

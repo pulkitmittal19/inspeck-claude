@@ -111,7 +111,7 @@ export class App {
     this.notes = createNotes(this.host.ui, (note, el) => this.openNote(note, el), n => this.toolbar.setWaiting(n))
     this.card = createCard(this.host.ui)
     /* Sizes or colours changed in Settings (here or in another app): the card says them the new way.
-       Send notes right away turned on: whatever was waiting goes now, from every page of this site. */
+       Auto-send notes to Claude turned on: whatever was waiting goes now, from every page of this site. */
     let sending = prefs.get().send
     prefs.onChange(() => {
       this.card.refresh()
@@ -165,7 +165,7 @@ export class App {
     }
   }
 
-  /** Notes wait on the page for Send unless Send notes right away is on. */
+  /** Notes wait on the page for Send unless Auto-send notes to Claude is on. */
   private get holding(): boolean { return prefs.get().send === 'ask' }
 
   /** Send: the notes waiting on this page go to Claude, as one batch. */

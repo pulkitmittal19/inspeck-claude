@@ -3,7 +3,8 @@
  * above the pill (below it when the pill is at the top); a press anywhere else
  * or Escape puts it away. */
 import { enter, leave } from './anim'
-import { h } from './dom'
+import { h, svg } from './dom'
+import { ICONS } from './icons'
 import { prefs, type Prefs } from './prefs'
 import { actionOf } from './router'
 
@@ -37,8 +38,14 @@ export function createSettings(ui: HTMLElement, onToggle: (open: boolean) => voi
         }, text)))))
   }
   /* Off: notes wait on the page and go when you press Send (or ask Claude). On: each goes as you place it. */
-  const live = h('button', { type: 'button', class: 'switch', role: 'switch', 'data-action': 'live', 'aria-labelledby': 'ix-set-live' }, h('span', { class: 'knob' }))
-  el.append(h('div', { class: 'set-row set-toggle' }, h('span', { class: 'set-label', id: 'ix-set-live' }, 'Send notes right away'), live))
+  const live = h('button', { type: 'button', class: 'switch', role: 'switch', 'data-action': 'live', 'aria-labelledby': 'ix-set-live', 'aria-describedby': 'ix-set-live-more' }, h('span', { class: 'knob' }))
+  /* The ⓘ says what each state means, on hover or focus. */
+  const more = h('span', { class: 'info', tabindex: '0', 'aria-label': 'What this does' },
+    svg(ICONS.info, 13, 1.8),
+    h('span', { class: 'info-tip', role: 'tooltip', id: 'ix-set-live-more' },
+      h('span', {}, h('b', {}, 'On:'), ' each note goes to Claude as you add it, and Claude starts on it.'),
+      h('span', {}, h('b', {}, 'Off:'), ' notes wait on the page until you press ↑ Send.')))
+  el.append(h('div', { class: 'set-row set-toggle' }, h('span', { class: 'set-label', id: 'ix-set-live' }, 'Auto-send notes to Claude', more), live))
   const sync = () => {
     const now = prefs.get()
     for (const b of Array.from(el.querySelectorAll<HTMLElement>('.seg-opt'))) {

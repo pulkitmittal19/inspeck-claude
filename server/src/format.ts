@@ -93,7 +93,7 @@ export const NewComment = z.object({
   tabId: z.string().max(64).optional(),
   /** A data URL. The server writes it to disk and keeps only the path. */
   screenshot: z.string().max(4_500_000).optional(),
-  /** Wait for the person to send it (Send notes right away is off), rather than wake Claude now. */
+  /** Wait for the person to send it (Auto-send notes to Claude is off), rather than wake Claude now. */
   held: z.boolean().optional(),
 })
 export type NewComment = z.infer<typeof NewComment>

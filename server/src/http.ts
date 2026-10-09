@@ -27,7 +27,7 @@ import { resolveSource } from './sourcemap.js'
 const SETTINGS: Record<string, string[]> = {
   sizes: ['written', 'px', 'rem'],
   colors: ['written', 'hex', 'rgb', 'oklch'],
-  /* Send notes right away (live), or keep them on the page until you send them (ask). */
+  /* Auto-send notes to Claude (live), or keep them on the page until you send them (ask). */
   send: ['ask', 'live'],
 }
 
@@ -173,7 +173,7 @@ async function route(req: IncomingMessage, res: ServerResponse, version: string,
   if (parts[0] !== 'comments') return send(res, 404, { error: 'Not found' })
   const id = parts[1]
 
-  /* Send the notes held on a page (the pill's Send), or on a whole site (Send notes right away turned on). */
+  /* Send the notes held on a page (the pill's Send), or on a whole site (Auto-send notes to Claude turned on). */
   if (id === 'send' && req.method === 'POST') {
     const b = (await body(req)) as { page?: unknown; site?: unknown }
     const origin = (u: string) => { try { return new URL(u).origin } catch { return null } }

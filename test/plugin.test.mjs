@@ -354,7 +354,7 @@ test('a held note waits on the page: the watcher and the push leave it until Sen
   const got = await s.client.callTool({ name: 'watch', arguments: { page: at, seconds: 5 } })
   assert.match(allText(got), /Held: chip too tall/)
 
-  /* Turning on Send notes right away sends everything waiting on the site. */
+  /* Turning on Auto-send notes to Claude sends everything waiting on the site. */
   for (const note of ['Held: one', 'Held: two']) await page(s.port, 'POST', '/comments', { body: { ...fix, page: `${at}/${note.length}`, note, screenshot: undefined, held: true } })
   await page(s.port, 'POST', '/comments', { body: { ...fix, page: 'http://localhost:3000/x', note: 'Held: other site', screenshot: undefined, held: true } })
   assert.equal((await page(s.port, 'POST', '/comments/send', { body: { site: 'http://localhost:5173/anything' } })).json.sent, 2, 'only this site')

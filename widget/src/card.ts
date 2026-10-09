@@ -164,7 +164,7 @@ export function createCard(ui: HTMLElement): Card {
       const r = await opts.onSend(text)
       /* The note line gives way to the confirmation, then the card bows out. */
       setOpen(parts.noteWrap, false)
-      /* Waiting for Send, it's added to the page; with Send notes right away on, it's gone to Claude. */
+      /* Waiting for Send, it's added to the page; with Auto-send notes to Claude on, it's gone to Claude. */
       const waits = prefs.get().send === 'ask'
       status(opts.existing ? 'Saved' : `${waits ? 'Added' : 'Sent to Claude'}${r ? ` as #${r.n}` : ''}`, 'ok')
       const done = opts

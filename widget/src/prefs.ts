@@ -12,7 +12,7 @@ export type SendMode = 'ask' | 'live'
 export interface Prefs { sizes: SizeFormat; colors: ColorChoice; send: SendMode }
 
 const KEY = 'inspeck:settings'
-/* Notes wait for you to send them unless you turn on Send notes right away:
+/* Notes wait for you to send them unless you turn on Auto-send notes to Claude:
    Claude shouldn't start changing code while you're still looking around. */
 const DEFAULTS: Prefs = { sizes: 'written', colors: 'written', send: 'ask' }
 const SIZES: SizeFormat[] = ['written', 'px', 'rem']

@@ -36548,7 +36548,7 @@ var NewComment = external_exports.object({
   tabId: external_exports.string().max(64).optional(),
   /** A data URL. The server writes it to disk and keeps only the path. */
   screenshot: external_exports.string().max(45e5).optional(),
-  /** Wait for the person to send it (Send notes right away is off), rather than wake Claude now. */
+  /** Wait for the person to send it (Auto-send notes to Claude is off), rather than wake Claude now. */
   held: external_exports.boolean().optional()
 });
 function isThisMachine(host) {
@@ -37113,7 +37113,7 @@ function resolveSource(at) {
 var SETTINGS = {
   sizes: ["written", "px", "rem"],
   colors: ["written", "hex", "rgb", "oklch"],
-  /* Send notes right away (live), or keep them on the page until you send them (ask). */
+  /* Auto-send notes to Claude (live), or keep them on the page until you send them (ask). */
   send: ["ask", "live"]
 };
 var PORT = Number(process.env.INSPECK_PORT) || 4848;
@@ -37400,7 +37400,7 @@ if (process.argv[2] === "wait") {
   await runWait(process.argv.slice(3));
   process.exit(0);
 }
-var VERSION = "0.12.0";
+var VERSION = "0.12.1";
 var log = (msg) => process.stderr.write(`inspeck: ${msg}
 `);
 var INSTRUCTIONS = `Inspeck lets a person hover any element of their web app to see its CSS, and click it to leave a note for you. Their notes arrive here.
@@ -37411,7 +37411,7 @@ Setting up, once per session, when you open the person's app in your browser pan
 1. Call bind. It returns one line of JavaScript; run it in the browser pane tab showing the app. If the app doesn't load Inspeck itself, the line adds it to the page (run it again after a full reload). Notes from that tab now come to this session.
 2. Start the watcher as a background task: ${WAIT_COMMAND}
    It finishes, printing the notes, the moment they're sent. Handle them, then start it again.
-Notes wait on the page until the person presses Send in the pill, unless they've turned on Send notes right away in Inspeck's settings; then each comes as it's placed. Either way the watcher wakes you only for sent notes, and pending reads waiting ones too: asking for the notes sends them.
+Notes wait on the page until the person presses Send in the pill, unless they've turned on Auto-send notes to Claude in Inspeck's settings; then each comes as it's placed. Either way the watcher wakes you only for sent notes, and pending reads waiting ones too: asking for the notes sends them.
 If the person uses their own browser (Chrome, Safari) instead of your pane, call bind with page set to the app's address instead of running a line: every note from that site, in any browser, then comes here. Saying "check my Inspeck notes" (pending) also takes notes no other session could have picked up, and links their site to you.
 
 Working through notes: pending gives every new note in full (and lists ones read before), get opens one again, watch waits for new ones in the foreground. Reading a note (pending, get, watch or the watcher) clears its marker from the page, so the person never clears notes by hand. resolve closes a note with one line saying what changed, dismiss declines with a reason.

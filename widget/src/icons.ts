@@ -17,6 +17,8 @@ export const ICONS = {
   chevron: [p('M9.5 6l6 6-6 6')],
   /* Up and away: send the waiting notes to Claude. */
   send: [p('M12 18.5v-13'), p('M6.5 11l5.5-5.5 5.5 5.5')],
+  /* ⓘ: more about a setting. */
+  info: [['circle', { cx: '12', cy: '12', r: '8.5' }], p('M12 11v5'), p('M12 8h.01')],
   /* Two sliders: Settings. */
   settings: [p('M4.5 8h8M18.5 8h1'), ['circle', { cx: '15.5', cy: '8', r: '2.25' }], p('M4.5 16h1M11.5 16h8'), ['circle', { cx: '8.5', cy: '16', r: '2.25' }]],
 } satisfies Record<string, IconSpec>
