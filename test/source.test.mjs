@@ -107,3 +107,15 @@ test('inside a component, the element’s line is the one with its tag and its c
   assert.equal(lineIn(def, ['<span'], ['no-such-class']), 4, 'no class match: the first <span')
   assert.equal(lineIn(def, ['<Missing']), null)
 })
+
+test('React 19 server components: React\'s own frames are skipped, and the chunk on disk goes to the server as it is', async () => {
+  const stack = ['Error: react-stack-top-frame',
+    '    at fakeJSXCallSite (http://localhost:3000/_next/static/chunks/node_modules_next_dist_compiled_react-server-dom-turbopack_x._.js:2085:21)',
+    '    at Home (about://React/Prerender/file:///Users/me/app/.next/dev/server/chunks/ssr/%5Broot%5D__x._.js?13:128:276)',
+    '    at Object.react_stack_bottom_frame (http://localhost:3000/_next/static/chunks/node_modules_next_dist_compiled_react-server-dom-turbopack_x._.js:2851:93)'].join('\n')
+  const fiber = { _debugStack: { stack }, _debugOwner: { name: 'Home', env: 'Prerender', key: null } }
+  const node = Object.assign({ getAttribute: () => null, parentElement: null, tagName: 'A', classList: [], childElementCount: 0, textContent: 'Deploy' }, { __reactFiber$x: fiber })
+  const out = await sourceOf(node)
+  assert.deepEqual(out[0], { file: 'file:///Users/me/app/.next/dev/server/chunks/ssr/%5Broot%5D__x._.js?13', line: 128, column: 276 })
+  assert.equal(componentOf(node), 'Home', 'named after the server component that rendered it')
+})

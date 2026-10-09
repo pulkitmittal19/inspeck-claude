@@ -37,6 +37,13 @@ test('Next.js: a development-only tag before </body>, indented to match', () => 
   assert.equal(wireNext(src).result, 'present')
 })
 
+test('Next.js: create-next-app\'s one-line <body>{children}</body> gets the tag just before </body>', () => {
+  const layout = `      <body className="min-h-full flex flex-col">{children}</body>\n`
+  const { src, result } = wireNext(layout)
+  assert.equal(result, 'added')
+  assert.equal(src, `      <body className="min-h-full flex flex-col">{children}{process.env.NODE_ENV === 'development' && <script src="http://127.0.0.1:4848/inspeck.js" async />}</body>\n`)
+})
+
 test('HTML: the tag before </body>', () => {
   const { src, result } = wireHtml(`<html>\n  <body>\n    <h1>Hi</h1>\n  </body>\n</html>\n`)
   assert.equal(result, 'added')

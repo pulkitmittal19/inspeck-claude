@@ -39,6 +39,11 @@ type Fiber = {
   _debugOwner?: Fiber | null
   return?: Fiber | null
   type?: unknown
+  /* A server component isn't a fiber: React keeps a record of it instead, with these. */
+  name?: string
+  env?: string
+  owner?: Fiber | null
+  debugStack?: { stack?: string }
 }
 
 function fiberOf(el: Element): Fiber | null {
@@ -48,11 +53,17 @@ function fiberOf(el: Element): Fiber | null {
   return null
 }
 
-const LIBRARY = /\/node_modules\/|\/\.vite\/deps\/|\/_next\/static\/chunks\/(?:framework|main|webpack)|react-dom|react_jsx/
+/* Library code, by where it's served from: node_modules as Vite, webpack and
+   Turbopack name it (Turbopack flattens the path: `node_modules_next_dist_…`). */
+const LIBRARY = /\/node_modules\/|node_modules_|\/\.vite\/deps\/|\/_next\/static\/chunks\/(?:framework|main|webpack)|react-dom|react-server-dom|react_jsx/
+/* React's own frames at the top of a recorded stack. */
+const REACT_FRAME = /\bat (?:fakeJSXCallSite|react_stack_bottom_frame|Object\.react_stack_bottom_frame|jsxDEV|exports\.jsxDEV|jsx|jsxs)\b/
 
 /** The first app frame of a stack: url, line, column (1-based, as stacks print them). */
 function appFrame(stack: string): { url: string; line: number; column: number } | null {
   for (const raw of stack.split('\n').slice(1)) {
+    if (REACT_FRAME.test(raw)) continue
+    /* A server component's frame reads `about://React/Server/file:///…`: the file is the part that matters. */
     const m = /\(?((?:https?|webpack-internal|file):\/\/[^\s)]+?):(\d+):(\d+)\)?\s*$/.exec(raw)
     if (!m || LIBRARY.test(m[1])) continue
     return { url: m[1], line: +m[2], column: +m[3] }
@@ -61,6 +72,9 @@ function appFrame(stack: string): { url: string; line: number; column: number } 
 }
 
 async function resolve(url: string, line: number, column: number): Promise<SourceAt> {
+  /* A file on disk (a server component's compiled chunk): the page can't read it, the
+     Inspeck server on this machine can. Sent as it is; the server maps it to the source. */
+  if (url.startsWith('file://')) return { file: url, line, column }
   const map = await mapFor(url)
   const segs = map?.lines()[line - 1]
   if (map && segs?.length) {
@@ -77,7 +91,8 @@ async function locate(f: Fiber): Promise<SourceAt | null> {
     const s = f._debugSource
     return { file: tidy(s.fileName), line: s.lineNumber, ...(s.columnNumber ? { column: s.columnNumber } : {}) }
   }
-  const frame = f._debugStack?.stack ? appFrame(f._debugStack.stack) : null
+  const stack = f._debugStack?.stack ?? f.debugStack?.stack
+  const frame = stack ? appFrame(stack) : null
   return frame ? resolve(frame.url, frame.line, frame.column) : null
 }
 
@@ -203,7 +218,7 @@ async function lookup(el: Element): Promise<SourceAt[]> {
     const fiber = fiberOf(el)
     const out: SourceAt[] = []
     let f: Fiber | null | undefined = fiber
-    for (let i = 0; f && i <= MAX_OWNERS; i++, f = f._debugOwner) {
+    for (let i = 0; f && i <= MAX_OWNERS; i++, f = f._debugOwner ?? f.owner) {
       const at = await locate(f)
       if (at && !/node_modules/.test(at.file) && !out.some(o => o.file === at.file && o.line === at.line)) out.push(at)
     }

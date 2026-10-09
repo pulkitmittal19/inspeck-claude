@@ -7196,8 +7196,8 @@ var require_dist = __commonJS({
 });
 
 // server/src/index.ts
-import { readFileSync as readFileSync4, writeFileSync as writeFileSync3, mkdirSync as mkdirSync3 } from "fs";
-import { extname, join as join4 } from "path";
+import { readFileSync as readFileSync5, writeFileSync as writeFileSync3, mkdirSync as mkdirSync3 } from "fs";
+import { extname, join as join5 } from "path";
 
 // node_modules/zod/v3/helpers/util.js
 var util;
@@ -36832,10 +36832,10 @@ function remove(id) {
 }
 
 // server/src/http.ts
-import { readFileSync as readFileSync3, statSync as statSync2 } from "fs";
+import { readFileSync as readFileSync4, statSync as statSync3 } from "fs";
 import { createServer } from "http";
-import { dirname, join as join3, normalize } from "path";
-import { fileURLToPath } from "url";
+import { dirname as dirname2, join as join4, normalize } from "path";
+import { fileURLToPath as fileURLToPath2 } from "url";
 
 // server/src/sessions.ts
 import { execFileSync } from "child_process";
@@ -37004,6 +37004,93 @@ function belongsTo(to, me, myCwd) {
   return !!to.cwd && sameProject(myCwd, to.cwd);
 }
 
+// server/src/sourcemap.ts
+import { existsSync as existsSync3, readFileSync as readFileSync3, statSync as statSync2 } from "fs";
+import { dirname, isAbsolute as isAbsolute2, join as join3, resolve as resolvePath } from "path";
+import { fileURLToPath } from "url";
+var B64 = new Map([..."ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"].map((c, i) => [c, i]));
+function lineSegments(mappings, line) {
+  let src = 0, oLine = 0, oCol = 0;
+  const lines = mappings.split(";");
+  for (let l = 0; l < lines.length && l <= line; l++) {
+    const segs = [];
+    let gCol = 0;
+    for (const seg of lines[l].split(",")) {
+      if (!seg) continue;
+      const v = [];
+      let shift = 0, value = 0;
+      for (const ch of seg) {
+        const d = B64.get(ch) ?? 0;
+        value += (d & 31) << shift;
+        if (d & 32) {
+          shift += 5;
+          continue;
+        }
+        v.push(value & 1 ? -(value >> 1) : value >> 1);
+        shift = 0;
+        value = 0;
+      }
+      gCol += v[0] ?? 0;
+      if (v.length >= 4) {
+        src += v[1];
+        oLine += v[2];
+        oCol += v[3];
+        segs.push([gCol, src, oLine, oCol]);
+      }
+    }
+    if (l === line) return segs;
+  }
+  return [];
+}
+function sourcePath(name, map2, mapFile) {
+  if (name.startsWith("file://")) return fileURLToPath(name);
+  const project = /^(?:turbopack|webpack|webpack-internal):\/\/\/(?:\[project\]\/|\(\w[\w-]*\)\/)?\.?\/?(.*)$/.exec(name);
+  if (project) return project[1].replace(/\s*\[[^\]]*\]\s*\(.*\)$/, "");
+  if (isAbsolute2(name)) return name;
+  return resolvePath(dirname(mapFile), map2.sourceRoot ?? "", name);
+}
+function readMap(chunk) {
+  const code = readFileSync3(chunk, "utf8");
+  let ref = null;
+  for (const m of code.matchAll(/\/[/*][#@]\s*sourceMappingURL=([^\s*]+)/g)) ref = m[1];
+  if (ref?.startsWith("data:")) {
+    return { map: JSON.parse(Buffer.from(ref.slice(ref.indexOf(",") + 1), "base64").toString("utf8")), file: chunk };
+  }
+  const file2 = ref ? join3(dirname(chunk), decodeURIComponent(ref)) : `${chunk}.map`;
+  return existsSync3(file2) ? { map: JSON.parse(readFileSync3(file2, "utf8")), file: file2 } : null;
+}
+function resolveSource(at) {
+  try {
+    const chunk = at.file.startsWith("file://") ? fileURLToPath(at.file.split("?")[0]) : at.file;
+    if (!isAbsolute2(chunk) || !/\.(c|m)?js$/.test(chunk) || !existsSync3(chunk) || !statSync2(chunk).isFile() || !at.line) {
+      return at.file.startsWith("file://") ? { ...at, file: chunk } : at;
+    }
+    const read2 = readMap(chunk);
+    if (!read2) return { ...at, file: chunk };
+    let { map: map2 } = read2;
+    let line = at.line - 1, column = (at.column ?? 1) - 1;
+    if (map2.sections) {
+      const sec = [...map2.sections].reverse().find((s) => s.offset.line < line || s.offset.line === line && s.offset.column <= column);
+      if (!sec) return { ...at, file: chunk };
+      if (line === sec.offset.line) column -= sec.offset.column;
+      line -= sec.offset.line;
+      map2 = sec.map;
+    }
+    const segs = lineSegments(map2.mappings ?? "", line);
+    if (!segs.length) return { ...at, file: chunk };
+    let best = segs[0];
+    for (const s of segs) {
+      if (s[0] <= column) best = s;
+      else break;
+    }
+    const name = map2.sources?.[best[1]];
+    if (!name) return { ...at, file: chunk };
+    return { file: sourcePath(name, map2, read2.file), line: best[2] + 1, column: best[3] + 1 };
+  } catch {
+    return at;
+  }
+}
+
 // server/src/http.ts
 var PORT = Number(process.env.INSPECK_PORT) || 4848;
 var EXTRA_ORIGINS = (process.env.INSPECK_ALLOWED_ORIGINS ?? "").split(",").map((s) => s.trim()).filter(Boolean);
@@ -37052,12 +37139,12 @@ function body(req) {
     req.on("error", reject);
   });
 }
-var HERE = dirname(fileURLToPath(import.meta.url));
-var WIDGET = process.env.INSPECK_WIDGET || join3(HERE, "widget", "inspeck.js");
+var HERE = dirname2(fileURLToPath2(import.meta.url));
+var WIDGET = process.env.INSPECK_WIDGET || join4(HERE, "widget", "inspeck.js");
 function sendFile(req, res, path, type) {
   let stat;
   try {
-    stat = statSync2(path);
+    stat = statSync3(path);
   } catch {
     res.writeHead(404, { "content-type": "text/plain" }).end("Not built. Run npm run build.");
     return;
@@ -37075,12 +37162,12 @@ function sendFile(req, res, path, type) {
     res.writeHead(304, headers).end();
     return;
   }
-  res.writeHead(200, headers).end(readFileSync3(path));
+  res.writeHead(200, headers).end(readFileSync4(path));
 }
 var DEV = process.env.INSPECK_DEV === "1";
-var DEV_DIR = join3(HERE, "..", "..", "widget", "dev");
+var DEV_DIR = join4(HERE, "..", "..", "widget", "dev");
 function devFile(req, res, name) {
-  const path = normalize(join3(DEV_DIR, name || "index.html"));
+  const path = normalize(join4(DEV_DIR, name || "index.html"));
   if (!path.startsWith(DEV_DIR)) {
     send(res, 404, { error: "Not found" });
     return;
@@ -37122,7 +37209,10 @@ async function route2(req, res, version2, onNew) {
     if (!parsed.success) {
       return send(res, 400, { error: "Comment is not in the Inspeck format", issues: parsed.error.issues });
     }
-    const created = add(parsed.data, route(parsed.data.page, parsed.data.tabId));
+    const note = parsed.data;
+    if (note.source) note.source = note.source.map(resolveSource);
+    for (const m of note.group ?? []) if (m.source) m.source = resolveSource(m.source);
+    const created = add(note, route(note.page, note.tabId));
     onNew(created);
     return send(res, 201, { comment: forPage2(created) });
   }
@@ -37193,8 +37283,8 @@ function listen(version2, log2, onNew = () => {
 }
 
 // server/src/wait.ts
-import { fileURLToPath as fileURLToPath2 } from "url";
-var SELF = fileURLToPath2(import.meta.url);
+import { fileURLToPath as fileURLToPath3 } from "url";
+var SELF = fileURLToPath3(import.meta.url);
 var WAIT_COMMAND = `node "${SELF}" wait`;
 var flag = (args, name) => {
   const i = args.indexOf(name);
@@ -37234,7 +37324,7 @@ if (process.argv[2] === "wait") {
   await runWait(process.argv.slice(3));
   process.exit(0);
 }
-var VERSION = "0.7.0";
+var VERSION = "0.7.1";
 var log = (msg) => process.stderr.write(`inspeck: ${msg}
 `);
 var INSTRUCTIONS = `Inspeck lets a person hover any element of their web app to see its CSS, and click it to leave a note for you. Their notes arrive here.
@@ -37263,7 +37353,7 @@ function contentFor(c) {
   ];
   if (c.screenshot) {
     try {
-      out.push({ type: "image", data: readFileSync4(c.screenshot).toString("base64"), mimeType: MIME[extname(c.screenshot)] ?? "image/png" });
+      out.push({ type: "image", data: readFileSync5(c.screenshot).toString("base64"), mimeType: MIME[extname(c.screenshot)] ?? "image/png" });
     } catch {
       out.push({ type: "text", text: "(The screenshot for this comment is missing from disk.)" });
     }
@@ -37388,7 +37478,7 @@ server.registerTool("dismiss", {
 function noteClient() {
   try {
     mkdirSync3(HOME, { recursive: true });
-    writeFileSync3(join4(HOME, "last-client.json"), JSON.stringify({
+    writeFileSync3(join5(HOME, "last-client.json"), JSON.stringify({
       at: (/* @__PURE__ */ new Date()).toISOString(),
       client: server.server.getClientVersion(),
       capabilities: server.server.getClientCapabilities()

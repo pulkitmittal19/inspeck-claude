@@ -122,13 +122,17 @@ export function wireVite(src: string, file: string): { src: string; result: 'add
 }
 
 /** Add a development-only tag before </body> in a Next.js layout or _document. */
+const NEXT_TAG = `{process.env.NODE_ENV === 'development' && <script src="${TAG_SRC}" async />}`
+
 export function wireNext(src: string): { src: string; result: 'added' | 'present' | 'manual' } {
   if (src.includes('inspeck.js')) return { src, result: 'present' }
-  const body = /^([ \t]*)<\/body>/m.exec(src)
-  if (!body) return { src, result: 'manual' }
-  const indent = body[1] + '  '
-  const line = `${indent}{process.env.NODE_ENV === 'development' && <script src="${TAG_SRC}" async />}\n`
-  return { src: src.slice(0, body.index) + line + src.slice(body.index), result: 'added' }
+  /* </body> on a line of its own: the tag goes on the line above, indented one step in. */
+  const own = /^([ \t]*)<\/body>/m.exec(src)
+  if (own) return { src: `${src.slice(0, own.index)}${own[1]}  ${NEXT_TAG}\n${src.slice(own.index)}`, result: 'added' }
+  /* On one line with the rest (create-next-app's `<body …>{children}</body>`): just before it. */
+  const inline = src.indexOf('</body>')
+  if (inline >= 0) return { src: `${src.slice(0, inline)}${NEXT_TAG}${src.slice(inline)}`, result: 'added' }
+  return { src, result: 'manual' }
 }
 
 /** Add the tag before </body> in a plain HTML page. */
@@ -145,6 +149,10 @@ async function confirm(question: string, flags: Flags): Promise<boolean> {
   if (!process.stdin.isTTY) return false
   const rl = createInterface({ input: process.stdin, output: process.stdout })
   try { return /^y(es)?$/i.test((await rl.question(`  ? ${question} (y/N) `)).trim()) } finally { rl.close() }
+}
+
+function printNextTag() {
+  say(`      ${NEXT_TAG}`)
 }
 
 function printTag() {
@@ -177,11 +185,11 @@ async function wireApp(flags: Flags): Promise<void> {
   }
 
   if (app.kind === 'next') {
-    if (!app.layout) { warn('Next.js app, but no app/layout or pages/_document found. Add this in development only:'); printTag(); return }
+    if (!app.layout) { warn('Next.js app, but no app/layout or pages/_document found. Add this inside <body> of your root layout:'); printNextTag(); return }
     const { src, result } = wireNext(readFileSync(app.layout, 'utf8'))
     if (result === 'present') done(`${rel(app.layout)} already loads Inspeck`)
     else if (result === 'added') { writeFileSync(app.layout, src); done(`added a development-only tag to ${rel(app.layout)}`) }
-    else { warn(`couldn't find </body> in ${rel(app.layout)}. Add this inside <body>, in development only:`); printTag() }
+    else { warn(`couldn't find </body> in ${rel(app.layout)}. Add this inside <body>:`); printNextTag() }
     return
   }
 

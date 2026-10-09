@@ -20,6 +20,7 @@ import { fileURLToPath } from 'node:url'
 import * as store from './store.js'
 import { bindTab, route as routeNote } from './sessions.js'
 import { isThisMachine, NewComment, type Comment } from './format.js'
+import { resolveSource } from './sourcemap.js'
 
 export const PORT = Number(process.env.INSPECK_PORT) || 4848
 
@@ -149,7 +150,11 @@ async function route(req: IncomingMessage, res: ServerResponse, version: string,
     if (!parsed.success) {
       return send(res, 400, { error: 'Comment is not in the Inspeck format', issues: parsed.error.issues })
     }
-    const created = store.add(parsed.data, routeNote(parsed.data.page, parsed.data.tabId))
+    /* Places in compiled server code (a server component's JSX) become places in the source. */
+    const note = parsed.data
+    if (note.source) note.source = note.source.map(resolveSource)
+    for (const m of note.group ?? []) if (m.source) m.source = resolveSource(m.source)
+    const created = store.add(note, routeNote(note.page, note.tabId))
     onNew(created)
     return send(res, 201, { comment: forPage(created) })
   }

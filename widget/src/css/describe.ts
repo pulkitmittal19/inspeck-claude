@@ -95,7 +95,9 @@ export function oklchHex(v: string): string {
       oklabToHex(num(l), num(a2, 0.4), num(b2, 0.4), a ? num(a) : 1))
 }
 
-const clean = (v: string) => oklchHex(hex(px(v))).trim()
+/* `calc(infinity * 1px)` (Tailwind's rounded-full) reads back as a float in the millions or beyond; say what was meant. */
+const infinite = (v: string) => v.replace(/\b\d(?:\.\d+)?e\+(?:[6-9]|[1-9]\d)px\b/g, 'calc(infinity * 1px)')
+const clean = (v: string) => infinite(oklchHex(hex(px(v)))).trim()
 const writtenUsesLogic = (v: string) => /var\(|calc\(|env\(|clamp\(|min\(|max\(|\d(r?em|vh|vw|%)|color-mix|currentcolor|inherit/i.test(v)
 
 /** `var(--tw-font-weight, var(--font-weight-medium))` → `var(--font-weight-medium)`: Tailwind's plumbing, not the token. */
@@ -111,7 +113,7 @@ export function unplumb(v: string): string {
 
 function line(prop: string, written: string, computed: string): Line {
   /* The CSSOM hands back #17171C as rgb(23, 23, 28); write it the way people do. */
-  const value = hex(unplumb(written.replace(/\s*!important$/, '')))
+  const value = infinite(hex(unplumb(written.replace(/\s*!important$/, ''))))
   const resolved = clean(computed)
   return writtenUsesLogic(value) && resolved && resolved !== value ? { prop, value, resolved } : { prop, value }
 }
@@ -313,8 +315,17 @@ function otherComponentOf(el: Element): string | undefined {
 function reactComponentOf(el: Element): string | undefined {
   const key = Object.keys(el).find(k => k.startsWith('__reactFiber$'))
   if (!key) return
-  type Fiber = { type?: unknown; return?: Fiber | null }
+  type Fiber = { type?: unknown; return?: Fiber | null; _debugOwner?: (Fiber & { name?: string; env?: string }) | null }
+  const real = (n?: string) => !!n && /^[A-Z]/.test(n) && !/^(Fragment|Suspense|StrictMode|Provider|Consumer)$/.test(n)
   let f = (el as unknown as Record<string, Fiber>)[key] as Fiber | null | undefined
+  /* Who rendered it, in development: the component whose JSX it is. A server
+     component isn't a fiber, but React keeps its name (`env` says where it ran). */
+  const owner = f?._debugOwner
+  if (owner) {
+    const t = owner.type as { displayName?: string; name?: string } | undefined
+    const name = owner.env ? owner.name : (t?.displayName || t?.name)
+    if (real(name)) return name
+  }
   for (let hops = 0; f && hops < 30; hops++, f = f.return) {
     const t = f.type as { displayName?: string; name?: string; render?: { displayName?: string; name?: string } } | string | undefined
     if (!t || typeof t === 'string') continue

@@ -105,14 +105,15 @@ function wireVite(src, file) {
 ${out}` : afterImports(out, `import inspeck from 'inspeck/vite'`);
   return { src: out, result: "added" };
 }
+var NEXT_TAG = `{process.env.NODE_ENV === 'development' && <script src="${TAG_SRC}" async />}`;
 function wireNext(src) {
   if (src.includes("inspeck.js")) return { src, result: "present" };
-  const body = /^([ \t]*)<\/body>/m.exec(src);
-  if (!body) return { src, result: "manual" };
-  const indent = body[1] + "  ";
-  const line = `${indent}{process.env.NODE_ENV === 'development' && <script src="${TAG_SRC}" async />}
-`;
-  return { src: src.slice(0, body.index) + line + src.slice(body.index), result: "added" };
+  const own = /^([ \t]*)<\/body>/m.exec(src);
+  if (own) return { src: `${src.slice(0, own.index)}${own[1]}  ${NEXT_TAG}
+${src.slice(own.index)}`, result: "added" };
+  const inline = src.indexOf("</body>");
+  if (inline >= 0) return { src: `${src.slice(0, inline)}${NEXT_TAG}${src.slice(inline)}`, result: "added" };
+  return { src, result: "manual" };
 }
 function wireHtml(src) {
   if (src.includes("inspeck.js")) return { src, result: "present" };
@@ -131,6 +132,9 @@ async function confirm(question, flags) {
   } finally {
     rl.close();
   }
+}
+function printNextTag() {
+  say(`      ${NEXT_TAG}`);
 }
 function printTag() {
   say(`      <script src="${TAG_SRC}" async></script>`);
@@ -166,8 +170,8 @@ ${r.out.trim()}`);
   }
   if (app.kind === "next") {
     if (!app.layout) {
-      warn("Next.js app, but no app/layout or pages/_document found. Add this in development only:");
-      printTag();
+      warn("Next.js app, but no app/layout or pages/_document found. Add this inside <body> of your root layout:");
+      printNextTag();
       return;
     }
     const { src, result } = wireNext(readFileSync(app.layout, "utf8"));
@@ -176,8 +180,8 @@ ${r.out.trim()}`);
       writeFileSync(app.layout, src);
       done(`added a development-only tag to ${rel(app.layout)}`);
     } else {
-      warn(`couldn't find </body> in ${rel(app.layout)}. Add this inside <body>, in development only:`);
-      printTag();
+      warn(`couldn't find </body> in ${rel(app.layout)}. Add this inside <body>:`);
+      printNextTag();
     }
     return;
   }
