@@ -19,8 +19,8 @@ export interface Outline {
   readonly target: Element | null
 }
 
-/** The glide's time constant: the offset shrinks by 1/e every TAU ms (about 95% there in 3 × TAU). */
-const TAU = 60
+/** The glide's time constant: the offset shrinks by 1/e every TAU ms (about 95% there in ~100ms). */
+const TAU = 35
 /** Close enough: below this many pixels the offset is dropped. */
 const SETTLED = 0.25
 

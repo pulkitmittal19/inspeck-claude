@@ -1,6 +1,6 @@
 {
   "name": "inspeck",
-  "version": "0.8.1",
+  "version": "0.8.2",
   "description": "Inspeck for your app: hover any element to see its CSS, click it to leave a note for Claude. `npx inspeck init` sets it all up.",
   "license": "MIT",
   "author": "Pulkit Mittal",
