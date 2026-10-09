@@ -74,6 +74,27 @@
   .chip { padding: 6px 14px; border-radius: 999px; border: 1px solid #2A2E36; font-size: 13px; }
   dialog { margin: auto; border: 0; border-radius: 14px; padding: 24px; width: 360px; box-shadow: 0 30px 80px rgba(0,0,0,.3); }
   dialog::backdrop { background: rgba(0,0,0,.3); }
+
+  /* motion & loading: one of each kind Freeze (F) should hold still */
+  .motion { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  .tile { border: 1px solid var(--border-primary); border-radius: 10px; padding: 14px; display: flex; flex-direction: column; gap: 10px; min-height: 96px; }
+  .tile .kind { font-size: 11px; color: var(--text-secondary); margin-top: auto; }
+  .tile .stage { height: 36px; display: flex; align-items: center; gap: 10px; }
+  @keyframes spin { to { transform: rotate(360deg) } }
+  .spinner { width: 24px; height: 24px; border-radius: 50%; border: 3px solid var(--gray-200); border-top-color: var(--brand-500); animation: spin .8s linear infinite; }
+  .dot { width: 14px; height: 14px; border-radius: 50%; background: var(--brand-500); }
+  .bar { flex: 1; height: 8px; border-radius: 99px; background: var(--gray-100); overflow: hidden; }
+  .bar > i { display: block; height: 100%; width: 0; background: var(--brand-500); }
+  .pct { font: 12px ui-monospace, monospace; width: 36px; text-align: right; }
+  .hover-tile { transition: transform .9s cubic-bezier(.2,.8,.2,1), background-color .9s ease, box-shadow .9s ease; }
+  .hover-tile:hover { transform: translateY(-4px) scale(1.03); background: #EEF3FF; box-shadow: 0 12px 30px rgba(45,107,255,.18); }
+  @keyframes shimmer { from { background-position: 200% 0 } to { background-position: -200% 0 } }
+  .skel { height: 12px; border-radius: 6px; background: linear-gradient(90deg, var(--gray-100) 25%, var(--gray-200) 50%, var(--gray-100) 75%); background-size: 200% 100%; animation: shimmer 1.2s linear infinite; }
+  .loader { display: flex; flex-direction: column; gap: 8px; }
+  .loader .done { font-size: 13px; }
+  .loader .done b { font-weight: 600; }
+  @keyframes toast-in { from { transform: translateY(-12px); opacity: 0 } to { transform: none; opacity: 1 } }
+  .toast { position: fixed; top: 68px; right: 24px; padding: 10px 14px; border-radius: 10px; background: var(--bg-inverse); color: var(--text-on-inverse); font-size: 13px; box-shadow: 0 10px 30px rgba(0,0,0,.2); animation: toast-in 1.2s cubic-bezier(.2,.8,.2,1) both; }
 </style>
 </head>
 <body>
@@ -111,6 +132,23 @@
       <div class="actions gap-200" style="display:flex">
         <button class="btn btn-secondary" type="button">Cancel</button>
         <button class="btn btn-primary" type="button" id="save">Save changes</button>
+      </div>
+    </section>
+
+
+    <section class="card" id="motion">
+      <div><h3 style="font-size: 15px">Motion &amp; loading</h3><p class="lede" style="margin: 2px 0 0">Press F to freeze. Everything here should stop, and the two loaders should stay loading until you press F again.</p></div>
+      <div class="motion">
+        <div class="tile"><div class="stage"><span class="spinner"></span></div><span class="kind">CSS animation</span></div>
+        <div class="tile"><div class="stage"><svg width="28" height="28" viewBox="0 0 28 28"><circle cx="14" cy="14" r="11" fill="none" stroke="#E7E5E4" stroke-width="3"/><path d="M14 3a11 11 0 0 1 11 11" fill="none" stroke="#2D6BFF" stroke-width="3" stroke-linecap="round"><animateTransform attributeName="transform" type="rotate" from="0 14 14" to="360 14 14" dur="1s" repeatCount="indefinite"/></path></svg></div><span class="kind">Animated SVG</span></div>
+        <div class="tile"><div class="stage"><span class="dot" id="pulse"></span></div><span class="kind">Web Animations API</span></div>
+        <div class="tile"><div class="stage"><span class="bar"><i id="progress"></i></span><span class="pct" id="pct">0%</span></div><span class="kind">JavaScript (animation frames)</span></div>
+        <div class="tile"><div class="stage"><canvas id="wave" width="160" height="36" style="width: 100%; height: 36px"></canvas></div><span class="kind">Canvas</span></div>
+        <div class="tile hover-tile"><div class="stage" style="font-size: 13px">Hover me, then F</div><span class="kind">Hover transition</span></div>
+      </div>
+      <div class="motion" style="grid-template-columns: 1fr 1fr">
+        <div class="tile loader" id="load-fetch"></div>
+        <div class="tile loader" id="load-xhr"></div>
       </div>
     </section>
 
@@ -156,6 +194,32 @@
     const dlg = document.getElementById('dialog')
     document.getElementById('open-dialog').addEventListener('click', () => dlg.showModal())
     document.getElementById('close-dialog').addEventListener('click', () => dlg.close())
+
+    // ---- motion & loading ----
+    // Web Animations API
+    document.getElementById('pulse').animate([{ transform: 'scale(1)', opacity: 1 }, { transform: 'scale(1.8)', opacity: .25 }], { duration: 900, iterations: Infinity, direction: 'alternate', easing: 'ease-in-out' })
+    // JavaScript: a progress bar driven by animation frames, looping every 3s
+    const bar = document.getElementById('progress'), pct = document.getElementById('pct')
+    let t0 = performance.now()
+    ;(function tick(now) { const p = ((now - t0) % 3000) / 3000; bar.style.width = (p * 100).toFixed(1) + '%'; pct.textContent = Math.round(p * 100) + '%'; requestAnimationFrame(tick) })(t0)
+    // Canvas: a moving wave
+    const cv = document.getElementById('wave'), cx = cv.getContext('2d')
+    ;(function draw(now) { cx.clearRect(0, 0, 160, 36); cx.beginPath(); for (let x = 0; x <= 160; x += 2) { const y = 18 + Math.sin(x / 14 + now / 300) * 10; x ? cx.lineTo(x, y) : cx.moveTo(x, y) } cx.strokeStyle = '#2D6BFF'; cx.lineWidth = 2; cx.stroke(); requestAnimationFrame(draw) })(0)
+    // Loaders: skeleton for 1.5s, then a request; the content shows when its answer arrives. Reloads every 6s.
+    const skeleton = '<div class="skel" style="width: 70%"></div><div class="skel"></div><div class="skel" style="width: 45%"></div><span class="kind">Loading…</span>'
+    const loaded = (how) => '<div class="done"><b>Loaded</b> at ' + new Date().toLocaleTimeString() + '</div><span class="kind">' + how + ' · reloads every 6s</span>'
+    function cycle(id, how, request) {
+      const el = document.getElementById(id)
+      const run = () => { el.innerHTML = skeleton; setTimeout(() => request(() => { el.innerHTML = loaded(how) }), 1500) }
+      run(); setInterval(run, 6000)
+    }
+    cycle('load-fetch', 'fetch', done => fetch('/health?' + Date.now()).then(r => r.json()).then(done))
+    cycle('load-xhr', 'XMLHttpRequest', done => { const x = new XMLHttpRequest(); x.onload = done; x.open('GET', '/health?' + Date.now()); x.send() })
+    // A toast that slides in every 5s: motion that starts while frozen should hold too
+    setInterval(() => {
+      const t = document.createElement('div'); t.className = 'toast'; t.textContent = 'Saved · ' + new Date().toLocaleTimeString()
+      document.body.append(t); setTimeout(() => t.remove(), 3000)
+    }, 5000)
   </script>
   <script src="/inspeck.js"></script>
 </body>
