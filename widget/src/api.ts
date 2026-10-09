@@ -8,6 +8,8 @@ export interface CssLine { property: string; value: string; resolved?: string }
 export interface NoteIn {
   note: string
   page: string
+  /** Wait on the page until the person sends it, rather than go to Claude now. */
+  held?: boolean
   element: { selector: string; tag: string; text?: string; trail?: string[]; name?: string; within?: string; anchor?: string }
   at: { x: number; y: number }
   rect: { x: number; y: number; w: number; h: number }
@@ -31,6 +33,8 @@ export interface Note {
   rect?: NoteIn['rect']
   group?: GroupMember[]
   createdAt: string
+  /** Waiting on the page to be sent. */
+  held?: boolean
 }
 
 export class ApiError extends Error {}
@@ -70,6 +74,10 @@ export const api = {
   },
   async remove(id: string): Promise<void> {
     await call('DELETE', `/comments/${id}`)
+  },
+  /** Send the notes waiting on a page, or on a whole site. Returns how many went. */
+  async sendHeld(where: { page: string } | { site: string }): Promise<number> {
+    return (await call<{ sent: number }>('POST', '/comments/send', where)).sent
   },
   /** Whether the first-run tour has been seen on this machine, in any app. */
   async tourSeen(): Promise<boolean> {

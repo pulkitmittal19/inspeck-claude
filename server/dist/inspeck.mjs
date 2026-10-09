@@ -36547,7 +36547,9 @@ var NewComment = external_exports.object({
   /** The browser tab it came from, so it can go to the session that tab is bound to. */
   tabId: external_exports.string().max(64).optional(),
   /** A data URL. The server writes it to disk and keeps only the path. */
-  screenshot: external_exports.string().max(45e5).optional()
+  screenshot: external_exports.string().max(45e5).optional(),
+  /** Wait for the person to send it (Send notes right away is off), rather than wake Claude now. */
+  held: external_exports.boolean().optional()
 });
 function isThisMachine(host) {
   return host === "localhost" || host === "127.0.0.1" || host === "[::1]" || host === "::1" || host.endsWith(".localhost") || host.endsWith(".test");
@@ -36746,6 +36748,7 @@ function add(input2, to) {
       ...input2.client ? { client: input2.client } : {},
       ...input2.tabId ? { tabId: input2.tabId } : {},
       ...to ? { to } : {},
+      ...input2.held ? { held: true } : {},
       thread: []
     };
     if (input2.screenshot) {
@@ -36766,7 +36769,7 @@ function forPage(page) {
 }
 function claimNew(page, mine2 = () => true) {
   const key = page ? pageKey(page) : void 0;
-  const wanted = (c) => c.status === "new" && (!key || c.page === key) && mine2(c);
+  const wanted = (c) => c.status === "new" && !c.held && (!key || c.page === key) && mine2(c);
   if (!read().comments.some(wanted)) return [];
   return change((inbox) => {
     const claimed = inbox.comments.filter(wanted);
@@ -36785,13 +36788,28 @@ function adopt(which, to) {
 function markAllSeen(ids) {
   if (!ids.length) return;
   change((inbox) => {
-    for (const c of inbox.comments) if (ids.includes(c.id) && c.status === "new") c.status = "seen";
+    for (const c of inbox.comments) if (ids.includes(c.id) && c.status === "new") {
+      c.status = "seen";
+      delete c.held;
+    }
+  });
+}
+function release(which) {
+  const wanted = (c) => c.status === "new" && !!c.held && which(c);
+  if (!read().comments.some(wanted)) return [];
+  return change((inbox) => {
+    const sent = inbox.comments.filter(wanted);
+    for (const c of sent) delete c.held;
+    return sent.map((c) => ({ ...c }));
   });
 }
 function markSeen(id) {
   return change((inbox) => {
     const c = inbox.comments.find((x) => x.id === id);
-    if (c && c.status === "new") c.status = "seen";
+    if (c && c.status === "new") {
+      c.status = "seen";
+      delete c.held;
+    }
     return c ? { ...c } : void 0;
   });
 }
@@ -37094,7 +37112,9 @@ function resolveSource(at) {
 // server/src/http.ts
 var SETTINGS = {
   sizes: ["written", "px", "rem"],
-  colors: ["written", "hex", "rgb", "oklch"]
+  colors: ["written", "hex", "rgb", "oklch"],
+  /* Send notes right away (live), or keep them on the page until you send them (ask). */
+  send: ["ask", "live"]
 };
 var PORT = Number(process.env.INSPECK_PORT) || 4848;
 var EXTRA_ORIGINS = (process.env.INSPECK_ALLOWED_ORIGINS ?? "").split(",").map((s) => s.trim()).filter(Boolean);
@@ -37233,6 +37253,28 @@ async function route2(req, res, version2, onNew) {
   }
   if (parts[0] !== "comments") return send(res, 404, { error: "Not found" });
   const id = parts[1];
+  if (id === "send" && req.method === "POST") {
+    const b = await body(req);
+    const origin = (u) => {
+      try {
+        return new URL(u).origin;
+      } catch {
+        return null;
+      }
+    };
+    let which = null;
+    if (typeof b.page === "string") {
+      const key = pageKey(b.page);
+      which = (c) => c.page === key;
+    } else if (typeof b.site === "string" && origin(b.site)) {
+      const o = origin(b.site);
+      which = (c) => origin(c.page) === o;
+    }
+    if (!which) return send(res, 400, { error: "Send { page } or { site }" });
+    const sent = release(which);
+    for (const c of sent) onNew(c);
+    return send(res, 200, { sent: sent.length });
+  }
   if (!id && req.method === "GET") {
     const page = url2.searchParams.get("page");
     const list = page ? forPage(page) : open2();
@@ -37358,7 +37400,7 @@ if (process.argv[2] === "wait") {
   await runWait(process.argv.slice(3));
   process.exit(0);
 }
-var VERSION = "0.11.0";
+var VERSION = "0.12.0";
 var log = (msg) => process.stderr.write(`inspeck: ${msg}
 `);
 var INSTRUCTIONS = `Inspeck lets a person hover any element of their web app to see its CSS, and click it to leave a note for you. Their notes arrive here.
@@ -37368,7 +37410,8 @@ Each note carries the element's selector, the React component that rendered it, 
 Setting up, once per session, when you open the person's app in your browser pane:
 1. Call bind. It returns one line of JavaScript; run it in the browser pane tab showing the app. If the app doesn't load Inspeck itself, the line adds it to the page (run it again after a full reload). Notes from that tab now come to this session.
 2. Start the watcher as a background task: ${WAIT_COMMAND}
-   It finishes, printing the notes, the moment one arrives. Handle them, then start it again.
+   It finishes, printing the notes, the moment they're sent. Handle them, then start it again.
+Notes wait on the page until the person presses Send in the pill, unless they've turned on Send notes right away in Inspeck's settings; then each comes as it's placed. Either way the watcher wakes you only for sent notes, and pending reads waiting ones too: asking for the notes sends them.
 If the person uses their own browser (Chrome, Safari) instead of your pane, call bind with page set to the app's address instead of running a line: every note from that site, in any browser, then comes here. Saying "check my Inspeck notes" (pending) also takes notes no other session could have picked up, and links their site to you.
 
 Working through notes: pending gives every new note in full (and lists ones read before), get opens one again, watch waits for new ones in the foreground. Reading a note (pending, get, watch or the watcher) clears its marker from the page, so the person never clears notes by hand. resolve closes a note with one line saying what changed, dismiss declines with a reason.
@@ -37521,7 +37564,7 @@ function noteClient() {
   }
 }
 function push(c) {
-  if (!mine(c)) return;
+  if (!mine(c) || c.held) return;
   void server.server.notification({
     method: "notifications/claude/channel",
     params: {

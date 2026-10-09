@@ -1,4 +1,5 @@
-/* Settings: how the CSS card writes sizes and colours.
+/* Settings: how the CSS card writes sizes and colours, and whether a note
+ * goes to Claude as soon as it's placed or waits for you to send it.
  *
  * Kept by the plugin, so a choice made in one app holds in every app and
  * browser on this machine; a copy in this site's storage means the card
@@ -7,10 +8,13 @@
 import { api } from './api'
 import type { ColorChoice, SizeFormat } from './css/units'
 
-export interface Prefs { sizes: SizeFormat; colors: ColorChoice }
+export type SendMode = 'ask' | 'live'
+export interface Prefs { sizes: SizeFormat; colors: ColorChoice; send: SendMode }
 
 const KEY = 'inspeck:settings'
-const DEFAULTS: Prefs = { sizes: 'written', colors: 'written' }
+/* Notes wait for you to send them unless you turn on Send notes right away:
+   Claude shouldn't start changing code while you're still looking around. */
+const DEFAULTS: Prefs = { sizes: 'written', colors: 'written', send: 'ask' }
 const SIZES: SizeFormat[] = ['written', 'px', 'rem']
 const COLORS: ColorChoice[] = ['written', 'hex', 'rgb', 'oklch']
 
@@ -20,6 +24,7 @@ function clean(raw: unknown): Prefs {
   return {
     sizes: SIZES.includes(o.sizes as SizeFormat) ? (o.sizes as SizeFormat) : DEFAULTS.sizes,
     colors: COLORS.includes(o.colors as ColorChoice) ? (o.colors as ColorChoice) : DEFAULTS.colors,
+    send: o.send === 'live' || o.send === 'ask' ? o.send : DEFAULTS.send,
   }
 }
 
@@ -27,7 +32,7 @@ let current: Prefs = (() => { try { return clean(JSON.parse(localStorage.getItem
 const listeners = new Set<() => void>()
 
 const remember = (p: Prefs) => { try { localStorage.setItem(KEY, JSON.stringify(p)) } catch { /* private window */ } }
-const same = (a: Prefs, b: Prefs) => a.sizes === b.sizes && a.colors === b.colors
+const same = (a: Prefs, b: Prefs) => a.sizes === b.sizes && a.colors === b.colors && a.send === b.send
 
 function apply(next: Prefs): void {
   if (same(next, current)) return

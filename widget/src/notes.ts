@@ -52,7 +52,7 @@ export function anchorOf(el: Element): { x: number; y: number; visible: boolean 
 const open = (n: Note) => n.status === 'new'
 /* The page as the server keys it: a hash route (`#/settings`) is its own page,
    a plain anchor (`#pricing`) is the same page scrolled. */
-const pageNow = () => /^#!?\//.test(location.hash) ? location.href : location.href.split('#')[0]
+export const pageNow = () => /^#!?\//.test(location.hash) ? location.href : location.href.split('#')[0]
 
 export interface Notes {
   /** A note was just sent: show its marker straight away. */
@@ -60,6 +60,8 @@ export interface Notes {
   refresh(): Promise<void>
   /** How many notes have markers on this page. */
   readonly count: number
+  /** How many of them are waiting to be sent. */
+  readonly held: number
   /** Withdraw every note on this page. */
   clear(): Promise<void>
   /** An area note's elements still on the page, and where the area is now. */
@@ -71,7 +73,7 @@ export interface Notes {
   destroy(): void
 }
 
-export function createNotes(ui: HTMLElement, onOpen: (note: Note, el: Element | null) => void): Notes {
+export function createNotes(ui: HTMLElement, onOpen: (note: Note, el: Element | null) => void, onHeld: (n: number) => void = () => {}): Notes {
   const layer = h('div', { class: 'markers' })
   /* Hovering a marker outlines, faintly, the element its note is about. */
   const ghost = h('div', { class: 'ghost', hidden: true })
@@ -128,7 +130,14 @@ export function createNotes(ui: HTMLElement, onOpen: (note: Note, el: Element | 
 
   /* ---------- markers ---------- */
 
+  let lastHeld = -1
+  const tellHeld = () => {
+    const n = notes.filter(x => x.held).length
+    if (n !== lastHeld) { lastHeld = n; onHeld(n) }
+  }
+
   function render() {
+    tellHeld()
     for (const [id, m] of markers) {
       if (notes.some(n => n.id === id)) continue
       /* Claude closed it (or you deleted it): shrink away, then go. */
@@ -272,6 +281,7 @@ export function createNotes(ui: HTMLElement, onOpen: (note: Note, el: Element | 
     membersOf,
     areaOf,
     get count() { return notes.length },
+    get held() { return notes.filter(x => x.held).length },
     async clear() {
       const ids = notes.map(n => n.id)
       await Promise.allSettled(ids.map(id => api.remove(id)))

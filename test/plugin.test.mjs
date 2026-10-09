@@ -339,6 +339,34 @@ test('Wait for comments picks up one placed while it waits', async () => {
   assert.match(r.content[0].text, /Avatar is 2px off centre/)
 })
 
+test('a held note waits on the page: the watcher and the push leave it until Send, and asking for the notes takes it', async () => {
+  const at = 'http://localhost:5173/held'
+  const pushedText = () => s.pushed.map(n => n.params?.content ?? '').join('\n')
+  const a = await page(s.port, 'POST', '/comments', { body: { ...fix, page: at, note: 'Held: chip too tall', screenshot: undefined, held: true } })
+  assert.equal(a.json.comment.held, true)
+  assert.doesNotMatch(pushedText(), /Held: chip too tall/, 'not pushed while it waits')
+  const idle = await s.client.callTool({ name: 'watch', arguments: { page: at, seconds: 5 } })
+  assert.doesNotMatch(allText(idle), /Held: chip too tall/, 'the watcher leaves it')
+
+  /* Send on that page hands it over: pushed, and the watcher takes it. */
+  assert.equal((await page(s.port, 'POST', '/comments/send', { body: { page: at } })).json.sent, 1)
+  assert.match(pushedText(), /Held: chip too tall/)
+  const got = await s.client.callTool({ name: 'watch', arguments: { page: at, seconds: 5 } })
+  assert.match(allText(got), /Held: chip too tall/)
+
+  /* Turning on Send notes right away sends everything waiting on the site. */
+  for (const note of ['Held: one', 'Held: two']) await page(s.port, 'POST', '/comments', { body: { ...fix, page: `${at}/${note.length}`, note, screenshot: undefined, held: true } })
+  await page(s.port, 'POST', '/comments', { body: { ...fix, page: 'http://localhost:3000/x', note: 'Held: other site', screenshot: undefined, held: true } })
+  assert.equal((await page(s.port, 'POST', '/comments/send', { body: { site: 'http://localhost:5173/anything' } })).json.sent, 2, 'only this site')
+  assert.equal((await page(s.port, 'POST', '/comments/send', { body: {} })).status, 400)
+
+  /* Asking Claude for the notes is sending them: pending reads a held one and its marker goes. */
+  const asked = await s.client.callTool({ name: 'pending', arguments: { page: 'http://localhost:3000/x' } })
+  assert.match(allText(asked), /Held: other site/)
+  const left = (await page(s.port, 'GET', `/comments?page=${encodeURIComponent('http://localhost:3000/x')}`, { origin: 'http://localhost:3000' })).json.comments
+  assert.ok(left.every(c => c.status !== 'new' && !c.held))
+})
+
 test('mark done and decline both close the note on the page', async () => {
   const { json } = await page(s.port, 'GET', '/comments?page=' + encodeURIComponent(fix.page))
   const [a, b] = json.comments

@@ -164,7 +164,9 @@ export function createCard(ui: HTMLElement): Card {
       const r = await opts.onSend(text)
       /* The note line gives way to the confirmation, then the card bows out. */
       setOpen(parts.noteWrap, false)
-      status(opts.existing ? 'Saved' : `Sent to Claude${r ? ` as #${r.n}` : ''}`, 'ok')
+      /* Waiting for Send, it's added to the page; with Send notes right away on, it's gone to Claude. */
+      const waits = prefs.get().send === 'ask'
+      status(opts.existing ? 'Saved' : `${waits ? 'Added' : 'Sent to Claude'}${r ? ` as #${r.n}` : ''}`, 'ok')
       const done = opts
       setTimeout(() => {
         if (opts !== done) return
@@ -234,7 +236,7 @@ export function createCard(ui: HTMLElement): Card {
       const note = h('textarea', { class: 'note-input', rows: 1, placeholder: 'Add a note for Claude…', 'aria-label': 'Note for Claude', spellcheck: 'true' })
       if (o.existing) note.value = o.existing.note
       else if (o.draft) note.value = o.draft
-      const sendBtn = h('button', { type: 'button', class: 'send', 'data-action': 'send', 'aria-label': o.existing ? 'Save note' : 'Send to Claude', disabled: true }, svg(ICONS.enter, 13, 2.2))
+      const sendBtn = h('button', { type: 'button', class: 'send', 'data-action': 'send', 'aria-label': o.existing ? 'Save note' : prefs.get().send === 'ask' ? 'Add note' : 'Send to Claude', disabled: true }, svg(ICONS.enter, 13, 2.2))
       /* The pinned parts start closed and open on the next frame, so the card
          grows from what you were just hovering into the note. */
       const noteWrap = reveal('note-wrap', false, h('div', { class: 'note' }, svg(ICONS.note, 13), note, sendBtn))

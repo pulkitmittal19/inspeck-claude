@@ -93,6 +93,8 @@ export const NewComment = z.object({
   tabId: z.string().max(64).optional(),
   /** A data URL. The server writes it to disk and keeps only the path. */
   screenshot: z.string().max(4_500_000).optional(),
+  /** Wait for the person to send it (Send notes right away is off), rather than wake Claude now. */
+  held: z.boolean().optional(),
 })
 export type NewComment = z.infer<typeof NewComment>
 
@@ -127,6 +129,8 @@ export interface Comment {
   thread: Message[]
   /** Why it was closed: Claude's summary on resolve, its reason on dismiss. */
   outcome?: { summary: string; at: string }
+  /** Waiting on the page until the person sends it. The watcher leaves it; asking Claude for the notes sends it. */
+  held?: true
 }
 
 /* ------------------------------------------------------------------------ */

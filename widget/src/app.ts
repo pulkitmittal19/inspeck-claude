@@ -7,7 +7,7 @@ import { h, isEditable } from './dom'
 import { tabStore } from './env'
 import { createFreeze, FROZEN_BLOCK, type Freeze } from './freeze'
 import { createHost, type Host } from './host'
-import { anchorOf, createNotes, type Notes } from './notes'
+import { anchorOf, createNotes, pageNow, type Notes } from './notes'
 import { createOutline, type Outline } from './outline'
 import { childToward, elementAt, parentOf, pickable, snap, clickThroughAt, paints } from './pick'
 import { actionOf, createRouter } from './router'
@@ -108,10 +108,17 @@ export class App {
       this.toolbar.setStatus(manual ? 'Frozen · F to release' : null)
     })
     /* Markers first, so the card is drawn above them. */
-    this.notes = createNotes(this.host.ui, (note, el) => this.openNote(note, el))
+    this.notes = createNotes(this.host.ui, (note, el) => this.openNote(note, el), n => this.toolbar.setWaiting(n))
     this.card = createCard(this.host.ui)
-    /* Sizes or colours changed in Settings (here or in another app): the card says them the new way. */
-    prefs.onChange(() => this.card.refresh())
+    /* Sizes or colours changed in Settings (here or in another app): the card says them the new way.
+       Send notes right away turned on: whatever was waiting goes now, from every page of this site. */
+    let sending = prefs.get().send
+    prefs.onChange(() => {
+      this.card.refresh()
+      const now = prefs.get().send
+      if (now === 'live' && sending === 'ask') void api.sendHeld({ site: location.origin }).then(() => this.notes.refresh(), () => {})
+      sending = now
+    })
     this.outline = createOutline(this.host.ui, (el, r) => {
       /* A tooltip that faded out from under the pointer: let go of it. */
       if (el === this.overlay && !this.pinned && !paints(el)) { this.overlay = null; this.raw = null; this.schedulePick(); return }
@@ -154,7 +161,21 @@ export class App {
       case 'css': this.setCssOnHover(!this.cssOnHover); break
       case 'clear': this.clearNotes(); break
       case 'settings': this.settings.toggle(); break
+      case 'send': this.sendWaiting(); break
     }
+  }
+
+  /** Notes wait on the page for Send unless Send notes right away is on. */
+  private get holding(): boolean { return prefs.get().send === 'ask' }
+
+  /** Send: the notes waiting on this page go to Claude, as one batch. */
+  private sendWaiting(): void {
+    const n = this.notes.held
+    if (!n) return
+    void api.sendHeld({ page: pageNow() }).then(
+      sent => { this.toolbar.flash(`Sent ${sent} to Claude`); void this.notes.refresh() },
+      err => this.toolbar.flash((err as Error).message),
+    )
   }
 
   /** Clear every note on this page, after a second click to be sure. */
@@ -298,7 +319,7 @@ export class App {
           return
         }
         const source = await Promise.race([where, wait(SOURCE_WAIT_MS, [] as SourceAt[])])
-        const note = await api.add({ ...this.noteFor(el, text), ...(source.length ? { source } : {}) })
+        const note = await api.add({ ...this.noteFor(el, text), ...(source.length ? { source } : {}), held: this.holding })
         this.sent = true
         this.drafts.delete(el)
         this.notes.added(note, el)
@@ -371,7 +392,7 @@ export class App {
         /* Where each element is written, so Claude can line them up in the code too. */
         const places = await Promise.race([Promise.all(members.slice(0, 12).map(m => sourceOf(m))), wait(SOURCE_WAIT_MS, [] as SourceAt[][])])
         payload.group.forEach((g, i) => { const at = places[i]?.[0]; if (at) (g as GroupMember).source = at })
-        const note = await api.add(payload)
+        const note = await api.add({ ...payload, held: this.holding })
         this.sent = true
         this.notes.added(note, members)
         return { n: note.n }

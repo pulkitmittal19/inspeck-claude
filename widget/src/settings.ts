@@ -1,14 +1,15 @@
-/* Settings, from the sliders button in the pill: how the CSS card writes sizes and
- * colours. A small panel above the pill (below it when the pill is at the top);
- * a press anywhere else or Escape puts it away. */
+/* Settings, from the sliders button in the pill: how the CSS card writes sizes
+ * and colours, and whether notes go to Claude as you place them. A small panel
+ * above the pill (below it when the pill is at the top); a press anywhere else
+ * or Escape puts it away. */
 import { enter, leave } from './anim'
 import { h } from './dom'
 import { prefs, type Prefs } from './prefs'
 import { actionOf } from './router'
 
-const ROWS: Array<{ key: keyof Prefs; label: string; options: Array<[string, string]> }> = [
-  { key: 'sizes', label: 'Sizes', options: [['written', 'As written'], ['px', 'px'], ['rem', 'rem']] },
-  { key: 'colors', label: 'Colours', options: [['written', 'As written'], ['hex', 'hex'], ['rgb', 'rgb'], ['oklch', 'oklch']] },
+const ROWS: Array<{ key: 'sizes' | 'colors'; label: string; options: Array<[string, string]> }> = [
+  { key: 'sizes', label: 'Show sizes in', options: [['written', 'Default'], ['px', 'px'], ['rem', 'rem']] },
+  { key: 'colors', label: 'Show colors as', options: [['written', 'Default'], ['hex', 'hex'], ['rgb', 'rgb'], ['oklch', 'oklch']] },
 ]
 
 export interface Settings {
@@ -35,11 +36,15 @@ export function createSettings(ui: HTMLElement, onToggle: (open: boolean) => voi
           type: 'button', class: 'seg-opt', role: 'radio', 'data-action': 'pref', 'data-key': row.key, 'data-value': value,
         }, text)))))
   }
+  /* Off: notes wait on the page and go when you press Send (or ask Claude). On: each goes as you place it. */
+  const live = h('button', { type: 'button', class: 'switch', role: 'switch', 'data-action': 'live', 'aria-labelledby': 'ix-set-live' }, h('span', { class: 'knob' }))
+  el.append(h('div', { class: 'set-row set-toggle' }, h('span', { class: 'set-label', id: 'ix-set-live' }, 'Send notes right away'), live))
   const sync = () => {
     const now = prefs.get()
     for (const b of Array.from(el.querySelectorAll<HTMLElement>('.seg-opt'))) {
-      b.setAttribute('aria-checked', String(now[b.dataset.key as keyof Prefs] === b.dataset.value))
+      b.setAttribute('aria-checked', String(now[b.dataset.key as 'sizes' | 'colors'] === b.dataset.value))
     }
+    live.setAttribute('aria-checked', String(now.send === 'live'))
   }
   sync()
   prefs.onChange(sync)
@@ -63,6 +68,7 @@ export function createSettings(ui: HTMLElement, onToggle: (open: boolean) => voi
       if (e.type === 'click') {
         const a = actionOf(e)
         if (a?.action === 'pref' && a.el.dataset.key && a.el.dataset.value) prefs.set({ [a.el.dataset.key]: a.el.dataset.value } as Partial<Prefs>)
+        if (a?.action === 'live') prefs.set({ send: prefs.get().send === 'live' ? 'ask' : 'live' })
       }
       return true
     },

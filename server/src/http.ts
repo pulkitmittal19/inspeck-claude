@@ -20,13 +20,15 @@ import { fileURLToPath } from 'node:url'
 import * as store from './store.js'
 import { HOME } from './store.js'
 import { bindTab, route as routeNote } from './sessions.js'
-import { isThisMachine, NewComment, type Comment } from './format.js'
+import { isThisMachine, NewComment, pageKey, type Comment } from './format.js'
 import { resolveSource } from './sourcemap.js'
 
 /** Settings the widget may keep, and the values each may take. */
 const SETTINGS: Record<string, string[]> = {
   sizes: ['written', 'px', 'rem'],
   colors: ['written', 'hex', 'rgb', 'oklch'],
+  /* Send notes right away (live), or keep them on the page until you send them (ask). */
+  send: ['ask', 'live'],
 }
 
 export const PORT = Number(process.env.INSPECK_PORT) || 4848
@@ -170,6 +172,19 @@ async function route(req: IncomingMessage, res: ServerResponse, version: string,
 
   if (parts[0] !== 'comments') return send(res, 404, { error: 'Not found' })
   const id = parts[1]
+
+  /* Send the notes held on a page (the pill's Send), or on a whole site (Send notes right away turned on). */
+  if (id === 'send' && req.method === 'POST') {
+    const b = (await body(req)) as { page?: unknown; site?: unknown }
+    const origin = (u: string) => { try { return new URL(u).origin } catch { return null } }
+    let which: ((c: Comment) => boolean) | null = null
+    if (typeof b.page === 'string') { const key = pageKey(b.page); which = c => c.page === key }
+    else if (typeof b.site === 'string' && origin(b.site)) { const o = origin(b.site); which = c => origin(c.page) === o }
+    if (!which) return send(res, 400, { error: 'Send { page } or { site }' })
+    const sent = store.release(which)
+    for (const c of sent) onNew(c)
+    return send(res, 200, { sent: sent.length })
+  }
 
   if (!id && req.method === 'GET') {
     const page = url.searchParams.get('page')

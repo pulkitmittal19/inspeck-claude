@@ -142,6 +142,7 @@ export function add(input: NewComment, to?: Comment['to']): Comment {
       ...(input.client ? { client: input.client } : {}),
       ...(input.tabId ? { tabId: input.tabId } : {}),
       ...(to ? { to } : {}),
+      ...(input.held ? { held: true as const } : {}),
       thread: [],
     }
     if (input.screenshot) {
@@ -179,7 +180,7 @@ export function forPage(page: string): Comment[] {
  */
 export function claimNew(page?: string, mine: (c: Comment) => boolean = () => true): Comment[] {
   const key = page ? pageKey(page) : undefined
-  const wanted = (c: Comment) => c.status === 'new' && (!key || c.page === key) && mine(c)
+  const wanted = (c: Comment) => c.status === 'new' && !c.held && (!key || c.page === key) && mine(c)
   /* Watch calls this every second. Look first without the lock, so an idle
      watch never rewrites the file; the claim itself re-checks under it. */
   if (!read().comments.some(wanted)) return []
@@ -200,16 +201,27 @@ export function adopt(which: (c: Comment) => boolean, to: NonNullable<Comment['t
   })
 }
 
-/** Mark these as read in one write: their markers leave the page. */
+/** Mark these as read in one write: their markers leave the page. A held note read this way has been sent. */
 export function markAllSeen(ids: string[]): void {
   if (!ids.length) return
-  change(inbox => { for (const c of inbox.comments) if (ids.includes(c.id) && c.status === 'new') c.status = 'seen' })
+  change(inbox => { for (const c of inbox.comments) if (ids.includes(c.id) && c.status === 'new') { c.status = 'seen'; delete c.held } })
+}
+
+/** Send held notes: from now on the watcher hands them to Claude. Returns those sent. */
+export function release(which: (c: Comment) => boolean): Comment[] {
+  const wanted = (c: Comment) => c.status === 'new' && !!c.held && which(c)
+  if (!read().comments.some(wanted)) return []
+  return change(inbox => {
+    const sent = inbox.comments.filter(wanted)
+    for (const c of sent) delete c.held
+    return sent.map(c => ({ ...c }))
+  })
 }
 
 export function markSeen(id: string): Comment | undefined {
   return change(inbox => {
     const c = inbox.comments.find(x => x.id === id)
-    if (c && c.status === 'new') c.status = 'seen'
+    if (c && c.status === 'new') { c.status = 'seen'; delete c.held }
     return c ? { ...c } : undefined
   })
 }

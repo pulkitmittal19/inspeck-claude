@@ -1,11 +1,12 @@
-/* The circle in the corner that grows into the pill: CSS · Clear · Settings · Close.
+/* The circle in the corner that grows into the pill: (Send) · CSS · Clear · Settings · Close.
+   Send shows only while notes are waiting to go to Claude, with how many.
    Freezing is the F key: the pill would mean leaving what you want to freeze.
 
    Drag it anywhere; it stays where it's dropped, remembered per site. It keeps
    its distance from the nearest side and the nearest top or bottom, so a
    resized window doesn't lose it, and the pill, its tips, the Frozen line and
    the tour open toward the middle of the screen. */
-import { enter, leave } from './anim'
+import { enter, leave, play } from './anim'
 import { h, svg } from './dom'
 import { ICONS, type IconName } from './icons'
 import { actionOf } from './router'
@@ -30,6 +31,7 @@ function savedSpot(): Spot {
 }
 
 const BUTTONS: Array<{ action: string; icon: IconName; label: string; key?: string }> = [
+  { action: 'send', icon: 'send', label: 'Send notes to Claude' },
   { action: 'css', icon: 'code', label: 'Show CSS on hover', key: 'C' },
   { action: 'clear', icon: 'trash', label: 'Clear notes on this page' },
   { action: 'settings', icon: 'settings', label: 'Settings' },
@@ -46,6 +48,10 @@ export interface Toolbar {
   armed(action: string): boolean
   /** A short word from a button, in its tip, e.g. "No notes on this page". */
   say(action: string, text: string): void
+  /** A word above the pill itself, for a moment ("Sent 3 to Claude"), when the button that did it is gone. */
+  flash(text: string): void
+  /** Notes waiting to be sent: Send shows with the count, or goes when there are none. */
+  setWaiting(n: number): void
   /** A line that stays above the pill while something lasts ("Frozen · F to release"); null clears it. */
   setStatus(text: string | null): void
   /** Handle an event that happened inside the widget. Returns the action clicked, if any. */
@@ -105,7 +111,12 @@ export function createToolbar(ui: HTMLElement): Toolbar {
   }
 
   /* The open width is whatever the buttons need, plus the padding. */
-  nextFrame(() => bar.style.setProperty('--ix-open-w', `${row.scrollWidth + 8}px`))
+  const fit = () => nextFrame(() => bar.style.setProperty('--ix-open-w', `${row.scrollWidth + 8}px`))
+  const sendBtn = btns[0]
+  const badge = h('span', { class: 'badge', 'aria-hidden': 'true' })
+  sendBtn.append(badge)
+  sendBtn.hidden = true
+  fit()
 
   let tipFor: Element | null = null
   let armedFor: HTMLElement | null = null
@@ -135,6 +146,27 @@ export function createToolbar(ui: HTMLElement): Toolbar {
     },
     setFrozen(on) {
       bar.toggleAttribute('data-frozen', on)
+    },
+    flash(text) {
+      tipFor = bar
+      tip.replaceChildren(text)
+      const r = bar.getBoundingClientRect()
+      const w = tip.offsetWidth
+      tip.style.left = `${Math.min(window.innerWidth - w - 8, Math.max(8, r.left + r.width / 2 - w / 2))}px`
+      tip.style.top = `${r.top - 34 < 8 ? r.bottom + 8 : r.top - 34}px`
+      tip.setAttribute('data-show', '')
+      window.setTimeout(() => { if (tipFor === bar) showTip(null) }, 1800)
+    },
+    setWaiting(n) {
+      const was = sendBtn.hidden ? 0 : Number(badge.textContent)
+      badge.textContent = String(n)
+      const label = `Send ${n} note${n === 1 ? '' : 's'} to Claude`
+      sendBtn.dataset.tip = label
+      sendBtn.setAttribute('aria-label', label)
+      if (n > 0 === !sendBtn.hidden) { if (n > was) play(badge, 'data-bump', 320); if (tipFor === sendBtn) showTip(sendBtn, true); return }
+      sendBtn.hidden = n === 0
+      if (tipFor === sendBtn) showTip(null)
+      fit()
     },
     setStatus(text) {
       if (!text) { leave(status, 140); return }
@@ -201,12 +233,13 @@ export function createToolbar(ui: HTMLElement): Toolbar {
       /* The click that ends a drag isn't a click on the pill. */
       if (e.type === 'click' && eatClick) { eatClick = false; return null }
       if (dragging) return null
-      if (e.type === 'pointerover') {
+      if (e.type === 'pointerover' && tipFor !== bar) {
         const a = actionOf(e)
         showTip(a?.el ?? null)
       } else if (e.type === 'pointerout' || e.type === 'pointerleave') {
         const to = (e as PointerEvent).relatedTarget
-        if (!(to instanceof Node) || !bar.contains(to)) showTip(null)
+        /* A word flashed above the pill stays its moment, even as the pointer leaves. */
+        if (tipFor !== bar && (!(to instanceof Node) || !bar.contains(to))) showTip(null)
       } else if (e.type === 'click') {
         const a = actionOf(e)
         if (a && bar.contains(a.el)) { showTip(null); return a.action }

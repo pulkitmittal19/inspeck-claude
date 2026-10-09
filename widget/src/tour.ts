@@ -17,7 +17,7 @@ const STEPS: Array<{ title: string; line: Array<string | HTMLElement> }> = [
   { title: 'Inspect', line: ['Hover to outline anything. Hold ', k('Shift'), ' to measure.'] },
   { title: 'Note', line: ['Click to leave a note. Drag to cover a section.'] },
   { title: 'CSS', line: ['Press ', k('C'), ' to show CSS as you hover.'] },
-  { title: 'Send to Claude', line: ['Ask Claude to check your Inspeck notes. ', k('⌥ I'), ' opens or closes Inspeck.'] },
+  { title: 'Send to Claude', line: ['Notes wait until you press ', k('↑'), ' in the pill. ', k('⌥ I'), ' opens or closes Inspeck.'] },
 ]
 
 export interface Tour {

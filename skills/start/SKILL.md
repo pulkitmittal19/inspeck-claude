@@ -33,7 +33,7 @@ Inspeck is on.
 ✓ App opened · localhost:5180
 ✓ Inspeck added · no code changed
 ✓ Linked to this chat
-Click anything to note it · ⌥ I to toggle
+Click anything to note it · ↑ in the pill sends your notes
 ```
 
-Adjust only what's true: the address you opened; "Inspeck added · no code changed" when the bind line added it, or "Inspeck loaded by your app" when the app already had it; for a person using their own browser, "Linked to localhost:5180 in any browser". If a step failed, replace its line with what's wrong and the one thing to do about it.
+(Notes wait until the person presses ↑ Send, or go as they're placed if they turned on Send notes right away in Inspeck's settings; the last line is the same either way.) Adjust only what's true: the address you opened; "Inspeck added · no code changed" when the bind line added it, or "Inspeck loaded by your app" when the app already had it; for a person using their own browser, "Linked to localhost:5180 in any browser". If a step failed, replace its line with what's wrong and the one thing to do about it.

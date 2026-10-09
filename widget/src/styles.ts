@@ -120,6 +120,16 @@ button { appearance: none; background: none; border: 0; padding: 0; cursor: poin
 .ix[data-bar-h="left"] .bar[data-open] .btn { transform: none; transition-delay: calc(90ms + var(--j, 0) * 45ms), calc(90ms + var(--j, 0) * 45ms), 0ms, 0ms; }
 .ix[data-bar-h="left"] .bar[data-open] .btn:active { transform: scale(0.9); }
 .bar .btn:hover { background: rgba(255, 255, 255, 0.1); color: #fff; }
+.bar .btn[hidden] { display: none; }
+/* Send, while notes wait: the count in a small pink badge, which bumps when one is added. */
+.bar .btn[data-action="send"] { color: #FF8AB8; }
+.bar .btn .badge {
+  position: absolute; top: 1px; right: 0; min-width: 14px; height: 14px; padding: 0 4px; border-radius: 7px;
+  background: var(--ix-accent); color: #fff; font: 700 9px/14px var(--ix-sans); text-align: center;
+  box-shadow: 0 0 0 2px var(--ix-bg);
+}
+.bar .btn .badge[data-bump] { animation: ix-bump 320ms var(--ix-ease); }
+@keyframes ix-bump { 40% { transform: scale(1.3); } }
 .bar .btn:active { transform: scale(0.9); transition-duration: 80ms; }
 .bar .btn[aria-pressed="true"] { background: rgba(255, 61, 138, 0.26); color: #fff; }
 /* Asking before it clears: the button holds a warm fill until you click again or wait. */
@@ -407,6 +417,19 @@ button { appearance: none; background: none; border: 0; padding: 0; cursor: poin
 .seg-opt:hover { color: var(--ix-text); }
 .seg-opt[aria-checked="true"] { background: rgba(255, 61, 138, 0.22); color: #fff; box-shadow: 0 0 0 1px rgba(255, 61, 138, 0.45) inset; }
 .seg-opt:active { transform: scale(0.96); }
+/* An on/off row: the label, and a switch at the end. */
+.set-toggle { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding-top: 10px; border-top: 1px solid var(--ix-line); }
+.set-toggle .set-label { margin: 0; color: var(--ix-text); }
+.switch {
+  position: relative; flex: none; width: 30px; height: 18px; border-radius: 9px; background: rgba(255, 255, 255, 0.14);
+  transition: background 160ms ease;
+}
+.switch .knob {
+  position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 7px; background: #fff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3); transition: transform 200ms var(--ix-ease);
+}
+.switch[aria-checked="true"] { background: var(--ix-accent); }
+.switch[aria-checked="true"] .knob { transform: translateX(12px); }
 
 /* small label that appears above a toolbar button on hover */
 .tip {
