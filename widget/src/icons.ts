@@ -6,7 +6,6 @@ export const ICONS = {
   /* Inspeck's magnifier with code brackets, the same glyph as the extension. */
   inspect: [p('M17.5 17.5L22 22'), p('M20 11a9 9 0 1 0-18 0 9 9 0 0 0 18 0Z'), p('M14.5 9.5l.9.8c.4.3.6.5.6.7s-.2.4-.6.7l-.9.8'),
     p('M7.5 9.5l-.9.8c-.4.3-.6.5-.6.7s.2.4.6.7l.9.8'), p('M12 8.5 10 13.5')],
-  freeze: [p('M12 3v18M4.2 7.5l15.6 9M4.2 16.5l15.6-9'), p('M9.5 4.6 12 7l2.5-2.4M9.5 19.4 12 17l2.5 2.4')],
   close: [p('M6.5 6.5l11 11M17.5 6.5l-11 11')],
   /* `</>`: the CSS shows as you hover. */
   code: [p('M8.5 7.5L4 12l4.5 4.5'), p('M15.5 7.5L20 12l-4.5 4.5'), p('M13.5 5.5l-3 13')],
