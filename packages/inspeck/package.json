@@ -1,0 +1,33 @@
+{
+  "name": "inspeck",
+  "version": "0.6.0",
+  "description": "Inspeck for your dev server: hover any element to see its CSS, click it to leave a note for Claude. Adds the widget in development only.",
+  "license": "MIT",
+  "author": "Pulkit Mittal",
+  "type": "module",
+  "exports": {
+    "./vite": {
+      "types": "./vite.d.ts",
+      "import": "./dist/vite.js",
+      "require": "./dist/vite.cjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": ["dist", "vite.d.ts", "README.md", "LICENSE"],
+  "sideEffects": false,
+  "peerDependencies": {
+    "vite": ">=4"
+  },
+  "peerDependenciesMeta": {
+    "vite": { "optional": true }
+  },
+  "engines": { "node": ">=18" },
+  "keywords": ["vite", "vite-plugin", "claude", "claude-code", "inspect", "css", "design-review", "annotation"],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pulkitmittal19/inspeck-claude.git",
+    "directory": "packages/inspeck"
+  },
+  "homepage": "https://github.com/pulkitmittal19/inspeck-claude#readme",
+  "bugs": "https://github.com/pulkitmittal19/inspeck-claude/issues"
+}

@@ -25,15 +25,18 @@ Then add one line to your app, in development only:
 <details>
 <summary>Vite, Next.js, plain HTML</summary>
 
-**Vite** (`vite.config.ts`): adds the tag only while serving.
+**Vite**: install the [`inspeck`](packages/inspeck) package, which adds the tag only while serving, never to a build.
+
+```bash
+npm i -D inspeck
+```
 
 ```ts
+// vite.config.ts
+import inspeck from 'inspeck/vite'
+
 export default defineConfig({
-  plugins: [{
-    name: 'inspeck',
-    apply: 'serve',
-    transformIndexHtml: () => [{ tag: 'script', attrs: { src: 'http://127.0.0.1:4848/inspeck.js' }, injectTo: 'body' }],
-  }],
+  plugins: [inspeck()],
 })
 ```
 
@@ -114,9 +117,13 @@ Notes stay on your machine. `~/.inspeck/last-client.json` records what the last 
 npm install
 npm run typecheck
 npm run build      # server/dist/inspeck.mjs and server/dist/widget/inspeck.js, both committed
-npm test           # the server, routing between sessions, the widget's CSS reading
+npm test           # the server, routing between sessions, the widget's CSS reading, the npm package
 ```
 
 Both bundles are committed on purpose: Claude Code installs a plugin by copying it from GitHub and never runs `npm install`.
 
 To work on the widget, run the server with `INSPECK_DEV=1` and open `http://127.0.0.1:4848/__dev/`, a test page with tokens, utility classes, a dropdown with a submenu, a modal and hover-only states. The widget is rebuilt with `npm run build` and picked up on the next reload.
+
+## License
+
+MIT

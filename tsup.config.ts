@@ -33,4 +33,15 @@ export default defineConfig([
     clean: true,
     define: { __INSPECK_VERSION__: JSON.stringify(version) },
   },
+  /* The npm package `inspeck`: a Vite plugin that adds the widget's script tag
+     in development. Both module formats, for ESM and CommonJS Vite configs. */
+  {
+    entry: { vite: 'packages/inspeck/src/vite.ts' },
+    outDir: 'packages/inspeck/dist',
+    format: ['esm', 'cjs'],
+    outExtension: ({ format }) => ({ js: format === 'cjs' ? '.cjs' : '.js' }),
+    platform: 'node',
+    target: 'node18',
+    clean: true,
+  },
 ])
