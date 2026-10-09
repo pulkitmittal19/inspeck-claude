@@ -1,4 +1,5 @@
-/* The circle in the corner that grows into the pill: CSS · Freeze · Clear · Close. */
+/* The circle in the corner that grows into the pill: CSS · Clear · Close.
+   Freezing is the F key: the pill would mean leaving what you want to freeze. */
 import { enter, leave } from './anim'
 import { h, svg } from './dom'
 import { ICONS, type IconName } from './icons'
@@ -6,7 +7,6 @@ import { actionOf } from './router'
 
 const BUTTONS: Array<{ action: string; icon: IconName; label: string; key?: string }> = [
   { action: 'css', icon: 'code', label: 'Show CSS on hover', key: 'C' },
-  { action: 'freeze', icon: 'freeze', label: 'Freeze the page', key: 'F' },
   { action: 'clear', icon: 'trash', label: 'Clear notes on this page' },
   { action: 'close', icon: 'close', label: 'Close', key: 'Esc' },
 ]

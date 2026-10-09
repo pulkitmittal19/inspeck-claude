@@ -57,3 +57,61 @@ export function pickable(el: Element | null, host: Element): el is Element {
   const r = el.getBoundingClientRect()
   return r.width > 0 || r.height > 0
 }
+
+/* ---------- click-through layers: tooltips, hover cards ----------
+ *
+ * Most tooltips are `pointer-events: none`, so they never get in the way of
+ * the page. The browser's hit test skips them for the same reason, which
+ * means `elementAt` looks straight through a tooltip to the row behind it.
+ * To see them, the hit test is run once more with pointer-events forced on
+ * everywhere (one switch on a sheet of our own), and the first element that
+ * was click-through and actually paints something there wins.
+ *
+ * Switching that sheet restyles the page, so it isn't done on every pointer
+ * move: only once the pointer rests, and on a press.
+ */
+
+let seeSheet: CSSStyleSheet | null = null
+
+function seeThrough(on: boolean): boolean {
+  try {
+    if (!seeSheet) {
+      seeSheet = new CSSStyleSheet()
+      seeSheet.replaceSync('* { pointer-events: auto !important; }')
+    }
+    /* The app may replace the page's adopted sheets; put ours back if so. */
+    if (!document.adoptedStyleSheets.includes(seeSheet)) document.adoptedStyleSheets = [...document.adoptedStyleSheets, seeSheet]
+    seeSheet.disabled = !on
+    return true
+  } catch { return false }
+}
+
+const clear = (c: string) => c === 'transparent' || /rgba?\([^)]*,\s*0\)$/.test(c)
+
+/** Whether an element shows anything itself: text, a fill, a border, a shadow, an image. */
+export function paints(el: Element): boolean {
+  const cs = getComputedStyle(el)
+  if (cs.visibility !== 'visible' || Number(cs.opacity) === 0) return false
+  for (let p = el.parentElement; p && p !== document.body; p = p.parentElement) {
+    if (Number(getComputedStyle(p).opacity) === 0) return false
+  }
+  if (/^(img|svg|video|canvas|picture)$/i.test(el.tagName)) return true
+  if (Array.from(el.childNodes).some(n => n.nodeType === Node.TEXT_NODE && n.textContent!.trim())) return true
+  return !clear(cs.backgroundColor) || cs.backgroundImage !== 'none' || cs.boxShadow !== 'none' ||
+    (parseFloat(cs.borderTopWidth) > 0 && !clear(cs.borderTopColor))
+}
+
+/** A click-through element showing at this point above everything else (a tooltip), if there is one. */
+export function clickThroughAt(x: number, y: number, host: Element): Element | null {
+  if (!seeThrough(true)) return null
+  let list: Element[]
+  try { list = document.elementsFromPoint(x, y) } finally { seeThrough(false) }
+  for (const el of list) {
+    if (el === host || host.contains(el)) continue
+    if (el === document.documentElement || el === document.body) return null
+    /* Reached something the pointer would hit anyway: nothing click-through is on top. */
+    if (getComputedStyle(el).pointerEvents !== 'none') return null
+    if (paints(el)) return el
+  }
+  return null
+}

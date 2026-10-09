@@ -51,7 +51,7 @@ If your app sets a Content Security Policy in development, allow `http://127.0.0
 
 ## Use
 
-Open your app and click the circle in the corner, or press **⌥ I** (Option + I). The pill opens to four buttons, CSS, Freeze, Clear and Close, and you can start placing notes straight away:
+Open your app and click the circle in the corner, or press **⌥ I** (Option + I). The pill opens to three buttons, CSS, Clear and Close, and you can start placing notes straight away:
 
 | | |
 |---|---|
@@ -62,7 +62,8 @@ Open your app and click the circle in the corner, or press **⌥ I** (Option + I
 | **↑ / ↓** | the element's parent or child |
 | **Hold Shift** | padding, margin and the gaps between children, with numbers. Keep holding and move to another element: the distance between the two |
 | **Hold Space** | clicks go to your app: open a menu, then note something inside it |
-| **F** or ❄ | freeze the page: menus, tooltips and hover states stay as they are, including what shows on hover (a row's buttons). F freezes at once, with the pointer where it is; ❄ counts 3 seconds first, so you can go back and hover what you want to keep. Writing a note freezes it too |
+| **F** | freeze the page, with the pointer where it is: tooltips, hover cards, menus and what shows on hover (a row's buttons) stay as they are, so you can point at them and note them. **F** again or **Esc** releases it. Writing a note freezes the page too, so an open menu stays open while you type |
+| **Tooltips** | Inspeck sees tooltips and other click-through layers: rest the pointer on one for a moment and it's outlined. Most close when the pointer leaves their button, so press **F** while it shows, then move onto it |
 | **Clear** (bin) | withdraw every note on this page; click twice to be sure |
 | **Esc** | close the note, then the freeze, then Inspeck |
 

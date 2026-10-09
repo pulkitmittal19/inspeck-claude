@@ -9,7 +9,7 @@ import { createFreeze, FROZEN_BLOCK, type Freeze } from './freeze'
 import { createHost, type Host } from './host'
 import { anchorOf, createNotes, type Notes } from './notes'
 import { createOutline, type Outline } from './outline'
-import { childToward, elementAt, parentOf, pickable, snap } from './pick'
+import { childToward, elementAt, parentOf, pickable, snap, clickThroughAt, paints } from './pick'
 import { createRouter } from './router'
 import { selectorFor } from './selector'
 import { createSpacing, type Spacing } from './spacing'
@@ -24,9 +24,8 @@ const PRESS = new Set(['pointerdown', 'pointerup', 'mousedown', 'mouseup', 'clic
   'contextmenu', 'touchstart', 'touchend', 'dragstart'])
 
 const CSS_KEY = 'inspeck:css-on-hover'
-
-/** Seconds the ❄ button counts before it freezes. */
-const FREEZE_COUNT = 3
+/** How long the pointer rests before Inspeck looks for a tooltip on top of what it picked. */
+const REST_MS = 90
 
 /** After Enter, how long a note waits for its place in the code before going without it. */
 const SOURCE_WAIT_MS = 2500
@@ -69,11 +68,12 @@ export class App {
   private stepped = false
   /** The element under the pointer when a note closed: it stays quiet until the pointer moves off it. */
   private rest: Element | null = null
+  /** A click-through layer (a tooltip) the pointer is on, found once it rested there. */
+  private overlay: Element | null = null
+  private restTimer = 0
   private pickFrame = 0
   /** Hovering shows the CSS card (the pill's </> button, or C). */
   private cssOnHover = (() => { try { return localStorage.getItem(CSS_KEY) === '1' } catch { return false } })()
-  /** The ❄ button's count before it freezes, while it runs. */
-  private countdown = 0
   /** Half-written notes, kept when the card closes, given back when you click the same element again. */
   private drafts = new WeakMap<Element, string>()
   /** The open card's note was just sent: nothing to keep as a draft when it closes. */
@@ -91,14 +91,15 @@ export class App {
     this.toolbar.setPressed('css', this.cssOnHover)
     this.freeze = createFreeze(this.host.el, (active, manual) => {
       this.frost.hidden = !active
-      this.toolbar.setPressed('freeze', manual)
       this.toolbar.setFrozen(manual)
-      if (!this.countdown) this.toolbar.setStatus(manual ? 'Frozen · F or ❄ to release' : null)
+      this.toolbar.setStatus(manual ? 'Frozen · F to release' : null)
     })
     /* Markers first, so the card is drawn above them. */
     this.notes = createNotes(this.host.ui, (note, el) => this.openNote(note, el))
     this.card = createCard(this.host.ui)
     this.outline = createOutline(this.host.ui, (el, r) => {
+      /* A tooltip that faded out from under the pointer: let go of it. */
+      if (el === this.overlay && !this.pinned && !paints(el)) { this.overlay = null; this.raw = null; this.schedulePick(); return }
       this.card.place(r)
       if (this.shift) this.measure(el)
     })
@@ -122,7 +123,6 @@ export class App {
       if (this.pointer.x >= 0) this.schedulePick()
     } else {
       this.unpin()
-      this.stopCountdown()
       this.freeze.unfreeze(true)
       this.setTarget(null)
     }
@@ -132,7 +132,6 @@ export class App {
     switch (action) {
       case 'open': this.setOpen(true); break
       case 'close': this.setOpen(false); break
-      case 'freeze': this.freezeFromPill(); break
       case 'css': this.setCssOnHover(!this.cssOnHover); break
       case 'clear': this.clearNotes(); break
     }
@@ -162,33 +161,8 @@ export class App {
 
   /** F: freeze or release at once, with the pointer where it is. */
   private toggleFreeze(): void {
-    this.stopCountdown()
     if (this.freeze.manual) this.freeze.unfreeze(true)
     else this.freeze.freeze(true)
-  }
-
-  /**
-   * The ❄ button: release at once, or freeze after a short count. Reaching the
-   * button means leaving whatever you were hovering, so the count gives you
-   * time to go back to it: the row whose buttons show on hover, the tooltip.
-   */
-  private freezeFromPill(): void {
-    if (this.freeze.manual || this.countdown) { this.toggleFreeze(); return }
-    let left = FREEZE_COUNT
-    const tick = () => {
-      if (left === 0) { this.countdown = 0; this.freeze.freeze(true); return }
-      this.toolbar.setStatus(`Freezing in ${left} · hover what you want to keep`)
-      left--
-      this.countdown = window.setTimeout(tick, 1000)
-    }
-    tick()
-  }
-
-  private stopCountdown(): void {
-    if (!this.countdown) return
-    clearTimeout(this.countdown)
-    this.countdown = 0
-    this.toolbar.setStatus(null)
   }
 
   /** A marker or a list row was clicked: open that note on its element. */
@@ -213,7 +187,15 @@ export class App {
     this.pickFrame = requestAnimationFrame(() => {
       this.pickFrame = 0
       if (!this.open || this.pinned) return
-      const raw = elementAt(this.pointer.x, this.pointer.y, this.host.el)
+      const { x, y } = this.pointer
+      /* On a tooltip found a moment ago: stay on it while the pointer is inside it and it shows. */
+      const o = this.overlay
+      const onOverlay = !!o && o.isConnected && paints(o) && (r => x >= r.left && x <= r.right && y >= r.top && y <= r.bottom)(o.getBoundingClientRect())
+      if (!onOverlay) this.overlay = null
+      const raw = onOverlay ? o : elementAt(x, y, this.host.el)
+      /* Once the pointer rests, look again for a click-through layer on top. */
+      clearTimeout(this.restTimer)
+      if (!onOverlay) this.restTimer = window.setTimeout(() => this.lookThrough(), REST_MS)
       /* ↑/↓ choices hold until the pointer moves onto a different element. */
       if (this.stepped && raw === this.raw) return
       if (raw && raw === this.rest) return
@@ -222,6 +204,17 @@ export class App {
       this.stepped = false
       this.setTarget(raw ? snap(raw) : null)
     })
+  }
+
+  /** The pointer rested: is a tooltip or another click-through layer showing on top of what it picked? */
+  private lookThrough(): void {
+    if (!this.open || this.pinned || this.marquee.dragging || this.stepped) return
+    const found = clickThroughAt(this.pointer.x, this.pointer.y, this.host.el)
+    if (!found || found === this.raw) return
+    this.overlay = found
+    this.raw = found
+    this.rest = null
+    this.setTarget(found)
   }
 
   setTarget(el: Element | null): void {
@@ -489,7 +482,7 @@ export class App {
   private pressAt(p: PointerEvent): void {
     /* Pick fresh at the press point: the pointer may not have moved since the last frame. */
     this.pointer = { x: p.clientX, y: p.clientY }
-    const raw = elementAt(p.clientX, p.clientY, this.host.el)
+    const raw = clickThroughAt(p.clientX, p.clientY, this.host.el) ?? elementAt(p.clientX, p.clientY, this.host.el)
     this.rest = null
     if (!this.pinned) {
       if (!this.stepped || raw !== this.raw) { this.raw = raw; this.stepped = false; this.setTarget(raw ? snap(raw) : null) }
