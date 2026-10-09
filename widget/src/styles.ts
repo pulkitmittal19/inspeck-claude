@@ -2,6 +2,9 @@
    here. The host resets every inherited property, so the app's CSS (a global
    `* {}` reset, a Tailwind preflight, a dark theme) can't reach in. */
 
+/** The card's one width, hovering or pinned. */
+const CARD_W = 340
+
 export const CSS = /* css */ `
 :host {
   all: initial !important;
@@ -129,7 +132,8 @@ button { appearance: none; background: none; border: 0; padding: 0; cursor: poin
 /* ---------- the CSS card ---------- */
 .card {
   position: fixed; left: 0; top: 0; pointer-events: none;
-  min-width: 280px; max-width: min(460px, calc(100vw - 16px));
+  /* One width for every card, hovering or writing: long values shorten inside it. */
+  width: min(${CARD_W}px, calc(100vw - 16px));
   padding: 9px 11px 10px; border-radius: 11px; background: var(--ix-bg); box-shadow: var(--ix-shadow);
   transform-origin: var(--ix-origin, top left);
   transition: opacity 160ms ease, transform 220ms var(--ix-ease), box-shadow 200ms ease;
