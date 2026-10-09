@@ -19,11 +19,25 @@ const POLL_MS = 4000
 /** How far a marker steps aside from another on the same spot: its width and a hair. */
 const MARKER_STEP = 24
 
+/**
+ * Still taking up space, but not showing: `visibility: hidden` or `opacity: 0`
+ * on it or just above it. Usually a control that appears when you hover its
+ * row (a Manage button, a row's ⋯ menu).
+ */
+export function concealed(el: Element): boolean {
+  let n: Element | null = el
+  for (let i = 0; n && i < 4; i++, n = n.parentElement) {
+    const cs = getComputedStyle(n)
+    if (cs.opacity === '0' || (i === 0 && cs.visibility === 'hidden')) return true
+  }
+  return false
+}
+
 /** Where a marker sits: the element's top-right corner, or for a line of text
     in a wide block (a heading across the page), the end of the text itself. */
 export function anchorOf(el: Element): { x: number; y: number; visible: boolean } {
   const r = el.getBoundingClientRect()
-  const visible = r.width > 0 || r.height > 0
+  const visible = (r.width > 0 || r.height > 0) && !concealed(el)
   if (el.childElementCount <= 2 && (el.textContent ?? '').trim()) {
     const range = document.createRange()
     range.selectNodeContents(el)
@@ -200,7 +214,11 @@ export function createNotes(ui: HTMLElement, onOpen: (note: Note, el: Element | 
       h('div', { class: 'preview-head' }, `#${n.n}`, h('span', {}, ` · ${n.element.name ?? n.element.selector}`)),
       h('div', { class: 'preview-text' }, n.note),
       ...(n.element.within ? [h('div', { class: 'preview-lost' }, `in ${n.element.within}`)] : []),
-      ...(find(n) || (n.element.within && findAnchor(n)) ? [] : [h('div', { class: 'preview-lost' }, 'Can’t find this element on the page right now')]),
+      ...(() => {
+        const el = find(n)
+        if (el) return concealed(el) ? [h('div', { class: 'preview-lost' }, 'Hidden right now: it shows when you hover what’s around it')] : []
+        return n.element.within && findAnchor(n) ? [] : [h('div', { class: 'preview-lost' }, 'Can’t find this element on the page right now')]
+      })(),
     )
     enter(preview)
     const r = m.getBoundingClientRect()

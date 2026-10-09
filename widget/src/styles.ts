@@ -129,7 +129,7 @@ button { appearance: none; background: none; border: 0; padding: 0; cursor: poin
 /* ---------- the CSS card ---------- */
 .card {
   position: fixed; left: 0; top: 0; pointer-events: none;
-  min-width: 240px; max-width: min(420px, calc(100vw - 16px));
+  min-width: 280px; max-width: min(460px, calc(100vw - 16px));
   padding: 9px 11px 10px; border-radius: 11px; background: var(--ix-bg); box-shadow: var(--ix-shadow);
   transform-origin: var(--ix-origin, top left);
   transition: opacity 160ms ease, transform 220ms var(--ix-ease), box-shadow 200ms ease;
@@ -175,10 +175,12 @@ button { appearance: none; background: none; border: 0; padding: 0; cursor: poin
 .c-kw { color: var(--ix-c-kw); }
 .c-hex { color: var(--ix-c-hex); }
 .c-fn, .c-punct { color: var(--ix-c-punct); }
-.res { margin-left: 8px; color: var(--ix-faint); }
+.res { margin-left: 12px; color: var(--ix-faint); }
+/* A colour chip that reads even when the colour is as dark as the card: a
+   ring around it, and a hairline inside so a near-black fill still looks filled. */
 .sw {
-  display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 5px; vertical-align: -1px;
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.35);
+  display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: -1px;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.16), 0 0 0 1px rgba(255, 255, 255, 0.42);
 }
 
 /* pinned: tools, the fold line, the note */
