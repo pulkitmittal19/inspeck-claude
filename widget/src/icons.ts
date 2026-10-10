@@ -17,9 +17,8 @@ export const ICONS = {
   chevron: [p('M9.5 6l6 6-6 6')],
   /* Up and away: send the waiting notes to Claude. */
   send: [p('M12 18.5v-13'), p('M6.5 11l5.5-5.5 5.5 5.5')],
-  /* The microphone, and the square that stops it. */
+  /* The microphone. */
   mic: [p('M12 3.5a2.75 2.75 0 0 1 2.75 2.75v5a2.75 2.75 0 0 1-5.5 0v-5A2.75 2.75 0 0 1 12 3.5Z'), p('M6.25 11a5.75 5.75 0 0 0 11.5 0'), p('M12 16.75v3.5')],
-  stop: [['rect', { x: '7', y: '7', width: '10', height: '10', rx: '2.5', fill: 'currentColor', stroke: 'none' }]],
   /* ⓘ: more about a setting. */
   info: [['circle', { cx: '12', cy: '12', r: '8.5' }], p('M12 11v5'), p('M12 8h.01')],
   /* Two sliders: Settings. */

@@ -23,8 +23,15 @@ const MAX_NOTE_LINES = 4
 const PLACEHOLDER = 'Add a note for Claude…'
 /** If the last words haven't settled this long after you stop, keep what came through. */
 const FINISH_MS = 5000
-/** How much each of the five bars moves with your voice: the middle most. */
-const BAR_GAIN = [0.55, 0.8, 1, 0.8, 0.55]
+/** A start takes about 0.35–0.7 s (macOS opening the mic, loading the speech model); words before it are lost.
+    Past this the mic's glyph fades in and out, to say "a moment"; quicker starts show nothing. */
+const SLOW_MS = 250
+/** Past this, the box says so in words too. */
+const SLOW_WORDS_MS = 1200
+/** How much each of the mic's three bars moves with your voice: the middle most. */
+const BAR_GAIN = [0.65, 1, 0.8]
+
+const wordsOf = (text: string) => text.split(/\s+/).filter(Boolean)
 
 export interface PinOptions {
   /** Editing an existing note: its text and number. */
@@ -126,10 +133,11 @@ export function createCard(ui: HTMLElement): Card {
   } | null = null
   let busy = false
   let folded = false
-  /* Speaking a note: what was typed before, the session, how loud (and how loud the bars show), and whether Enter asked to send. */
+  /* Speaking a note: what was typed before, the session, how loud (and how loud the bars show), whether Enter asked to send,
+     and the words the overlay shows (the final ones, then the ones still settling). */
   let voice: {
     session: Listening; base: string; state: 'loading' | 'listening' | 'finishing'
-    level: number; shown: number; raf: number; sendAfter: boolean; timer: number
+    level: number; shown: number; raf: number; sendAfter: boolean; timer: number; slow: number; slowWords: number
   } | null = null
   /** The CSS folds by itself once, on the first keystroke; after that only you fold or open it. */
   let autoFolded = false
@@ -165,30 +173,39 @@ export function createCard(ui: HTMLElement): Card {
     setOpen(parts.statusWrap, true)
   }
 
-  /* ---------- voice ---------- */
+  /* ---------- voice ----------
+     Everything happens inside the mic button: its glyph gives way to three
+     level bars while it listens, and nothing else on the card moves. The words
+     are drawn on a layer over the text box while they arrive, so the newest
+     can fade in and the ones still settling can sit a shade lighter; when it
+     stops, the text box (which held the same text all along, for its height)
+     shows them again, ready to edit. */
 
+  const rowOf = () => parts?.note.closest<HTMLElement>('.note') ?? null
+  const micOf = () => rowOf()?.querySelector<HTMLElement>('.mic') ?? null
+  const layerOf = () => rowOf()?.querySelector<HTMLElement>('.voice-text') ?? null
+
+  /** The row says voice is on (the text box hands its text to the layer, send keeps quiet); the mic says how. */
   const voiceState = (state: 'loading' | 'listening' | 'finishing' | null) => {
-    const row = parts?.note.parentElement
-    if (!row) return
-    if (state) row.setAttribute('data-voice', state)
-    else row.removeAttribute('data-voice')
-    const mic = row.querySelector<HTMLElement>('.mic')
-    mic?.setAttribute('aria-pressed', String(state === 'listening'))
-    mic?.setAttribute('aria-label', state === 'listening' ? 'Stop and keep the text' : state ? 'Cancel' : 'Speak your note')
+    const row = rowOf(), mic = micOf()
+    if (!row || !mic) return
+    row.toggleAttribute('data-voice', !!state)
+    if (state === 'listening') mic.dataset.state = 'on'
+    else if (state !== 'loading') delete mic.dataset.state
+    mic.setAttribute('aria-pressed', String(state === 'listening'))
+    mic.setAttribute('aria-label', state === 'listening' ? 'Stop and keep the text' : state ? 'Cancel' : 'Speak your note')
   }
   const hint = (text: string) => { if (parts) parts.note.placeholder = text }
+  const slowly = () => { const mic = micOf(); if (mic && voice?.state === 'loading') mic.dataset.state = 'slow' }
 
-  /* The bars and the glow follow your voice, eased so they breathe rather than flicker. */
+  /* The bars follow your voice: quick to rise, slower to fall, with a little sway so three bars don't move as one. */
   const animate = () => {
     if (!voice || !parts) return
     const v = voice
-    v.shown += (v.level - v.shown) * (v.level > v.shown ? 0.45 : 0.18)
-    const row = parts.note.parentElement!
-    row.style.setProperty('--lvl', v.shown.toFixed(3))
+    v.shown += (v.level - v.shown) * (v.level > v.shown ? 0.35 : 0.14)
     const t = performance.now()
-    row.querySelectorAll<HTMLElement>('.wave i').forEach((bar, i) => {
-      const wobble = 0.72 + 0.28 * Math.sin(t / 130 + i * 1.7)
-      bar.style.transform = `scaleY(${Math.min(1, 0.18 + v.shown * BAR_GAIN[i] * wobble).toFixed(3)})`
+    micOf()?.querySelectorAll<HTMLElement>('.bars i').forEach((bar, i) => {
+      bar.style.setProperty('--h', Math.min(1, 0.25 + v.shown * BAR_GAIN[i] * (0.82 + 0.18 * Math.sin(t / 110 + i * 2))).toFixed(3))
     })
     v.raf = nextFrame(animate)
   }
@@ -197,57 +214,91 @@ export function createCard(ui: HTMLElement): Card {
     if (!voice) return
     cancelFrame(voice.raf)
     clearTimeout(voice.timer)
+    clearTimeout(voice.slow)
+    clearTimeout(voice.slowWords)
     voice = null
     voiceState(null)
     hint(PLACEHOLDER)
-    parts?.note.parentElement?.style.removeProperty('--lvl')
+    micOf()?.querySelectorAll<HTMLElement>('.bars i').forEach(bar => bar.style.removeProperty('--h'))
+    const layer = layerOf()
+    if (layer) clear(layer)
   }
 
-  /** The words so far, after what you'd typed. */
-  const showWords = (text: string) => {
+  /** The words so far, after what you'd typed. Words already showing stay put; new or changed ones fade in. */
+  const showWords = (finalText: string, partial: string) => {
     if (!parts || !voice) return
+    const done = wordsOf(finalText).length
+    const words = wordsOf(`${finalText} ${partial}`)
+    /* The text box holds the same text, so it grows (and wraps) exactly as the layer does. */
     const t = parts.note
-    t.value = voice.base + text
-    t.setSelectionRange(t.value.length, t.value.length)
+    t.value = voice.base + words.join(' ')
     grow()
-    t.scrollTop = t.scrollHeight
     sync()
+    const layer = layerOf()
+    if (!layer) return
+    if (!layer.firstChild) layer.append(voice.base)
+    layer.querySelector('.caret')?.remove()
+    const shown = Array.from(layer.querySelectorAll<HTMLElement>('.w'))
+    let keep = 0
+    while (keep < shown.length && keep < words.length && shown[keep].textContent === words[keep]) keep++
+    /* From the first word that changed, take the rest away (with the space before it) and write them again. */
+    if (keep < shown.length) {
+      let n: ChildNode | null = keep ? shown[keep].previousSibling : shown[0]
+      while (n) { const next: ChildNode | null = n.nextSibling; n.remove(); n = next }
+    }
+    for (let i = keep; i < words.length; i++) {
+      /* The space goes between words, never inside one, so a wrapped line starts flush. */
+      if (i) layer.append(' ')
+      layer.append(h('span', { class: 'w new' }, words[i]))
+    }
+    layer.querySelectorAll<HTMLElement>('.w').forEach((w, i) => w.classList.toggle('settling', i >= done))
+    layer.append(h('span', { class: 'caret' }))
+    layer.scrollTop = t.scrollTop = t.scrollHeight
   }
 
   const onVoice = (e: VoiceEvent) => {
     if (!voice || !parts) return
     switch (e.type) {
       case 'loading':
-        hint(e.what === 'model' ? `Getting the speech model${e.progress ? ` · ${Math.round(e.progress * 100)}%` : ''}…` : 'Getting the mic ready…')
+        /* A real download of the speech model (first use) is worth saying, with how far along it is.
+           macOS reports 0% on every start even when the model is there; that's not one. */
+        if (e.what === 'model' && e.progress) { slowly(); hint(`Getting the speech model · ${Math.round(e.progress * 100)}%`) }
         break
-      case 'listening':
+      case 'listening': {
+        clearTimeout(voice.slow)
+        clearTimeout(voice.slowWords)
         voice.state = 'listening'
         voiceState('listening')
         hint('Listening…')
+        const mic = micOf()
+        if (mic) play(mic, 'data-ping', 520)
         break
+      }
       case 'level':
         voice.level = e.value
         break
       case 'text':
-        showWords(e.final + e.partial)
+        showWords(e.final, e.partial)
         break
       case 'done': {
         const sendAfter = voice.sendAfter
-        showWords(e.text)
-        parts.note.value = parts.note.value.trim()
+        parts.note.value = (voice.base + wordsOf(e.text).join(' ')).trim()
         endVoice()
         sync()
-        play(parts.note, 'data-settle', 520)
-        parts.note.focus({ preventScroll: true })
-        if (sendAfter && parts.note.value) void send()
+        const t = parts.note
+        t.focus({ preventScroll: true })
+        t.setSelectionRange(t.value.length, t.value.length)
+        if (sendAfter && t.value) void send()
         break
       }
-      case 'error':
+      case 'error': {
         endVoice()
         sync()
+        const mic = micOf()
+        if (mic) play(mic, 'data-shake', 280)
         status(e.message, 'error')
-        play(el, 'data-pulse', 300)
         break
+      }
     }
   }
 
@@ -255,9 +306,10 @@ export function createCard(ui: HTMLElement): Card {
     if (!parts || voice || busy) return
     const typed = parts.note.value.replace(/\s+$/, '')
     setOpen(parts.statusWrap, false)
-    voice = { session: listen(onVoice), base: typed ? `${typed} ` : '', state: 'loading', level: 0, shown: 0, raf: 0, sendAfter: false, timer: 0 }
+    voice = { session: listen(onVoice), base: typed ? `${typed} ` : '', state: 'loading', level: 0, shown: 0, raf: 0, sendAfter: false, timer: 0, slow: 0, slowWords: 0 }
+    voice.slow = window.setTimeout(slowly, SLOW_MS)
+    voice.slowWords = window.setTimeout(() => { if (voice?.state === 'loading' && parts?.note.placeholder === PLACEHOLDER) hint('Getting the mic ready…') }, SLOW_WORDS_MS)
     voiceState('loading')
-    hint('Getting the mic ready…')
     parts.note.focus({ preventScroll: true })
     animate()
   }
@@ -268,6 +320,7 @@ export function createCard(ui: HTMLElement): Card {
     if (voice.state === 'loading') { cancelVoice(); return }
     voice.sendAfter ||= sendAfter
     if (voice.state === 'finishing') return
+    /* The bars fold back into the glyph at once; the last words settle a moment later. */
     voice.state = 'finishing'
     voiceState('finishing')
     voice.session.stop()
@@ -369,13 +422,13 @@ export function createCard(ui: HTMLElement): Card {
       const sendBtn = h('button', { type: 'button', class: 'send', 'data-action': 'send', 'aria-label': o.existing ? 'Save note' : prefs.get().send === 'ask' ? 'Add note' : 'Send to Claude', disabled: true }, svg(ICONS.enter, 13, 2.2))
       /* The pinned parts start closed and open on the next frame, so the card
          grows from what you were just hovering into the note. */
-      /* Voice, where this Mac can do it: a mic beside send, and five bars that take the note icon's place while it listens. */
+      /* Voice, where this Mac can do it: a mic beside send, holding its glyph and three level bars in one spot. */
       const mic = voiceReady()
         ? h('button', { type: 'button', class: 'mic', 'data-action': 'mic', 'aria-label': 'Speak your note', 'aria-pressed': 'false', title: 'Speak your note' },
-          h('span', { class: 'mic-glow', 'aria-hidden': 'true' }), svg(ICONS.mic, 14, 1.9), svg(ICONS.stop, 12))
+          h('span', { class: 'glyph' }, svg(ICONS.mic, 14, 1.9)), h('span', { class: 'bars', 'aria-hidden': 'true' }, ...BAR_GAIN.map(() => h('i', {}))))
         : null
-      const wave = mic ? h('span', { class: 'wave', 'aria-hidden': 'true' }, ...BAR_GAIN.map(() => h('i', {}))) : null
-      const noteWrap = reveal('note-wrap', false, h('div', { class: 'note' }, svg(ICONS.note, 13), wave, note, mic, sendBtn))
+      const field = h('div', { class: 'note-field' }, note, mic ? h('div', { class: 'voice-text', 'aria-hidden': 'true' }) : null)
+      const noteWrap = reveal('note-wrap', false, h('div', { class: 'note' }, svg(ICONS.note, 13), field, mic, sendBtn))
       const statusEl = h('div', { class: 'status', role: 'status' })
       const statusWrap = reveal('status-wrap quick', false, statusEl)
       const actionsWrap = o.onDelete ? reveal('actions-wrap', false, h('div', { class: 'note-actions' }, h('button', { type: 'button', class: 'link', 'data-action': 'delete' }, svg(ICONS.trash, 12), 'Delete'))) : null
