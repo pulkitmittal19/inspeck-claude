@@ -162,6 +162,19 @@ export function createCard(ui: HTMLElement): Card {
     const t = parts.note
     t.style.height = '20px'
     t.style.height = `${Math.min(t.scrollHeight, 20 * MAX_NOTE_LINES)}px`
+    edges()
+  }
+  /* Past four lines the note scrolls, with no scrollbar: a soft fade at the top says there's more above,
+     one at the bottom that there's more below. */
+  const edges = () => {
+    if (!parts) return
+    const t = parts.note
+    const above = t.scrollTop > 1, below = t.scrollTop + t.clientHeight < t.scrollHeight - 1
+    const fade = above && below ? 'both' : above ? 'top' : below ? 'bottom' : ''
+    t.dataset.fade = fade
+    /* The voice layer, over it while words arrive, scrolls with it and fades the same. */
+    const layer = t.parentElement?.querySelector<HTMLElement>('.voice-text')
+    if (layer) { layer.scrollTop = t.scrollTop; layer.dataset.fade = fade }
   }
 
   const sync = () => {
@@ -493,7 +506,7 @@ export function createCard(ui: HTMLElement): Card {
         : null
       const field = h('div', { class: 'note-field' }, note, mic ? h('div', { class: 'voice-text', 'aria-hidden': 'true' }) : null)
       if (mic) warmVoice()
-      const noteWrap = reveal('note-wrap', false, h('div', { class: 'note' }, svg(ICONS.note, 13), field, mic, sendBtn))
+      const noteWrap = reveal('note-wrap', false, h('div', { class: 'note' }, field, mic, sendBtn))
       const statusEl = h('div', { class: 'status', role: 'status' })
       const statusWrap = reveal('status-wrap quick', false, statusEl)
       const actionsWrap = o.onDelete ? reveal('actions-wrap', false, h('div', { class: 'note-actions' }, h('button', { type: 'button', class: 'link', 'data-action': 'delete' }, svg(ICONS.trash, 12), 'Delete'))) : null
@@ -565,6 +578,7 @@ export function createCard(ui: HTMLElement): Card {
         if (e.type === 'pointerout' && mic && !(to instanceof Node && mic.contains(to))) showMicTip(null)
         return false
       }
+      if (e.type === 'scroll' && e.composedPath()[0] === parts.note) { edges(); return true }
       /* Typing (or pasting, or the Mac's own dictation) takes over from the mic; Inspeck's own words don't fire input. */
       if (e.type === 'input') { if (voice) cancelVoice(); sync(); return true }
       /* While it listens: Enter stops and sends, Escape cancels, and typing takes over from the mic. */

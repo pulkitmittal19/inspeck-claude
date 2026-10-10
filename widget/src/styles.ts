@@ -234,15 +234,19 @@ button { appearance: none; background: none; border: 0; padding: 0; cursor: poin
 /* Spacing lives on the child, never on .inner: padding there would survive the collapse. */
 .note-wrap .note { margin-top: 8px; }
 .note {
-  /* The icon and text start at the top; the send button stays at the bottom right. */
-  display: flex; align-items: flex-start; gap: 8px; padding: 6px 6px 6px 9px;
+  /* The text starts at the top; the mic and send stay at the bottom right. */
+  display: flex; align-items: flex-start; gap: 8px; padding: 6px 6px 6px 11px;
   border-radius: 9px; background: rgba(255, 255, 255, 0.05);
   box-shadow: 0 0 0 1.5px rgba(255, 255, 255, 0.12) inset; color: var(--ix-dim);
   transition: box-shadow 140ms ease;
 }
 .note:focus-within { box-shadow: 0 0 0 1.5px var(--ix-accent) inset; }
-.note > svg { flex-shrink: 0; margin-bottom: 4px; }
-.note > svg { flex: none; margin-top: 5.5px; }
+/* A long note scrolls without a scrollbar; soft fades at the edges say there's more (see edges() in card.ts). */
+.note-input { scrollbar-width: none; }
+.note-input::-webkit-scrollbar { display: none; }
+.note-input[data-fade="top"], .voice-text[data-fade="top"] { -webkit-mask-image: linear-gradient(to bottom, transparent, #000 12px); mask-image: linear-gradient(to bottom, transparent, #000 12px); }
+.note-input[data-fade="bottom"], .voice-text[data-fade="bottom"] { -webkit-mask-image: linear-gradient(to top, transparent, #000 12px); mask-image: linear-gradient(to top, transparent, #000 12px); }
+.note-input[data-fade="both"], .voice-text[data-fade="both"] { -webkit-mask-image: linear-gradient(to bottom, transparent, #000 12px, #000 calc(100% - 12px), transparent); mask-image: linear-gradient(to bottom, transparent, #000 12px, #000 calc(100% - 12px), transparent); }
 .note-input {
   margin-top: 2px; flex: 1; min-width: 220px; height: 20px; resize: none; border: 0; outline: 0; background: transparent; padding: 0;
   font: 12.5px/20px var(--ix-sans); color: var(--ix-text); overflow-y: auto;
