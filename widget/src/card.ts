@@ -202,6 +202,26 @@ export function createCard(ui: HTMLElement): Card {
     else if (state !== 'loading') delete mic.dataset.state
     mic.setAttribute('aria-pressed', String(state === 'listening'))
     mic.setAttribute('aria-label', state === 'listening' ? 'Stop and keep the text' : state ? 'Cancel' : 'Speak your note')
+    /* Its tip says what a press does now. */
+    mic.dataset.tip = state === 'listening' ? 'Stop · Enter saves' : state === 'loading' ? 'Cancel' : state ? '' : 'Speak your note'
+    if (micTipFor === mic) showMicTip(mic)
+  }
+
+  /* The mic's tip: like the pill's, above it, after a short rest. It lives on the card, outside the
+     note row's open-and-close animation, so nothing clips it. */
+  let micTip: HTMLElement | null = null
+  let micTipFor: HTMLElement | null = null
+  let micTipWait = 0
+  const showMicTip = (mic: HTMLElement | null) => {
+    clearTimeout(micTipWait)
+    micTipFor = mic
+    const text = mic?.dataset.tip
+    if (!micTip || !mic || !text) { micTip?.removeAttribute('data-show'); return }
+    micTip.textContent = text
+    const r = mic.getBoundingClientRect(), c = el.getBoundingClientRect()
+    micTip.style.left = `${Math.round(r.left + r.width / 2 - c.left)}px`
+    micTip.style.top = `${Math.round(r.top - c.top)}px`
+    micTip.setAttribute('data-show', '')
   }
   const hint = (text: string) => { if (parts) parts.note.placeholder = text }
   const slowly = () => { const mic = micOf(); if (mic && voice?.state === 'loading') mic.dataset.state = 'slow' }
@@ -458,7 +478,7 @@ export function createCard(ui: HTMLElement): Card {
          grows from what you were just hovering into the note. */
       /* Voice, where this Mac can do it: a mic beside send, holding its glyph and three level bars in one spot. */
       const mic = voiceReady()
-        ? h('button', { type: 'button', class: 'mic', 'data-action': 'mic', 'aria-label': 'Speak your note', 'aria-pressed': 'false', title: 'Speak your note' },
+        ? h('button', { type: 'button', class: 'mic', 'data-action': 'mic', 'aria-label': 'Speak your note', 'aria-pressed': 'false', 'data-tip': 'Speak your note' },
           h('span', { class: 'glyph' }, svg(ICONS.mic, 14, 1.9)), h('span', { class: 'bars', 'aria-hidden': 'true' }, ...BAR_GAIN.map(() => h('i', {}))))
         : null
       const field = h('div', { class: 'note-field' }, note, mic ? h('div', { class: 'voice-text', 'aria-hidden': 'true' }) : null)
@@ -467,7 +487,15 @@ export function createCard(ui: HTMLElement): Card {
       const statusEl = h('div', { class: 'status', role: 'status' })
       const statusWrap = reveal('status-wrap quick', false, statusEl)
       const actionsWrap = o.onDelete ? reveal('actions-wrap', false, h('div', { class: 'note-actions' }, h('button', { type: 'button', class: 'link', 'data-action': 'delete' }, svg(ICONS.trash, 12), 'Delete'))) : null
-      el.append(head, ...(cssWrap ? [cssWrap] : []), noteWrap, statusWrap, ...(actionsWrap ? [actionsWrap] : []))
+      micTip = mic ? h('div', { class: 'card-tip', role: 'tooltip' }) : null
+      micTipFor = null
+      if (mic) {
+        /* Moving between the mic and the rest of the card never reaches the router (to the page, nothing changed:
+           both are inside Inspeck), so the mic listens for itself; leaving to the page is caught in handle(). */
+        mic.addEventListener('pointerenter', () => { if (micTipFor !== mic) { clearTimeout(micTipWait); micTipFor = mic; micTipWait = window.setTimeout(() => showMicTip(mic), 350) } })
+        mic.addEventListener('pointerleave', () => showMicTip(null))
+      }
+      el.append(head, ...(cssWrap ? [cssWrap] : []), noteWrap, statusWrap, ...(actionsWrap ? [actionsWrap] : []), ...(micTip ? [micTip] : []))
       parts = { cssWrap, noteWrap, statusWrap, status: statusEl, note, send: sendBtn }
       if (!wasShowing) enter(el)
       sync()
@@ -524,6 +552,14 @@ export function createCard(ui: HTMLElement): Card {
     handle(e) {
       if (mode !== 'pinned' || !parts || !opts) return false
       if (!e.composedPath().includes(el)) return false
+      if (e.type === 'pointerover' || e.type === 'pointerout') {
+        const mic = (e.composedPath() as Element[]).find(n => n instanceof HTMLElement && n.classList.contains('mic')) as HTMLElement | undefined
+        if (e.type === 'pointerover' && mic && micTipFor !== mic) { clearTimeout(micTipWait); micTipFor = mic; micTipWait = window.setTimeout(() => showMicTip(mic), 350) }
+        /* Leaving the mic (to anywhere outside it) puts the tip away. */
+        const to = (e as PointerEvent).relatedTarget
+        if (e.type === 'pointerout' && mic && !(to instanceof Node && mic.contains(to))) showMicTip(null)
+        return false
+      }
       /* Typing (or pasting, or the Mac's own dictation) takes over from the mic; Inspeck's own words don't fire input. */
       if (e.type === 'input') { if (voice) cancelVoice(); sync(); return true }
       /* While it listens: Enter stops and sends, Escape cancels, and typing takes over from the mic. */

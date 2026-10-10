@@ -301,6 +301,14 @@ button { appearance: none; background: none; border: 0; padding: 0; cursor: poin
 .note[data-voice] .note-input { color: transparent; caret-color: transparent; }
 /* Each new word fades in where it stands, from a soft focus to sharp, in turn (--d sets its place on the
    reveal timeline); nothing moves. Words still settling sit a touch lighter and firm up slowly. */
+/* The mic's tip, above it, like the pill's. */
+.card-tip {
+  position: absolute; z-index: 3; pointer-events: none; padding: 5px 8px; border-radius: 7px; white-space: nowrap;
+  background: #2A2A30; color: var(--ix-text); font: 500 11px/1 var(--ix-sans);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08) inset, var(--ix-shadow);
+  opacity: 0; transform: translate(-50%, calc(-100% - 6px)) translateY(2px); transition: opacity 120ms ease, transform 120ms ease;
+}
+.card-tip[data-show] { opacity: 1; transform: translate(-50%, calc(-100% - 6px)); }
 .voice-text .w { transition: color 480ms ease; }
 .voice-text .w.new { animation: ix-word 320ms ease-out var(--d, 0ms) both; }
 .voice-text .w.settling { color: rgba(244, 244, 245, 0.72); }
