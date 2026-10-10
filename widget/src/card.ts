@@ -30,6 +30,10 @@ const SLOW_MS = 250
 const SLOW_WORDS_MS = 1200
 /** How much each of the mic's three bars moves with your voice: the middle most. */
 const BAR_GAIN = [0.65, 1, 0.8]
+/** Words come from the recogniser in clumps. They're let out on one timeline, a word every WORD_STEP_MS,
+    so they read as steady typing; if they pile up, the step shrinks so none trails more than REVEAL_MS. */
+const WORD_STEP_MS = 55
+const REVEAL_MS = 500
 
 const wordsOf = (text: string) => text.split(/\s+/).filter(Boolean)
 
@@ -138,6 +142,8 @@ export function createCard(ui: HTMLElement): Card {
   let voice: {
     session: Listening; base: string; state: 'loading' | 'listening' | 'finishing'
     level: number; shown: number; raf: number; sendAfter: boolean; timer: number; slow: number; slowWords: number
+    /** When the next new word may appear (performance.now()). */
+    revealAt: number
   } | null = null
   /** The CSS folds by itself once, on the first keystroke; after that only you fold or open it. */
   let autoFolded = false
@@ -241,20 +247,40 @@ export function createCard(ui: HTMLElement): Card {
     if (!layer.firstChild) layer.append(voice.base)
     layer.querySelector('.caret')?.remove()
     const shown = Array.from(layer.querySelectorAll<HTMLElement>('.w'))
-    let keep = 0
-    while (keep < shown.length && keep < words.length && shown[keep].textContent === words[keep]) keep++
-    /* From the first word that changed, take the rest away (with the space before it) and write them again. */
-    if (keep < shown.length) {
-      let n: ChildNode | null = keep ? shown[keep].previousSibling : shown[0]
-      while (n) { const next: ChildNode | null = n.nextSibling; n.remove(); n = next }
+    const now = performance.now()
+    /* The next slot on the reveal timeline; with a backlog, the step tightens so it never runs past REVEAL_MS. */
+    const backlog = Math.max(0, voice.revealAt - now)
+    const step = backlog > REVEAL_MS - WORD_STEP_MS ? Math.max(12, (REVEAL_MS - backlog) / 4) : WORD_STEP_MS
+    const slot = () => { const at = Math.max(now, voice!.revealAt); voice!.revealAt = at + step; return Math.round(at - now) }
+    const animateIn = (w: HTMLElement, delay: number) => {
+      w.classList.remove('new')
+      w.style.setProperty('--d', `${delay}ms`)
+      void w.offsetWidth
+      w.classList.add('new')
     }
-    for (let i = keep; i < words.length; i++) {
-      /* The space goes between words, never inside one, so a wrapped line starts flush. */
-      if (i) layer.append(' ')
-      layer.append(h('span', { class: 'w new' }, words[i]))
-    }
+    let last = 0
+    words.forEach((word, i) => {
+      const w = shown[i]
+      if (!w) {
+        /* A new word: the space goes between words, never inside one, so a wrapped line starts flush. */
+        if (i) layer.append(' ')
+        const span = h('span', { class: 'w' }, word)
+        layer.append(span)
+        animateIn(span, last = slot())
+      } else if (w.textContent !== word) {
+        /* The same word still being heard ("head" → "header") just grows; a different word comes in again. */
+        const grows = word.startsWith(w.textContent ?? '') || (w.textContent ?? '').startsWith(word)
+        w.textContent = word
+        if (!grows) animateIn(w, last = slot())
+      }
+    })
+    /* Words it took back: away, with the space before each. */
+    for (const w of shown.slice(words.length)) { const sp = w.previousSibling; if (sp?.nodeType === Node.TEXT_NODE && sp !== layer.firstChild) sp.remove(); w.remove() }
     layer.querySelectorAll<HTMLElement>('.w').forEach((w, i) => w.classList.toggle('settling', i >= done))
-    layer.append(h('span', { class: 'caret' }))
+    /* The caret arrives with the last word let out, rather than jumping ahead of it. */
+    const caret = h('span', { class: 'caret' })
+    caret.style.setProperty('--d', `${last}ms`)
+    layer.append(caret)
     layer.scrollTop = t.scrollTop = t.scrollHeight
   }
 
@@ -308,7 +334,7 @@ export function createCard(ui: HTMLElement): Card {
     if (!parts || voice || busy) return
     const typed = parts.note.value.replace(/\s+$/, '')
     setOpen(parts.statusWrap, false)
-    voice = { session: listen(onVoice), base: typed ? `${typed} ` : '', state: 'loading', level: 0, shown: 0, raf: 0, sendAfter: false, timer: 0, slow: 0, slowWords: 0 }
+    voice = { session: listen(onVoice), base: typed ? `${typed} ` : '', state: 'loading', level: 0, shown: 0, raf: 0, sendAfter: false, timer: 0, slow: 0, slowWords: 0, revealAt: 0 }
     voice.slow = window.setTimeout(slowly, SLOW_MS)
     voice.slowWords = window.setTimeout(() => { if (voice?.state === 'loading' && parts?.note.placeholder === PLACEHOLDER) hint('Getting the mic ready…') }, SLOW_WORDS_MS)
     voiceState('loading')

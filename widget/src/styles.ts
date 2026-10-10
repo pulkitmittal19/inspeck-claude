@@ -299,11 +299,17 @@ button { appearance: none; background: none; border: 0; padding: 0; cursor: poin
 }
 .note[data-voice] .voice-text { display: block; }
 .note[data-voice] .note-input { color: transparent; caret-color: transparent; }
-.voice-text .w { transition: color 260ms ease; }
-.voice-text .w.new { animation: ix-word 140ms ease both; }
+/* Each word rises a hair out of a soft blur into place, in turn (--d staggers a burst); words still
+   settling sit lighter and firm up to white. */
+.voice-text .w { display: inline-block; transition: color 320ms ease; }
+.voice-text .w.new { animation: ix-word 280ms cubic-bezier(0.2, 0.7, 0.2, 1) var(--d, 0ms) both; }
 .voice-text .w.settling { color: var(--ix-dim); }
-@keyframes ix-word { from { opacity: 0; } }
-.voice-text .caret { display: inline-block; width: 1.5px; height: 15px; margin-left: 1px; vertical-align: -3px; background: var(--ix-text); animation: ix-blink 1.06s steps(1) infinite; }
+@keyframes ix-word { from { opacity: 0; transform: translateY(0.3em); filter: blur(3px); } }
+.voice-text .caret {
+  display: inline-block; width: 1.5px; height: 15px; margin-left: 1px; vertical-align: -3px; background: var(--ix-text);
+  animation: ix-caret-in 1ms linear var(--d, 0ms) both, ix-blink 1.06s steps(1) var(--d, 0ms) infinite;
+}
+@keyframes ix-caret-in { from { opacity: 0; } to { opacity: 1; } }
 @keyframes ix-blink { 50% { opacity: 0; } }
 .status {
   display: flex; align-items: center; gap: 7px; padding: 7px 9px; border-radius: 8px;
