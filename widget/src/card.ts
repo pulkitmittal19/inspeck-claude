@@ -101,14 +101,15 @@ function renderHead(d: Pick<Description, 'label' | 'size' | 'component'>, extra:
     lead ?? null,
     num ? h('span', { class: 'num' }, `#${num}`) : null,
     /* A long label (a stack of utility classes) keeps its start and its end. */
-    h('span', { class: 'label', title: d.label }, middle(d.label, LABEL_MAX)),
+    /* The full name as a tooltip only when it had to be shortened; otherwise it would just repeat itself. */
+    h('span', { class: 'label', title: middle(d.label, LABEL_MAX) !== d.label ? d.label : null }, middle(d.label, LABEL_MAX)),
     d.component ? h('span', { class: 'comp', title: d.component }, d.component) : null,
     h('span', { class: 'size' }, d.size),
     ...extra)
 }
 
 const tool = (action: string, icon: keyof typeof ICONS, label: string) =>
-  h('button', { type: 'button', class: 'tool', 'data-action': action, 'aria-label': label, title: label }, svg(ICONS[icon], 13))
+  h('button', { type: 'button', class: 'tool', 'data-action': action, 'aria-label': label, 'data-tip': label }, svg(ICONS[icon], 13))
 
 export const cssText = (d: Description) => d.lines.map(l => `${l.prop}: ${l.value};`).join('\n')
 
@@ -207,21 +208,30 @@ export function createCard(ui: HTMLElement): Card {
     if (micTipFor === mic) showMicTip(mic)
   }
 
-  /* The mic's tip: like the pill's, above it, after a short rest. It lives on the card, outside the
-     note row's open-and-close animation, so nothing clips it. */
+  /* The card's buttons (copy, close, the mic) have tips like the pill's: above the button after a short
+     rest (below it when the card is at the top of the window). The tip lives on the card, outside the note
+     row's open-and-close animation, so nothing clips it. */
   let micTip: HTMLElement | null = null
   let micTipFor: HTMLElement | null = null
   let micTipWait = 0
-  const showMicTip = (mic: HTMLElement | null) => {
+  const showMicTip = (btn: HTMLElement | null) => {
     clearTimeout(micTipWait)
-    micTipFor = mic
-    const text = mic?.dataset.tip
-    if (!micTip || !mic || !text) { micTip?.removeAttribute('data-show'); return }
+    micTipFor = btn
+    const text = btn?.dataset.tip
+    if (!micTip || !btn || !text) { micTip?.removeAttribute('data-show'); return }
     micTip.textContent = text
-    const r = mic.getBoundingClientRect(), c = el.getBoundingClientRect()
+    const r = btn.getBoundingClientRect(), c = el.getBoundingClientRect()
+    const below = r.top < 36
+    micTip.toggleAttribute('data-below', below)
     micTip.style.left = `${Math.round(r.left + r.width / 2 - c.left)}px`
-    micTip.style.top = `${Math.round(r.top - c.top)}px`
+    micTip.style.top = `${Math.round((below ? r.bottom : r.top) - c.top)}px`
     micTip.setAttribute('data-show', '')
+  }
+  const tipOnHover = (btn: HTMLElement) => {
+    /* Moving between the card's own parts never reaches the router (to the page, nothing changed: both are
+       inside Inspeck), so each button listens for itself; leaving to the page is caught in handle(). */
+    btn.addEventListener('pointerenter', () => { if (micTipFor !== btn) { clearTimeout(micTipWait); micTipFor = btn; micTipWait = window.setTimeout(() => showMicTip(btn), 350) } })
+    btn.addEventListener('pointerleave', () => showMicTip(null))
   }
   const hint = (text: string) => { if (parts) parts.note.placeholder = text }
   const slowly = () => { const mic = micOf(); if (mic && voice?.state === 'loading') mic.dataset.state = 'slow' }
@@ -487,15 +497,10 @@ export function createCard(ui: HTMLElement): Card {
       const statusEl = h('div', { class: 'status', role: 'status' })
       const statusWrap = reveal('status-wrap quick', false, statusEl)
       const actionsWrap = o.onDelete ? reveal('actions-wrap', false, h('div', { class: 'note-actions' }, h('button', { type: 'button', class: 'link', 'data-action': 'delete' }, svg(ICONS.trash, 12), 'Delete'))) : null
-      micTip = mic ? h('div', { class: 'card-tip', role: 'tooltip' }) : null
+      micTip = h('div', { class: 'card-tip', role: 'tooltip' })
       micTipFor = null
-      if (mic) {
-        /* Moving between the mic and the rest of the card never reaches the router (to the page, nothing changed:
-           both are inside Inspeck), so the mic listens for itself; leaving to the page is caught in handle(). */
-        mic.addEventListener('pointerenter', () => { if (micTipFor !== mic) { clearTimeout(micTipWait); micTipFor = mic; micTipWait = window.setTimeout(() => showMicTip(mic), 350) } })
-        mic.addEventListener('pointerleave', () => showMicTip(null))
-      }
-      el.append(head, ...(cssWrap ? [cssWrap] : []), noteWrap, statusWrap, ...(actionsWrap ? [actionsWrap] : []), ...(micTip ? [micTip] : []))
+      el.append(head, ...(cssWrap ? [cssWrap] : []), noteWrap, statusWrap, ...(actionsWrap ? [actionsWrap] : []), micTip)
+      el.querySelectorAll<HTMLElement>('[data-tip]').forEach(tipOnHover)
       parts = { cssWrap, noteWrap, statusWrap, status: statusEl, note, send: sendBtn }
       if (!wasShowing) enter(el)
       sync()
@@ -553,7 +558,7 @@ export function createCard(ui: HTMLElement): Card {
       if (mode !== 'pinned' || !parts || !opts) return false
       if (!e.composedPath().includes(el)) return false
       if (e.type === 'pointerover' || e.type === 'pointerout') {
-        const mic = (e.composedPath() as Element[]).find(n => n instanceof HTMLElement && n.classList.contains('mic')) as HTMLElement | undefined
+        const mic = (e.composedPath() as Element[]).find(n => n instanceof HTMLElement && n.dataset.tip !== undefined && n !== el) as HTMLElement | undefined
         if (e.type === 'pointerover' && mic && micTipFor !== mic) { clearTimeout(micTipWait); micTipFor = mic; micTipWait = window.setTimeout(() => showMicTip(mic), 350) }
         /* Leaving the mic (to anywhere outside it) puts the tip away. */
         const to = (e as PointerEvent).relatedTarget

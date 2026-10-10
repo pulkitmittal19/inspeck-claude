@@ -309,6 +309,8 @@ button { appearance: none; background: none; border: 0; padding: 0; cursor: poin
   opacity: 0; transform: translate(-50%, calc(-100% - 6px)) translateY(2px); transition: opacity 120ms ease, transform 120ms ease;
 }
 .card-tip[data-show] { opacity: 1; transform: translate(-50%, calc(-100% - 6px)); }
+.card-tip[data-below] { transform: translate(-50%, 6px) translateY(-2px); }
+.card-tip[data-below][data-show] { transform: translate(-50%, 6px); }
 .voice-text .w { transition: color 480ms ease; }
 .voice-text .w.new { animation: ix-word 320ms ease-out var(--d, 0ms) both; }
 .voice-text .w.settling { color: rgba(244, 244, 245, 0.72); }
@@ -427,6 +429,11 @@ button { appearance: none; background: none; border: 0; padding: 0; cursor: poin
 }
 .bar-status[data-state="enter"] { opacity: 0; transform: translateY(4px); }
 .bar-status[data-state="out"] { opacity: 0; transition-duration: 120ms; }
+
+/* The pill and what belongs to it (Settings, the tour, the Frozen line, its tips) sit above a note card,
+   which is drawn later and would otherwise cover them. */
+.bar, .settings, .tour, .bar-status { z-index: 5; }
+.tip { z-index: 6; }
 
 /* the first-run tour: one card above the pill, a step at a time */
 .tour {
