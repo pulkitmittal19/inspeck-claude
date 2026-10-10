@@ -299,12 +299,12 @@ button { appearance: none; background: none; border: 0; padding: 0; cursor: poin
 }
 .note[data-voice] .voice-text { display: block; }
 .note[data-voice] .note-input { color: transparent; caret-color: transparent; }
-/* Each word rises a hair out of a soft blur into place, in turn (--d staggers a burst); words still
-   settling sit lighter and firm up to white. */
-.voice-text .w { display: inline-block; transition: color 320ms ease; }
-.voice-text .w.new { animation: ix-word 280ms cubic-bezier(0.2, 0.7, 0.2, 1) var(--d, 0ms) both; }
-.voice-text .w.settling { color: var(--ix-dim); }
-@keyframes ix-word { from { opacity: 0; transform: translateY(0.3em); filter: blur(3px); } }
+/* Each new word fades in where it stands, from a soft focus to sharp, in turn (--d sets its place on the
+   reveal timeline); nothing moves. Words still settling sit a touch lighter and firm up slowly. */
+.voice-text .w { transition: color 480ms ease; }
+.voice-text .w.new { animation: ix-word 320ms ease-out var(--d, 0ms) both; }
+.voice-text .w.settling { color: rgba(244, 244, 245, 0.72); }
+@keyframes ix-word { from { opacity: 0; filter: blur(2px); } }
 .voice-text .caret {
   display: inline-block; width: 1.5px; height: 15px; margin-left: 1px; vertical-align: -3px; background: var(--ix-text);
   animation: ix-caret-in 1ms linear var(--d, 0ms) both, ix-blink 1.06s steps(1) var(--d, 0ms) infinite;
