@@ -37116,13 +37116,67 @@ import { release as release2 } from "os";
 import { dirname as dirname2, join as join4 } from "path";
 import { fileURLToPath as fileURLToPath2 } from "url";
 var HELPER = process.env.INSPECK_LISTEN || join4(dirname2(fileURLToPath2(import.meta.url)), "..", "bin", "inspeck-listen");
+var WARM_SECONDS = 90;
 function voiceAvailable() {
   if (process.platform !== "darwin") return { available: false, reason: "Voice needs a Mac for now." };
   if (Number(release2().split(".")[0]) < 25) return { available: false, reason: "Voice needs macOS 26 or later." };
   if (!existsSync4(HELPER)) return { available: false, reason: "The voice listener isn't built (npm run build:listen)." };
   return { available: true };
 }
+var Listener = class {
+  child;
+  ready = false;
+  on = null;
+  constructor(standby) {
+    this.child = spawn(HELPER, standby ? ["--standby", "--wait", String(WARM_SECONDS)] : [], { stdio: ["pipe", "pipe", "ignore"] });
+    let rest = "";
+    this.child.stdout.setEncoding("utf8");
+    this.child.stdout.on("data", (chunk) => {
+      rest += chunk;
+      let i;
+      while ((i = rest.indexOf("\n")) >= 0) {
+        const line = rest.slice(0, i).trim();
+        rest = rest.slice(i + 1);
+        if (!line) continue;
+        let e;
+        try {
+          e = JSON.parse(line);
+        } catch {
+          continue;
+        }
+        if (e.type === "ready") {
+          this.ready = true;
+          this.onReady?.();
+        } else this.on?.(e);
+      }
+    });
+    this.child.on("error", () => {
+    });
+  }
+  onReady = null;
+  get alive() {
+    return this.child.exitCode === null && this.child.signalCode === null;
+  }
+  say(line) {
+    if (this.alive) this.child.stdin?.write(`${line}
+`);
+  }
+  kill() {
+    if (this.alive) this.child.kill("SIGTERM");
+  }
+};
+var warm = null;
 var current = null;
+function warmVoice() {
+  if (!voiceAvailable().available) return false;
+  if (warm?.alive) return true;
+  const l = new Listener(true);
+  l.child.on("exit", () => {
+    if (warm === l) warm = null;
+  });
+  warm = l;
+  return true;
+}
 function listenStream(req, res) {
   const can = voiceAvailable();
   res.writeHead(200, { "content-type": "application/x-ndjson", "cache-control": "no-store", "x-content-type-options": "nosniff" });
@@ -37134,46 +37188,37 @@ function listenStream(req, res) {
     res.end();
     return;
   }
-  current?.kill("SIGTERM");
-  const child = spawn(HELPER, [], { stdio: ["pipe", "pipe", "ignore"] });
-  current = child;
-  let rest = "";
+  current?.kill();
+  let l;
+  if (warm?.alive) {
+    l = warm;
+    warm = null;
+  } else l = new Listener(false);
+  current = l;
   let ended = false;
-  child.stdout.setEncoding("utf8");
-  child.stdout.on("data", (chunk) => {
-    rest += chunk;
-    let i;
-    while ((i = rest.indexOf("\n")) >= 0) {
-      const line = rest.slice(0, i).trim();
-      rest = rest.slice(i + 1);
-      if (!line) continue;
-      try {
-        const ev = JSON.parse(line);
-        out(ev);
-        if (ev.type === "done" || ev.type === "error") ended = true;
-      } catch {
-      }
-    }
-  });
-  child.on("error", (err) => {
+  l.on = (e) => {
+    out(e);
+    if (e.type === "done" || e.type === "error") ended = true;
+  };
+  if (l.child.stdin && l.ready) l.say("start");
+  else l.onReady = () => l.say("start");
+  const finish = () => {
+    if (current === l) current = null;
+    if (!ended) out({ type: "error", code: "failed", message: "The voice listener stopped unexpectedly." });
+    res.end();
+  };
+  if (!l.alive) finish();
+  else l.child.on("exit", finish);
+  l.child.on("error", (err) => {
     out({ type: "error", code: "failed", message: `Couldn't start the voice listener: ${err.message}` });
     ended = true;
   });
-  child.on("exit", () => {
-    if (current === child) current = null;
-    if (!ended) out({ type: "error", code: "failed", message: "The voice listener stopped unexpectedly." });
-    res.end();
-  });
-  res.on("close", () => {
-    if (child.exitCode === null) child.kill("SIGTERM");
-  });
-  req.on("aborted", () => {
-    if (child.exitCode === null) child.kill("SIGTERM");
-  });
+  res.on("close", () => l.kill());
+  req.on("aborted", () => l.kill());
 }
 function stopListening() {
-  if (!current || current.exitCode !== null) return false;
-  current.stdin?.write("stop\n");
+  if (!current?.alive) return false;
+  current.say("stop");
   return true;
 }
 
@@ -37316,6 +37361,7 @@ async function route2(req, res, version2, onNew) {
   if (url2.pathname === "/voice" && req.method === "GET") return send(res, 200, voiceAvailable());
   if (url2.pathname === "/voice/listen" && req.method === "POST") return listenStream(req, res);
   if (url2.pathname === "/voice/stop" && req.method === "POST") return send(res, 200, { stopping: stopListening() });
+  if (url2.pathname === "/voice/warm" && req.method === "POST") return send(res, 200, { warm: warmVoice() });
   if (req.method === "POST" && url2.pathname === "/bind") {
     const b = await body(req);
     if (typeof b.tabId !== "string" || typeof b.token !== "string" || b.tabId.length > 64) return send(res, 400, { error: "Send { tabId, token }" });

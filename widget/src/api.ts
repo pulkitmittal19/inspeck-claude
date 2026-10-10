@@ -90,6 +90,10 @@ export const api = {
   async voice(): Promise<{ available: boolean; reason?: string }> {
     return call('GET', '/voice')
   },
+  /** Have a listener ready for the next press of the mic (the mic itself stays closed). */
+  async warmVoice(): Promise<void> {
+    await call('POST', '/voice/warm', {})
+  },
   /** Finish listening: the last words settle, then the session sends done. */
   async stopVoice(): Promise<void> {
     await call('POST', '/voice/stop', {})

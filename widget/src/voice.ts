@@ -27,6 +27,11 @@ export function checkVoice(): Promise<boolean> {
   return asking
 }
 
+/** A note opened (or a session ended) with the mic there: have the next start be quick. */
+export function warmVoice(): void {
+  if (known) void api.warmVoice().catch(() => {})
+}
+
 export interface Listening { stop(): void; cancel(): void }
 
 export function listen(on: (e: VoiceEvent) => void): Listening {

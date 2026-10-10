@@ -12,7 +12,7 @@ import { clear, h, svg } from './dom'
 import { ICONS } from './icons'
 import { actionOf } from './router'
 import { cancelFrame, nextFrame } from './native'
-import { listen, voiceReady, type Listening, type VoiceEvent } from './voice'
+import { listen, voiceReady, warmVoice, type Listening, type VoiceEvent } from './voice'
 
 const GAP = 8
 /** A value longer than this that is a comma list shows its first item and a count. */
@@ -212,6 +212,8 @@ export function createCard(ui: HTMLElement): Card {
 
   const endVoice = () => {
     if (!voice) return
+    /* Ready for another go while the note is still open. */
+    warmVoice()
     cancelFrame(voice.raf)
     clearTimeout(voice.timer)
     clearTimeout(voice.slow)
@@ -310,6 +312,9 @@ export function createCard(ui: HTMLElement): Card {
     voice.slow = window.setTimeout(slowly, SLOW_MS)
     voice.slowWords = window.setTimeout(() => { if (voice?.state === 'loading' && parts?.note.placeholder === PLACEHOLDER) hint('Getting the mic ready…') }, SLOW_WORDS_MS)
     voiceState('loading')
+    /* The layer shows what you'd typed from the first moment, so it never blinks out while the mic gets ready. */
+    const layer = layerOf()
+    if (layer) { clear(layer); layer.append(voice.base, h('span', { class: 'caret' })) }
     parts.note.focus({ preventScroll: true })
     animate()
   }
@@ -428,6 +433,7 @@ export function createCard(ui: HTMLElement): Card {
           h('span', { class: 'glyph' }, svg(ICONS.mic, 14, 1.9)), h('span', { class: 'bars', 'aria-hidden': 'true' }, ...BAR_GAIN.map(() => h('i', {}))))
         : null
       const field = h('div', { class: 'note-field' }, note, mic ? h('div', { class: 'voice-text', 'aria-hidden': 'true' }) : null)
+      if (mic) warmVoice()
       const noteWrap = reveal('note-wrap', false, h('div', { class: 'note' }, svg(ICONS.note, 13), field, mic, sendBtn))
       const statusEl = h('div', { class: 'status', role: 'status' })
       const statusWrap = reveal('status-wrap quick', false, statusEl)
