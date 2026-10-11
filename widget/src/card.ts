@@ -84,10 +84,18 @@ export function renderCss(d: Description): HTMLDivElement {
   for (const l of d.lines) {
     const value = present(l.value, l.prop, fmt)
     /* A long list (a font stack, layered shadows, a transition per property):
-       the first item, and how many more. The whole value is in the title and the copy. */
+       the first item, and how many more. The whole value is in the row's tip and the copy. */
     const items = value.length > LIST_MAX ? splitList(value) : [value]
     const shown = items.length > 1 ? items[0] : value
-    const row = h('div', { class: 'decl', title: `${l.prop}: ${l.value};${l.resolved ? `  ${l.resolved}` : ''}` },
+    /* The tip gives the declaration as written, in full. It's worth showing when the row hides something:
+       a list cut to its first item, a token's short name, a colour this format can only come near,
+       or a value cut off at the card's edge (that one is checked when the pointer arrives). */
+    const hides = items.length > 1 || /var\(|≈/.test(shown)
+    const row = h('div', {
+      class: 'decl', 'data-tip': `${l.prop}: ${l.value};`, 'data-tip-code': '', 'data-tip-res': l.resolved ?? null,
+      'data-tip-note': shown.includes('≈') ? '≈ the nearest colour this format can show' : null,
+      'data-tip-if': hides ? null : 'clipped',
+    },
       h('span', { class: 'c-prop' }, l.prop), h('span', { class: 'c-punct' }, ': '),
       /* The value may be cut short; the resolved value after it never is. */
       h('span', { class: 'val' }, highlight(shown)),
@@ -105,8 +113,8 @@ function renderHead(d: Pick<Description, 'label' | 'size' | 'component'>, extra:
     num ? h('span', { class: 'num' }, `#${num}`) : null,
     /* A long label (a stack of utility classes) keeps its start and its end. */
     /* The full name as a tooltip only when it had to be shortened; otherwise it would just repeat itself. */
-    h('span', { class: 'label', title: middle(d.label, LABEL_MAX) !== d.label ? d.label : null }, middle(d.label, LABEL_MAX)),
-    d.component ? h('span', { class: 'comp', title: d.component }, d.component) : null,
+    h('span', { class: 'label', 'data-tip': middle(d.label, LABEL_MAX) !== d.label ? d.label : null }, middle(d.label, LABEL_MAX)),
+    d.component ? h('span', { class: 'comp', 'data-tip': d.component, 'data-tip-if': 'clipped' }, d.component) : null,
     h('span', { class: 'size' }, d.size),
     ...extra)
 }
@@ -242,15 +250,26 @@ export function createCard(ui: HTMLElement): Card {
     clearTimeout(micTipWait)
     micTipFor = btn
     const text = btn?.dataset.tip
-    if (!micTip || !btn || !text) { micTip?.removeAttribute('data-show'); return }
-    micTip.textContent = text
+    /* Some tips only repeat what's on screen unless it was cut off: those wait until it is. */
+    const needed = btn?.dataset.tipIf !== 'clipped' || clipped(btn)
+    if (!micTip || !btn || !text || !needed) { micTip?.removeAttribute('data-show'); return }
+    /* A declaration reads as code, with its resolved value after it a shade dimmer. */
+    const { tipRes: res, tipNote: note } = btn.dataset
+    micTip.replaceChildren(text, ...(res ? [h('span', { class: 'tip-res' }, res)] : []), ...(note ? [h('span', { class: 'tip-note' }, note)] : []))
+    micTip.toggleAttribute('data-code', btn.dataset.tipCode !== undefined)
     const r = btn.getBoundingClientRect(), c = el.getBoundingClientRect()
     const below = r.top < 36
     micTip.toggleAttribute('data-below', below)
-    micTip.style.left = `${Math.round(r.left + r.width / 2 - c.left)}px`
+    /* Centred on a button; on something wider than the tip (a CSS row), lined up with its start, where you read from.
+       Either way inside the card. */
+    const w = micTip.offsetWidth
+    const left = r.width > w ? r.left - c.left : r.left + r.width / 2 - c.left - w / 2
+    micTip.style.left = `${Math.round(Math.max(4, Math.min(c.width - w - 4, left)))}px`
     micTip.style.top = `${Math.round((below ? r.bottom : r.top) - c.top)}px`
     micTip.setAttribute('data-show', '')
   }
+  /** Whether any of it is cut off at its edge (an ellipsis). */
+  const clipped = (x: HTMLElement) => [x, ...Array.from(x.querySelectorAll<HTMLElement>('.val, .res'))].some(e => e.scrollWidth > e.clientWidth + 1)
   const tipOnHover = (btn: HTMLElement) => {
     /* Moving between the card's own parts never reaches the router (to the page, nothing changed: both are
        inside Inspeck), so each button listens for itself; leaving to the page is caught in handle(). */
@@ -559,7 +578,12 @@ export function createCard(ui: HTMLElement): Card {
     },
 
     refresh() {
-      if (desc) for (const box of Array.from(el.querySelectorAll('.css'))) box.replaceWith(renderCss(desc))
+      if (!desc) return
+      for (const box of Array.from(el.querySelectorAll('.css'))) {
+        const next = renderCss(desc)
+        box.replaceWith(next)
+        if (mode === 'pinned') next.querySelectorAll<HTMLElement>('[data-tip]').forEach(tipOnHover)
+      }
     },
 
     pulse() {

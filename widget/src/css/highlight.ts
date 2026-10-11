@@ -49,13 +49,13 @@ export function highlight(value: string): DocumentFragment {
   const span = (cls: string, text: string) => f.appendChild(h('span', { class: cls }, text))
   for (const m of value.matchAll(PATTERN)) {
     if (m[1]) {
-      f.appendChild(h('span', { class: 'tok', title: `var(${m[2]}${m[3] ?? ''})` }, shortName(m[2].slice(2))))
+      f.appendChild(h('span', { class: 'tok' }, shortName(m[2].slice(2))))
     } else if (m[5]) {
       /* ≈: written in a format that can't hold this colour exactly (see color.ts). */
       const approx = m[5].startsWith('≈')
       const c = approx ? m[5].slice(1) : m[5]
       f.appendChild(swatch(c))
-      if (approx) f.appendChild(h('span', { class: 'c-approx', title: 'Nearest colour this format can show' }, '≈'))
+      if (approx) f.appendChild(h('span', { class: 'c-approx' }, '≈'))
       span('c-hex', c)
     } else if (m[6]) span('c-num', m[6] + (m[7] ?? ''))
     else if (m[8]) span('c-fn', m[8])

@@ -310,11 +310,15 @@ button { appearance: none; background: none; border: 0; padding: 0; cursor: poin
   position: absolute; z-index: 3; pointer-events: none; padding: 5px 8px; border-radius: 7px; white-space: nowrap;
   background: #2A2A30; color: var(--ix-text); font: 500 11px/1 var(--ix-sans);
   box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08) inset, var(--ix-shadow);
-  opacity: 0; transform: translate(-50%, calc(-100% - 6px)) translateY(2px); transition: opacity 120ms ease, transform 120ms ease;
+  opacity: 0; transform: translateY(calc(-100% - 6px)) translateY(2px); transition: opacity 120ms ease, transform 120ms ease;
 }
-.card-tip[data-show] { opacity: 1; transform: translate(-50%, calc(-100% - 6px)); }
-.card-tip[data-below] { transform: translate(-50%, 6px) translateY(-2px); }
-.card-tip[data-below][data-show] { transform: translate(-50%, 6px); }
+.card-tip[data-show] { opacity: 1; transform: translateY(calc(-100% - 6px)); }
+.card-tip[data-below] { transform: translateY(6px) translateY(-2px); }
+.card-tip[data-below][data-show] { transform: translateY(6px); }
+/* A declaration, in full: as code, wrapping if it's long, the resolved value dimmer after it. */
+.card-tip[data-code] { max-width: 300px; white-space: normal; overflow-wrap: anywhere; font: 500 11px/1.45 var(--ix-mono); padding: 6px 9px; }
+.card-tip .tip-res { margin-left: 8px; color: var(--ix-dim); }
+.card-tip .tip-note { display: block; margin-top: 4px; font: 500 10.5px/1.3 var(--ix-sans); color: var(--ix-faint); }
 .voice-text .w { transition: color 480ms ease; }
 .voice-text .w.new { animation: ix-word 320ms ease-out var(--d, 0ms) both; }
 .voice-text .w.settling { color: rgba(244, 244, 245, 0.72); }
