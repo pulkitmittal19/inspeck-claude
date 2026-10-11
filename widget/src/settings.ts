@@ -49,14 +49,14 @@ export function createSettings(ui: HTMLElement, onToggle: (open: boolean) => voi
           type: 'button', class: 'seg-opt', role: 'radio', 'data-action': 'pref', 'data-key': row.key, 'data-value': value,
         }, text)))))
   }
-  /* Off: notes wait on the page and go when you press Send (or ask Claude). On: each goes as you place it. */
+  /* Off: notes wait on the page until you ask Claude for them in the chat. On: each goes as you place it. */
   const live = h('button', { type: 'button', class: 'switch', role: 'switch', 'data-action': 'live', 'aria-labelledby': 'ix-set-live', 'aria-describedby': 'ix-set-live-more' }, h('span', { class: 'knob' }))
   /* The ⓘ says what each state means, on hover or focus. */
   const more = h('span', { class: 'info', tabindex: '0', 'aria-label': 'What this does' },
     svg(ICONS.info, 13, 1.8),
     h('span', { class: 'info-tip', role: 'tooltip', id: 'ix-set-live-more' },
       h('span', {}, h('b', {}, 'On:'), ' each note goes to Claude as you add it, and Claude starts on it.'),
-      h('span', {}, h('b', {}, 'Off:'), ' notes wait on the page until you press ↑ Send.')))
+      h('span', {}, h('b', {}, 'Off:'), ' notes wait on the page until you ask Claude to check them in the chat.')))
   main.append(
     h('div', { class: 'set-row set-toggle' }, h('span', { class: 'set-label', id: 'ix-set-live' }, 'Auto-send notes to Claude', more), live),
     h('button', { type: 'button', class: 'set-nav', 'data-action': 'set-page', 'data-page': 'keys' },

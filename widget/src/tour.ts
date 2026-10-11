@@ -15,7 +15,7 @@ const k = (text: string) => h('span', { class: 'tour-k' }, text)
 
 const STEPS: Array<{ title: string; line: Array<string | HTMLElement> }> = [
   { title: 'Point and note', line: ['Hover anything to outline it. Click it to leave a note, or drag across an area.'] },
-  { title: 'Send to Claude', line: ['Notes wait on the page until you press ', k('↑ Send'), ' in the pill.'] },
+  { title: 'Send to Claude', line: ['Notes wait on the page until you ask Claude to check them. Or turn on Auto-send in Settings.'] },
   { title: 'One key', line: ['Press ', k('I'), ' to turn Inspeck on or off. Every other shortcut is in Settings.'] },
 ]
 

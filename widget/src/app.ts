@@ -120,7 +120,7 @@ export class App {
       this.toolbar.setStatus(manual ? 'Frozen · F to release' : null)
     })
     /* Markers first, so the card is drawn above them. */
-    this.notes = createNotes(this.host.ui, (note, el) => this.openNote(note, el), n => this.toolbar.setWaiting(n))
+    this.notes = createNotes(this.host.ui, (note, el) => this.openNote(note, el))
     this.card = createCard(this.host.ui)
     /* Sizes or colours changed in Settings (here or in another app): the card says them the new way.
        Auto-send notes to Claude turned on: whatever was waiting goes now, from every page of this site. */
@@ -196,22 +196,11 @@ export class App {
       case 'css': this.setCssOnHover(!this.cssOnHover); break
       case 'clear': this.clearNotes(); break
       case 'settings': this.settings.toggle(); break
-      case 'send': this.sendWaiting(); break
     }
   }
 
-  /** Notes wait on the page for Send unless Auto-send notes to Claude is on. */
+  /** Notes wait on the page until Claude is asked for them, unless Auto-send notes to Claude is on. */
   private get holding(): boolean { return prefs.get().send === 'ask' }
-
-  /** Send: the notes waiting on this page go to Claude, as one batch. */
-  private sendWaiting(): void {
-    const n = this.notes.held
-    if (!n) return
-    void api.sendHeld({ page: pageNow() }).then(
-      sent => { this.toolbar.flash(`Sent ${sent} to Claude`); void this.notes.refresh() },
-      err => this.toolbar.flash((err as Error).message),
-    )
-  }
 
   /** Clear every note on this page, after a second click to be sure. */
   private clearNotes(): void {

@@ -359,7 +359,7 @@ test('Wait for comments picks up one placed while it waits', async () => {
   assert.match(r.content[0].text, /Avatar is 2px off centre/)
 })
 
-test('a held note waits on the page: the watcher and the push leave it until Send, and asking for the notes takes it', async () => {
+test('a held note waits on the page: the watcher and the push leave it until it is sent, and asking for the notes takes it', async () => {
   const at = 'http://localhost:5173/held'
   const pushedText = () => s.pushed.map(n => n.params?.content ?? '').join('\n')
   const a = await page(s.port, 'POST', '/comments', { body: { ...fix, page: at, note: 'Held: chip too tall', screenshot: undefined, held: true } })
@@ -368,7 +368,7 @@ test('a held note waits on the page: the watcher and the push leave it until Sen
   const idle = await s.client.callTool({ name: 'watch', arguments: { page: at, seconds: 5 } })
   assert.doesNotMatch(allText(idle), /Held: chip too tall/, 'the watcher leaves it')
 
-  /* Send on that page hands it over: pushed, and the watcher takes it. */
+  /* Sending that page's notes hands it over: pushed, and the watcher takes it. */
   assert.equal((await page(s.port, 'POST', '/comments/send', { body: { page: at } })).json.sent, 1)
   assert.match(pushedText(), /Held: chip too tall/)
   const got = await s.client.callTool({ name: 'watch', arguments: { page: at, seconds: 5 } })
@@ -385,6 +385,23 @@ test('a held note waits on the page: the watcher and the push leave it until Sen
   assert.match(allText(asked), /Held: other site/)
   const left = (await page(s.port, 'GET', `/comments?page=${encodeURIComponent('http://localhost:3000/x')}`, { origin: 'http://localhost:3000' })).json.comments
   assert.ok(left.every(c => c.status !== 'new' && !c.held))
+})
+
+test('deleting a waiting note closes the gap; a number Claude already has never changes', async () => {
+  const at = 'http://localhost:5173/numbers'
+  const add = async (note, held = true) => (await page(s.port, 'POST', '/comments', { body: { ...fix, page: at, note, screenshot: undefined, held } })).json.comment
+  const nums = async () => (await page(s.port, 'GET', `/comments?page=${encodeURIComponent(at)}`)).json.comments.map(c => `${c.n}:${c.note}`)
+  const [, two] = [await add('one'), await add('two'), await add('three'), await add('four')]
+  await page(s.port, 'DELETE', `/comments/${two.id}`)
+  assert.deepEqual(await nums(), ['1:one', '2:three', '3:four'])
+  assert.equal((await add('five')).n, 4)
+
+  /* Once something after it has gone to Claude, the numbers stay as they are. */
+  const sent = await add('sent', false)
+  const first = (await page(s.port, 'GET', `/comments?page=${encodeURIComponent(at)}`)).json.comments[0]
+  await page(s.port, 'DELETE', `/comments/${first.id}`)
+  assert.deepEqual((await nums()).slice(-1), [`${sent.n}:sent`])
+  assert.deepEqual(await nums(), ['2:three', '3:four', '4:five', '5:sent'])
 })
 
 test('mark done and decline both close the note on the page', async () => {

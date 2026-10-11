@@ -263,6 +263,17 @@ export function remove(id: string): boolean {
     if (i === -1) return false
     const [gone] = inbox.comments.splice(i, 1)
     if (gone.screenshot) rmSync(gone.screenshot, { force: true })
+    closeGap(inbox, gone)
     return true
   })
+}
+
+/* A note still waiting on the page (Claude hasn't been given it) closes the gap it leaves: delete #2 of
+   four and #3 and #4 become #2 and #3. Only when every note after it is waiting too: a number Claude
+   already has never changes under it. */
+function closeGap(inbox: Inbox, gone: Comment): void {
+  if (!gone.held || gone.status !== 'new') return
+  const key = pageKey(gone.page)
+  const after = inbox.comments.filter(c => pageKey(c.page) === key && c.n > gone.n)
+  if (after.every(c => c.held && c.status === 'new')) for (const c of after) c.n -= 1
 }

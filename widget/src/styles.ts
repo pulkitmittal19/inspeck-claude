@@ -121,15 +121,6 @@ button { appearance: none; background: none; border: 0; padding: 0; cursor: poin
 .ix[data-bar-h="left"] .bar[data-open] .btn:active { transform: scale(0.9); }
 .bar .btn:hover { background: rgba(255, 255, 255, 0.1); color: #fff; }
 .bar .btn[hidden] { display: none; }
-/* Send, while notes wait: the count in a small pink badge, which bumps when one is added. */
-.bar .btn[data-action="send"] { color: #FF8AB8; }
-.bar .btn .badge {
-  position: absolute; top: 1px; right: 0; min-width: 14px; height: 14px; padding: 0 4px; border-radius: 7px;
-  background: var(--ix-accent); color: #fff; font: 700 9px/14px var(--ix-sans); text-align: center;
-  box-shadow: 0 0 0 2px var(--ix-bg);
-}
-.bar .btn .badge[data-bump] { animation: ix-bump 320ms var(--ix-ease); }
-@keyframes ix-bump { 40% { transform: scale(1.3); } }
 .bar .btn:active { transform: scale(0.9); transition-duration: 80ms; }
 .bar .btn[aria-pressed="true"] { background: rgba(255, 61, 138, 0.26); color: #fff; }
 /* Asking before it clears: the button holds a warm fill until you click again or wait. */
