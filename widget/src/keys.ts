@@ -13,7 +13,7 @@ export function isToggleKey(e: KeyboardEvent): boolean {
 export const keyName = (e: KeyboardEvent) => (e.key === ' ' ? 'space' : e.key.toLowerCase())
 
 /** A key as a keycap; `k` is the keyName it lights up for. */
-export const cap = (label: string, k: string) => h('kbd', { class: 'cap', 'data-k': k }, label)
+export const cap = (label: string, k: string) => h('kbd', { class: /^[A-Z]$/.test(label) ? 'cap letter' : 'cap', 'data-k': k }, label)
 
 interface Row {
   label: string
@@ -25,28 +25,15 @@ interface Row {
   pointer?: string
 }
 
-/** Grouped by what you're doing, not by key. */
-export const SHORTCUTS: Array<{ title: string; rows: Row[] }> = [
-  {
-    title: 'Notes',
-    rows: [
-      { label: 'Leave a note', pointer: 'Click' },
-      { label: 'Note a whole area', pointer: 'Drag' },
-      { label: 'Save it', keys: [['↵', 'enter']] },
-      { label: 'New line', keys: [['⇧', 'shift'], ['↵', 'enter']] },
-      { label: 'Close it', keys: [['esc', 'escape']] },
-    ],
-  },
-  {
-    title: 'Look closer',
-    rows: [
-      { label: 'CSS on hover', keys: [['C', 'c']] },
-      { label: 'Measure spacing', keys: [['⇧', 'shift']], hold: true },
-      { label: 'Parent or child', keys: [['↑', 'arrowup'], ['↓', 'arrowdown']] },
-      { label: 'Freeze the page', keys: [['F', 'f']] },
-      { label: 'Open a menu', keys: [['Space', 'space']], hold: true },
-    ],
-  },
+/** One list, the key to remember first, then the quicker ways to look closer. */
+export const SHORTCUTS: Row[] = [
+  { label: 'Turn Inspeck on or off', keys: [['I', 'i']] },
+  { label: 'Leave a note', pointer: 'Click' },
+  { label: 'CSS on hover', keys: [['C', 'c']] },
+  { label: 'Measure spacing', keys: [['⇧', 'shift']], hold: true },
+  { label: 'Parent or child', keys: [['↑', 'arrowup'], ['↓', 'arrowdown']] },
+  { label: 'Freeze the page', keys: [['F', 'f']] },
+  { label: 'Open a menu', keys: [['Space', 'space']], hold: true },
 ]
 
 /** One row of the list: what it does, and how. */

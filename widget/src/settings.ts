@@ -4,13 +4,13 @@
  * top); a press anywhere else or Escape puts it away.
  *
  * Shortcuts is a second page of the same panel: the panel slides over to it
- * and back, and resizes to fit. The one key worth learning, I, leads; the rest
- * follow in two groups by what you're doing. While it's showing, a key you
+ * and back, and resizes to fit. One list: the key worth learning, I, first,
+ * then the quicker ways to look closer. While it's showing, a key you
  * press lights up its keycap, so the list answers "which one was that?". */
 import { enter, leave } from './anim'
 import { h, svg } from './dom'
 import { ICONS } from './icons'
-import { cap, SHORTCUTS, shortcutRow } from './keys'
+import { SHORTCUTS, shortcutRow } from './keys'
 import { prefs, type Prefs } from './prefs'
 import { actionOf } from './router'
 
@@ -67,13 +67,7 @@ export function createSettings(ui: HTMLElement, onToggle: (open: boolean) => voi
   const keys = h('div', { class: 'set-view', hidden: true },
     h('button', { type: 'button', class: 'set-back', 'data-action': 'set-page', 'data-page': 'main', 'aria-label': 'Back to settings' },
       h('span', { class: 'set-back-icon' }, svg(ICONS.chevron, 11, 2.2)), 'Shortcuts'),
-    h('div', { class: 'sc-hero' },
-      cap('I', 'i'),
-      h('div', { class: 'sc-hero-text' },
-        h('span', { class: 'sc-hero-title' }, 'Turn Inspeck on or off'),
-        h('span', { class: 'sc-hero-sub' }, 'The one to remember. Anywhere but a text box.'))),
-    ...SHORTCUTS.map(g => h('div', { class: 'sc-group', role: 'group', 'aria-label': g.title },
-      h('p', { class: 'sc-title' }, g.title), ...g.rows.map(shortcutRow))),
+    h('div', { class: 'sc-list' }, ...SHORTCUTS.map(shortcutRow)),
   )
   el.append(main, keys)
 

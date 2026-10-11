@@ -552,22 +552,13 @@ button { appearance: none; background: none; border: 0; padding: 0; cursor: poin
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 1px 0 rgba(0, 0, 0, 0.55);
   transition: transform 80ms ease, box-shadow 140ms ease, color 140ms ease, background 140ms ease;
 }
+/* A letter in the sans is a bare stroke (I reads as |): letters take the mono, whose I has its bars. */
+.cap.letter { font: 600 11px/1 var(--ix-mono); }
 .cap[data-down] {
   transform: translateY(1px); color: #fff; background: linear-gradient(180deg, #3B2531, #2D1C25);
   box-shadow: inset 0 0 0 1px rgba(255, 61, 138, 0.65), 0 0 0 rgba(0, 0, 0, 0);
 }
-/* The one key to remember leads the list, on its own. */
-.sc-hero {
-  display: flex; align-items: center; gap: 11px; padding: 11px; margin-bottom: 16px; border-radius: 10px;
-  background: rgba(255, 61, 138, 0.07); box-shadow: inset 0 0 0 1px rgba(255, 61, 138, 0.2);
-}
-.sc-hero .cap { flex: none; min-width: 28px; height: 28px; border-radius: 7px; font-size: 13px; color: #fff; }
-.sc-hero-text { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
-.sc-hero-title { font: 600 11.5px/1.2 var(--ix-sans); color: #fff; }
-.sc-hero-sub { font: 500 10.5px/1.4 var(--ix-sans); color: var(--ix-dim); white-space: normal; }
-/* The rest, in two groups by what you're doing: what it does on the left, how on the right. */
-.sc-group + .sc-group { margin-top: 14px; }
-.sc-title { margin: 0 0 3px; font: 600 10.5px/1 var(--ix-sans); color: var(--ix-faint); }
+/* One list: what it does on the left, how on the right. */
 .sc-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; height: 27px; }
 .sc-label { font: 500 11.5px/1 var(--ix-sans); color: rgba(244, 244, 245, 0.84); white-space: nowrap; }
 .sc-keys { display: inline-flex; align-items: center; gap: 3px; flex: none; }
