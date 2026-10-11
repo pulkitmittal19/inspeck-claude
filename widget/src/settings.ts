@@ -4,7 +4,8 @@
  * top); a press anywhere else or Escape puts it away.
  *
  * Shortcuts is a second page of the same panel: the panel slides over to it
- * and back, and resizes to fit. One list: the key worth learning, I, first,
+ * and back. Both pages sit in the same spot, so the panel is always as tall as
+ * the taller one and never changes size between them. One list: the key worth learning, I, first,
  * then the quicker ways to look closer. While it's showing, a key you
  * press lights up its keycap, so the list answers "which one was that?". */
 import { enter, leave } from './anim'
@@ -19,7 +20,7 @@ const ROWS: Array<{ key: 'sizes' | 'colors'; label: string; options: Array<[stri
   { key: 'colors', label: 'Show colors as', options: [['written', 'Default'], ['hex', 'hex'], ['rgb', 'rgb'], ['oklch', 'oklch']] },
 ]
 
-/** How long a page change takes: the panel's height and the pages' slide, on one curve (matches the CSS). */
+/** How long a page change takes (matches the CSS). */
 const PAGE_MS = 320
 
 export interface Settings {
@@ -64,7 +65,7 @@ export function createSettings(ui: HTMLElement, onToggle: (open: boolean) => voi
   )
 
   /* ---------- the Shortcuts page ---------- */
-  const keys = h('div', { class: 'set-view', hidden: true },
+  const keys = h('div', { class: 'set-view', 'data-off': '', 'aria-hidden': 'true', inert: true },
     h('button', { type: 'button', class: 'set-back', 'data-action': 'set-page', 'data-page': 'main', 'aria-label': 'Back to settings' },
       h('span', { class: 'set-back-icon' }, svg(ICONS.chevron, 11, 2.2)), 'Shortcuts'),
     h('div', { class: 'sc-list' }, ...SHORTCUTS.map(shortcutRow)),
@@ -74,8 +75,7 @@ export function createSettings(ui: HTMLElement, onToggle: (open: boolean) => voi
   let page: 'main' | 'keys' = 'main'
   let settle = 0
   let settled = () => {}
-  /** Slide to a page: the old one slides away and fades as the new one slides in over it, and the
-      panel's height eases from one to the other, all on the same curve. */
+  /** Slide to a page: the old one slides away and fades as the new one slides in over it. */
   const show = (to: 'main' | 'keys', animate = true) => {
     if (to === page) return
     /* A change still under way finishes at once, so a quick back-and-forth never leaves a page stranded. */
@@ -86,26 +86,17 @@ export function createSettings(ui: HTMLElement, onToggle: (open: boolean) => voi
     const dir = to === 'keys' ? 'forward' : 'back'
     page = to
     if (to === 'keys') paint()
-    if (!animate) { leaving.hidden = true; coming.hidden = false; return }
-    const from = el.offsetHeight
-    /* The old page lifts out of the flow where it stands, so the new one takes its place underneath it. */
-    leaving.style.top = `${leaving.offsetTop - el.scrollTop}px`
+    /* Off: still taking its room (that's what keeps the height), but not seen, read or reached. */
+    const off = (v: HTMLElement, o: boolean) => { v.toggleAttribute('data-off', o); v.toggleAttribute('inert', o); v.setAttribute('aria-hidden', String(o)) }
+    off(coming, false)
+    if (!animate) { off(leaving, true); return }
     leaving.dataset.out = dir
-    coming.hidden = false
     coming.dataset.in = dir
-    el.scrollTop = 0
-    el.style.height = ''
-    const next = el.offsetHeight
-    el.style.height = `${from}px`
-    void el.offsetHeight
-    el.style.height = `${next}px`
     settled = () => {
       settled = () => {}
-      leaving.hidden = true
+      off(leaving, true)
       delete leaving.dataset.out
-      leaving.style.top = ''
       delete coming.dataset.in
-      el.style.height = ''
     }
     settle = window.setTimeout(settled, PAGE_MS)
   }

@@ -466,7 +466,7 @@ button { appearance: none; background: none; border: 0; padding: 0; cursor: poin
 .settings {
   position: fixed; right: var(--ix-bar-x); bottom: calc(var(--ix-bar-y) + 50px); width: 252px; padding: 14px 14px 16px; border-radius: 12px;
   background: var(--ix-bg); color: var(--ix-text); box-shadow: var(--ix-shadow); font-family: var(--ix-sans);
-  pointer-events: auto; transition: opacity 160ms ease, transform 220ms var(--ix-ease), height 320ms cubic-bezier(0.32, 0.72, 0, 1);
+  pointer-events: auto; transition: opacity 160ms ease, transform 220ms var(--ix-ease);
   box-sizing: border-box; max-height: calc(100vh - var(--ix-bar-y) - 62px); overflow: hidden auto; scrollbar-width: none;
 }
 .settings::-webkit-scrollbar { display: none; }
@@ -515,9 +515,12 @@ button { appearance: none; background: none; border: 0; padding: 0; cursor: poin
 .info:hover .info-tip, .info:focus-visible .info-tip { opacity: 1; transform: none; }
 
 /* Changing page in Settings: the old page drifts out and fades quickly while the new one drifts in a beat
-   later and settles slowly, so the two cross rather than swap; the panel's height eases on the same curve. */
-.settings { --ix-page: cubic-bezier(0.32, 0.72, 0, 1); }
-.set-view[data-out] { position: absolute; left: 14px; right: 14px; pointer-events: none; }
+   later and settles slowly, so the two cross rather than swap. Both pages share one grid cell, so the
+   panel is as tall as the taller and keeps that height on either. */
+.settings { --ix-page: cubic-bezier(0.32, 0.72, 0, 1); display: grid; }
+.set-view { grid-area: 1 / 1; min-width: 0; }
+.set-view[data-off] { visibility: hidden; }
+.set-view[data-out] { pointer-events: none; }
 .set-view[data-out="forward"] { animation: ix-page-out-left 180ms cubic-bezier(0.4, 0, 1, 1) both; }
 .set-view[data-out="back"] { animation: ix-page-out-right 180ms cubic-bezier(0.4, 0, 1, 1) both; }
 .set-view[data-in="forward"] { animation: ix-page-in-right 320ms var(--ix-page) 50ms both; }
