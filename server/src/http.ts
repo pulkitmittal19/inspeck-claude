@@ -20,7 +20,7 @@ import { fileURLToPath } from 'node:url'
 import * as store from './store.js'
 import { HOME } from './store.js'
 import { bindTab, route as routeNote } from './sessions.js'
-import { isThisMachine, NewComment, pageKey, type Comment } from './format.js'
+import { isThisMachine, NewComment, NOTE_MAX, pageKey, type Comment } from './format.js'
 import { resolveSource } from './sourcemap.js'
 import { listenStream, stopListening, voiceAvailable, warmVoice } from './voice.js'
 
@@ -216,6 +216,7 @@ async function route(req: IncomingMessage, res: ServerResponse, version: string,
   if (id && req.method === 'PATCH') {
     const b = (await body(req)) as { note?: unknown }
     if (typeof b.note !== 'string') return send(res, 400, { error: 'Send { note: string }' })
+    if (b.note.length > NOTE_MAX) return send(res, 400, { error: `A note holds up to ${NOTE_MAX.toLocaleString('en')} characters` })
     const c = store.editNote(id, b.note)
     return c ? send(res, 200, { comment: forPage(c) }) : send(res, 404, { error: 'No such comment' })
   }
@@ -224,6 +225,7 @@ async function route(req: IncomingMessage, res: ServerResponse, version: string,
   if (id && parts[2] === 'replies' && req.method === 'POST') {
     const b = (await body(req)) as { text?: unknown }
     if (typeof b.text !== 'string' || !b.text.trim()) return send(res, 400, { error: 'Send { text: string }' })
+    if (b.text.length > NOTE_MAX) return send(res, 400, { error: `A reply holds up to ${NOTE_MAX.toLocaleString('en')} characters` })
     const c = store.say(id, 'you', b.text.trim())
     return c ? send(res, 201, { comment: forPage(c) }) : send(res, 404, { error: 'No such comment' })
   }

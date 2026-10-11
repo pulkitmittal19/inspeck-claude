@@ -4,6 +4,8 @@ import { api, type GroupMember, type Note } from './api'
 import { createCard, type Card } from './card'
 import { warmUp } from './css/cascade'
 import { h, isEditable } from './dom'
+import { cap, isToggleKey, keyName } from './keys'
+import { createMenuHint, opensMenu, type MenuHint } from './menuhint'
 import { tabStore } from './env'
 import { createFreeze, FROZEN_BLOCK, type Freeze } from './freeze'
 import { createHost, type Host } from './host'
@@ -31,6 +33,10 @@ const PRESS = new Set(['pointerdown', 'pointerup', 'mousedown', 'mouseup', 'clic
 const CSS_KEY = 'inspeck:css-on-hover'
 /** How long the pointer rests before Inspeck looks for a tooltip on top of what it picked. */
 const REST_MS = 90
+/** How long the pointer stays on a menu's button before the hint says how to note inside it: past a glance. */
+const MENU_HINT_MS = 500
+/** How long the pill keeps saying "open the menu, then press I" after Inspeck was put away for one. */
+const MENU_WAIT_MS = 10000
 
 /** After Enter, how long a note waits for its place in the code before going without it. */
 const SOURCE_WAIT_MS = 2500
@@ -90,6 +96,11 @@ export class App {
   /** Where the button went down on the page: a click if it comes up close by, a drag across a section if not. */
   private down: PointerEvent | null = null
   private unroute: () => void
+  /** "Press I to use this menu", beside a closed menu's button the pointer rests on. */
+  private menuHint: MenuHint
+  /** Put away with I to open a menu: the pill says what's next until Inspeck is back. */
+  private menuWait = 0
+  private menuHintTimer = 0
 
   constructor() {
     this.host = createHost()
@@ -124,10 +135,12 @@ export class App {
       /* A tooltip that faded out from under the pointer: let go of it. */
       if (el === this.overlay && !this.pinned && !paints(el)) { this.overlay = null; this.raw = null; this.schedulePick(); return }
       this.card.place(r)
+      this.menuHint.place(r)
       if (this.shift) this.measure(el)
     })
     /* After the outline, so the numbers sit on top of its line. */
     this.spacing = createSpacing(this.host.ui)
+    this.menuHint = createMenuHint(this.host.ui)
     this.marquee = createMarquee(this.host.ui, this.host.el, b => this.card.place(new DOMRect(b.left, b.top, b.right - b.left, b.bottom - b.top)))
     this.unroute = createRouter(this.host, {
       ui: e => this.onUi(e),
@@ -142,6 +155,7 @@ export class App {
     this.toolbar.setOpen(open)
     tabStore.set('open', open ? '1' : null)
     if (open) {
+      if (this.menuWait) { clearTimeout(this.menuWait); this.menuWait = 0; this.toolbar.setStatus(null) }
       prefs.sync()
       void checkVoice()
       this.tour.start()
@@ -154,6 +168,25 @@ export class App {
       this.freeze.unfreeze(true)
       this.setTarget(null)
     }
+  }
+
+  /** I pressed: on or off. Put away while pointing at a menu's button, the pill says how to come back to it. */
+  private toggleFromKey(): void {
+    const forMenu = this.open && this.menuHint.showing
+    this.setOpen(!this.open)
+    if (!forMenu) return
+    this.toolbar.setStatus(['Open the menu, then press ', cap('I', 'i'), ' to note inside'])
+    clearTimeout(this.menuWait)
+    this.menuWait = window.setTimeout(() => { this.menuWait = 0; if (!this.open) this.toolbar.setStatus(null) }, MENU_WAIT_MS)
+  }
+
+  /** The pointer rested on a closed menu's button: say how to note inside it. */
+  private offerMenu(): void {
+    const t = this.target
+    const still = () => this.open && !this.pinned && !this.shift && !this.marquee.dragging && !!t && this.target === t
+    if (!still() || !opensMenu(t!)) return
+    clearTimeout(this.menuHintTimer)
+    this.menuHintTimer = window.setTimeout(() => { if (still()) this.menuHint.show(t!.getBoundingClientRect()) }, MENU_HINT_MS - REST_MS)
   }
 
   private act(action: string): void {
@@ -238,7 +271,7 @@ export class App {
       const raw = onOverlay ? o : elementAt(x, y, this.host.el)
       /* Once the pointer rests, look again for a click-through layer on top. */
       clearTimeout(this.restTimer)
-      if (!onOverlay) this.restTimer = window.setTimeout(() => this.lookThrough(), REST_MS)
+      if (!onOverlay) this.restTimer = window.setTimeout(() => { this.lookThrough(); this.offerMenu() }, REST_MS)
       /* ↑/↓ choices hold until the pointer moves onto a different element. */
       if (this.stepped && raw === this.raw) return
       if (raw && raw === this.rest) return
@@ -263,6 +296,7 @@ export class App {
   setTarget(el: Element | null): void {
     if (this.pinned) return
     if (!pickable(el, this.host.el)) el = null
+    if (!el || el !== this.target) { clearTimeout(this.menuHintTimer); this.menuHint.hide() }
     this.target = el
     if (el) {
       /* Notes mode: just the outline. The CSS comes with the note, folded. */
@@ -304,6 +338,7 @@ export class App {
   pin(el: Element, existing?: Note): void {
     /* Hold the page still while the note is written: an open menu stays open. */
     this.freeze.freeze(false)
+    this.menuHint.hide()
     this.pinned = el
     this.target = el
     this.outline.show(el)
@@ -502,7 +537,11 @@ export class App {
       case 'keydown': return this.onKey(e as KeyboardEvent, false) ?? (this.freeze.active ? 'stop' : undefined)
       case 'keyup': return this.onKeyUp(e as KeyboardEvent) ?? (this.freeze.active ? 'stop' : undefined)
     }
-    if (e.type === 'blur' && e.target === window) { this.setShift(false); if (this.through) this.setThrough(false) }
+    if (e.type === 'blur' && e.target === window) {
+      this.setShift(false)
+      if (this.through) this.setThrough(false)
+      for (const k of ['shift', 'space']) this.settings.key(k, false)
+    }
     if (!this.open) return
 
     if (e.type === 'pointermove') {
@@ -549,10 +588,13 @@ export class App {
   }
 
   private onKey(e: KeyboardEvent, inside: boolean): 'swallow' | 'stop' | void {
-    /* ⌥I opens and closes Inspeck from anywhere, even mid-typing in the app:
-       it's a chord no one types by accident. */
-    if (e.altKey && !e.metaKey && !e.ctrlKey && e.code === 'KeyI') {
-      this.setOpen(!this.open)
+    this.settings.key(keyName(e), true)
+    /* I turns Inspeck on and off: one key, anywhere but a text box (there it's a letter). With a note
+       open it's a letter too: it goes into the note (below). Pressed while a menu is open, the menu
+       stays open (a key doesn't close it the way a click would), which is how you note inside one. */
+    const typing = isEditable(e.composedPath()[0] as Element) || isEditable(document.activeElement)
+    if (isToggleKey(e) && !typing && !(this.open && this.pinned)) {
+      if (!e.repeat) this.toggleFromKey()
       e.preventDefault()
       return 'swallow'
     }
@@ -609,6 +651,7 @@ export class App {
     if (on === this.shift) return
     this.shift = on
     this.measureFrom = on ? this.target : null
+    if (on) this.menuHint.hide()
     /* The numbers are the point while Shift is down; the hover card steps aside. */
     if (this.card.mode === 'hover') this.card.el.hidden = on
     if (on && this.target) this.measure(this.target)
@@ -624,6 +667,7 @@ export class App {
   }
 
   private onKeyUp(e: KeyboardEvent): 'swallow' | void {
+    this.settings.key(keyName(e), false)
     if (e.key === 'Shift') this.setShift(false)
     if (e.key === ' ' && this.through) {
       this.setThrough(false)

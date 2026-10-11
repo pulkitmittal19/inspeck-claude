@@ -35,7 +35,7 @@ const BUTTONS: Array<{ action: string; icon: IconName; label: string; key?: stri
   { action: 'css', icon: 'code', label: 'Show CSS on hover', key: 'C' },
   { action: 'clear', icon: 'trash', label: 'Clear notes on this page' },
   { action: 'settings', icon: 'settings', label: 'Settings' },
-  { action: 'close', icon: 'close', label: 'Close', key: 'Esc' },
+  { action: 'close', icon: 'close', label: 'Close', key: 'I' },
 ]
 
 export interface Toolbar {
@@ -53,7 +53,7 @@ export interface Toolbar {
   /** Notes waiting to be sent: Send shows with the count, or goes when there are none. */
   setWaiting(n: number): void
   /** A line that stays above the pill while something lasts ("Frozen · F to release"); null clears it. */
-  setStatus(text: string | null): void
+  setStatus(text: string | Array<string | Node> | null): void
   /** Handle an event that happened inside the widget. Returns the action clicked, if any. */
   handle(e: Event): string | null
 }
@@ -68,7 +68,7 @@ export function createToolbar(ui: HTMLElement): Toolbar {
     return el
   })
   const row = h('div', { class: 'row' }, ...btns)
-  const logo = h('button', { type: 'button', class: 'logo', 'data-action': 'open', 'aria-label': 'Open Inspeck', 'data-tip': 'Inspeck', 'data-key': '⌥ I' },
+  const logo = h('button', { type: 'button', class: 'logo', 'data-action': 'open', 'aria-label': 'Open Inspeck', 'data-tip': 'Inspeck', 'data-key': 'I' },
     svg(ICONS.inspect, 18, 1.5))
   const bar = h('div', { class: 'bar', role: 'toolbar', 'aria-label': 'Inspeck' }, logo, row)
   const tip = h('div', { class: 'tip', role: 'tooltip' })
@@ -170,7 +170,7 @@ export function createToolbar(ui: HTMLElement): Toolbar {
     },
     setStatus(text) {
       if (!text) { leave(status, 140); return }
-      status.replaceChildren(text)
+      status.replaceChildren(...(typeof text === 'string' ? [text] : text))
       enter(status)
     },
     arm(action, ask) {
@@ -202,7 +202,7 @@ export function createToolbar(ui: HTMLElement): Toolbar {
     },
     handle(e) {
       /* The pill's buttons never take the keyboard: after clicking one, F,
-         Space and Shift still reach the page. */
+         Space, Shift and I still reach the page. */
       if (e.type === 'mousedown' && e.composedPath().some(n => n === bar)) { e.preventDefault(); return null }
       if (e.type === 'pointerdown') {
         const p = e as PointerEvent

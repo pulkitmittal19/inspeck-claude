@@ -113,11 +113,11 @@ test('the widget is served to a plain script tag, and an unchanged reload is a 3
   assert.equal(again.status, 304)
 })
 
-test('the widget stays small: under 45 KB gzipped (it was 40 before Settings and voice)', async () => {
+test('the widget stays small: under 48 KB gzipped (40 before Settings and voice, 45 before Shortcuts)', async () => {
   const { gzipSync } = await import('node:zlib')
   const { readFileSync } = await import('node:fs')
   const size = gzipSync(readFileSync(join(root, 'server/dist/widget/inspeck.js')), { level: 9 }).length
-  assert.ok(size < 45 * 1024, `widget is ${Math.round(size / 1024)} KB gzipped`)
+  assert.ok(size < 48 * 1024, `widget is ${Math.round(size / 1024)} KB gzipped`)
 })
 
 test('the dev test page only exists with INSPECK_DEV=1', async () => {

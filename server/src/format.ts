@@ -58,10 +58,13 @@ const GroupMember = z.object({
 })
 export type GroupMember = z.infer<typeof GroupMember>
 
+/** The most one note holds (the widget stops typing there too). */
+export const NOTE_MAX = 4000
+
 /** What a page sends when someone places a comment. */
 export const NewComment = z.object({
   kind: z.enum(KINDS).optional(),
-  note: z.string().max(4000),
+  note: z.string().max(NOTE_MAX),
   page: z.string().url().max(2000),
   element: z.object({
     selector: z.string().max(1000),

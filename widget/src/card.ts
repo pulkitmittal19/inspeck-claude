@@ -21,6 +21,9 @@ const LABEL_MAX = 34
 const EDGE = 8
 const MAX_NOTE_LINES = 4
 const PLACEHOLDER = 'Add a note for Claude…'
+/** The most one note holds (the plugin keeps to it too): about a page, an easy read for Claude. */
+const NOTE_MAX = 4000
+const FULL = 'That’s the most one note can hold. Add another note to continue.'
 /** If the last words haven't settled this long after you stop, keep what came through. */
 const FINISH_MS = 5000
 /** A start takes about 0.35–0.7 s (macOS opening the mic, loading the speech model); words before it are lost.
@@ -177,8 +180,16 @@ export function createCard(ui: HTMLElement): Card {
     if (layer) { layer.scrollTop = t.scrollTop; layer.dataset.fade = fade }
   }
 
+  /** Whether the note is at its limit, saying so under the box. */
+  let full = false
   const sync = () => {
     if (!parts) return
+    const now = parts.note.value.length >= NOTE_MAX
+    if (now !== full) {
+      full = now
+      if (now) status(FULL, 'error')
+      else if (parts.status.textContent === FULL) setOpen(parts.statusWrap, false)
+    }
     const has = parts.note.value.trim().length > 0
     parts.send.disabled = !has || busy
     parts.send.toggleAttribute('data-ready', has)
@@ -284,9 +295,12 @@ export function createCard(ui: HTMLElement): Card {
     const words = wordsOf(`${finalText} ${partial}`)
     /* The text box holds the same text, so it grows (and wraps) exactly as the layer does. */
     const t = parts.note
-    t.value = voice.base + words.join(' ')
+    const all = voice.base + words.join(' ')
+    t.value = all.slice(0, NOTE_MAX)
     grow()
     sync()
+    /* Full: keep what fits and stop listening. */
+    if (all.length > NOTE_MAX) { stopVoice(false); return }
     const layer = layerOf()
     if (!layer) return
     if (!layer.firstChild) layer.append(voice.base)
@@ -356,7 +370,7 @@ export function createCard(ui: HTMLElement): Card {
         break
       case 'done': {
         const sendAfter = voice.sendAfter
-        parts.note.value = (voice.base + wordsOf(e.text).join(' ')).trim()
+        parts.note.value = (voice.base + wordsOf(e.text).join(' ')).trim().slice(0, NOTE_MAX)
         endVoice()
         sync()
         const t = parts.note
@@ -493,7 +507,8 @@ export function createCard(ui: HTMLElement): Card {
         head = renderHead(o.group ?? { label: 'Area', size: '' }, [h('span', { class: 'tools' }, close)], o.existing?.n)
       }
       cancelVoice()
-      const note = h('textarea', { class: 'note-input', rows: 1, placeholder: PLACEHOLDER, 'aria-label': 'Note for Claude', spellcheck: 'true' })
+      /* maxlength stops typing and trims a paste at the limit; sync() says why. */
+      const note = h('textarea', { class: 'note-input', rows: 1, placeholder: PLACEHOLDER, 'aria-label': 'Note for Claude', spellcheck: 'true', maxlength: NOTE_MAX })
       if (o.existing) note.value = o.existing.note
       else if (o.draft) note.value = o.draft
       const sendBtn = h('button', { type: 'button', class: 'send', 'data-action': 'send', 'aria-label': o.existing ? 'Save note' : prefs.get().send === 'ask' ? 'Add note' : 'Send to Claude', disabled: true }, svg(ICONS.enter, 13, 2.2))
@@ -515,6 +530,7 @@ export function createCard(ui: HTMLElement): Card {
       el.append(head, ...(cssWrap ? [cssWrap] : []), noteWrap, statusWrap, ...(actionsWrap ? [actionsWrap] : []), micTip)
       el.querySelectorAll<HTMLElement>('[data-tip]').forEach(tipOnHover)
       parts = { cssWrap, noteWrap, statusWrap, status: statusEl, note, send: sendBtn }
+      full = false
       if (!wasShowing) enter(el)
       sync()
       /* Focus now, not on the next frame: on a busy page the next frame can be

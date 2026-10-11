@@ -469,10 +469,12 @@ button { appearance: none; background: none; border: 0; padding: 0; cursor: poin
 
 /* Settings: a small panel from the pill, one segmented choice per row */
 .settings {
-  position: fixed; right: var(--ix-bar-x); bottom: calc(var(--ix-bar-y) + 50px); width: 236px; padding: 14px 14px 16px; border-radius: 12px;
+  position: fixed; right: var(--ix-bar-x); bottom: calc(var(--ix-bar-y) + 50px); width: 252px; padding: 14px 14px 16px; border-radius: 12px;
   background: var(--ix-bg); color: var(--ix-text); box-shadow: var(--ix-shadow); font-family: var(--ix-sans);
-  pointer-events: auto; transition: opacity 160ms ease, transform 220ms var(--ix-ease);
+  pointer-events: auto; transition: opacity 160ms ease, transform 220ms var(--ix-ease), height 240ms var(--ix-ease);
+  box-sizing: border-box; max-height: calc(100vh - var(--ix-bar-y) - 62px); overflow: hidden auto; scrollbar-width: none;
 }
+.settings::-webkit-scrollbar { display: none; }
 .settings[data-state="enter"] { opacity: 0; transform: translateY(5px) scale(0.98); }
 .settings[data-state="out"] { opacity: 0; transform: translateY(3px); transition-duration: 120ms; }
 /* The Frozen line sits where the panel opens: it steps aside while the panel is up. */
@@ -517,6 +519,70 @@ button { appearance: none; background: none; border: 0; padding: 0; cursor: poin
 .info-tip b { color: var(--ix-text); font-weight: 600; }
 .info:hover .info-tip, .info:focus-visible .info-tip { opacity: 1; transform: none; }
 
+/* Settings' second page, Shortcuts: it slides in from the right, and the main page back from the left */
+.set-view[data-in="forward"] { animation: ix-page-forward 240ms var(--ix-ease) both; }
+.set-view[data-in="back"] { animation: ix-page-back 240ms var(--ix-ease) both; }
+@keyframes ix-page-forward { from { opacity: 0; transform: translateX(14px); } }
+@keyframes ix-page-back { from { opacity: 0; transform: translateX(-14px); } }
+/* The way there: a row under a hairline, the whole row the button */
+.set-nav {
+  display: flex; align-items: center; justify-content: space-between; box-sizing: border-box; width: calc(100% + 12px);
+  margin: 14px -6px -8px; padding: 9px 6px; border-radius: 7px; position: relative;
+  font: 500 11px/1 var(--ix-sans); color: var(--ix-text); transition: background 140ms ease;
+}
+.set-nav::before { content: ""; position: absolute; left: 6px; right: 6px; top: -6px; border-top: 1px solid var(--ix-line); }
+.set-nav:hover { background: rgba(255, 255, 255, 0.05); }
+.set-nav-end { display: inline-flex; color: var(--ix-faint); transition: transform 180ms var(--ix-ease), color 140ms ease; }
+.set-nav:hover .set-nav-end { color: var(--ix-text); transform: translateX(2px); }
+/* and back: the page's title is the button, its chevron pointing home */
+.set-back { display: inline-flex; align-items: center; gap: 3px; margin: -3px 0 13px -5px; padding: 3px 7px 3px 3px; border-radius: 6px; font: 600 12.5px/1 var(--ix-sans); color: #fff; transition: background 140ms ease; }
+.set-back:hover { background: rgba(255, 255, 255, 0.05); }
+.set-back-icon { display: inline-flex; color: var(--ix-faint); transform: rotate(180deg); transition: transform 180ms var(--ix-ease), color 140ms ease; }
+.set-back:hover .set-back-icon { color: var(--ix-text); transform: rotate(180deg) translateX(2px); }
+
+/* A key, drawn as a keycap: a little lighter on top, a dark edge below. Pressed, it sinks and turns pink. */
+.cap {
+  display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; min-width: 18px; height: 18px; padding: 0 5px;
+  border-radius: 5px; font: 600 10.5px/1 var(--ix-sans); color: rgba(244, 244, 245, 0.8);
+  background: linear-gradient(180deg, #2D2D32, #232327);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 1px 0 rgba(0, 0, 0, 0.55);
+  transition: transform 80ms ease, box-shadow 140ms ease, color 140ms ease, background 140ms ease;
+}
+.cap[data-down] {
+  transform: translateY(1px); color: #fff; background: linear-gradient(180deg, #3B2531, #2D1C25);
+  box-shadow: inset 0 0 0 1px rgba(255, 61, 138, 0.65), 0 0 0 rgba(0, 0, 0, 0);
+}
+/* The one key to remember leads the list, on its own. */
+.sc-hero {
+  display: flex; align-items: center; gap: 11px; padding: 11px; margin-bottom: 16px; border-radius: 10px;
+  background: rgba(255, 61, 138, 0.07); box-shadow: inset 0 0 0 1px rgba(255, 61, 138, 0.2);
+}
+.sc-hero .cap { flex: none; min-width: 28px; height: 28px; border-radius: 7px; font-size: 13px; color: #fff; }
+.sc-hero-text { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.sc-hero-title { font: 600 11.5px/1.2 var(--ix-sans); color: #fff; }
+.sc-hero-sub { font: 500 10.5px/1.4 var(--ix-sans); color: var(--ix-dim); white-space: normal; }
+/* The rest, in two groups by what you're doing: what it does on the left, how on the right. */
+.sc-group + .sc-group { margin-top: 14px; }
+.sc-title { margin: 0 0 3px; font: 600 10.5px/1 var(--ix-sans); color: var(--ix-faint); }
+.sc-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; height: 27px; }
+.sc-label { font: 500 11.5px/1 var(--ix-sans); color: rgba(244, 244, 245, 0.84); white-space: nowrap; }
+.sc-keys { display: inline-flex; align-items: center; gap: 3px; flex: none; }
+.sc-hold { margin-right: 3px; font: 500 10.5px/1 var(--ix-sans); color: var(--ix-faint); }
+/* Done with the pointer: a word, not a keycap. */
+.sc-pointer { font: 500 10.5px/1 var(--ix-sans); color: var(--ix-dim); }
+
+/* "Press I to use this menu": beside a closed menu's button the pointer rests on */
+.menu-hint {
+  position: fixed; z-index: 4; pointer-events: none; padding: 4px 8px 4px 7px; border-radius: 8px;
+  background: var(--ix-bg); color: var(--ix-dim); font: 500 11px/1 var(--ix-sans); white-space: nowrap; box-shadow: var(--ix-shadow);
+  transition: opacity 140ms ease, transform 200ms var(--ix-ease);
+}
+.menu-hint[data-state="enter"] { opacity: 0; transform: translateY(3px); }
+.menu-hint[data-below][data-state="enter"] { transform: translateY(-3px); }
+.menu-hint[data-state="out"] { opacity: 0; transition-duration: 100ms; }
+/* A keycap inside a line of text sits on it, a size down. */
+:is(.menu-hint, .bar-status) .cap { min-width: 16px; height: 16px; padding: 0 4px; margin: 0 2px; font-size: 10px; color: #fff; vertical-align: middle; }
+
 /* small label that appears above a toolbar button on hover */
 .tip {
   position: fixed; pointer-events: none; padding: 5px 8px; border-radius: 7px;
@@ -531,5 +597,6 @@ button { appearance: none; background: none; border: 0; padding: 0; cursor: poin
   *, *::before, *::after { animation-duration: 1ms !important; animation-delay: 0ms !important; transition-delay: 0ms !important; }
   .bar, .bar .logo, .bar .btn, .card, .outline, .preview, .marker, .reveal { transition-duration: 120ms !important; }
   .card[data-state], .preview[data-state], .bar .btn { transform: none !important; }
+  .set-view, .menu-hint, .cap { animation: none !important; transform: none !important; }
 }
 `

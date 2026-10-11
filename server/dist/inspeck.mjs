@@ -36514,9 +36514,10 @@ var GroupMember = external_exports.object({
   text: external_exports.string().max(120).optional(),
   source: SourceAt.optional()
 });
+var NOTE_MAX = 4e3;
 var NewComment = external_exports.object({
   kind: external_exports.enum(KINDS).optional(),
-  note: external_exports.string().max(4e3),
+  note: external_exports.string().max(NOTE_MAX),
   page: external_exports.string().url().max(2e3),
   element: external_exports.object({
     selector: external_exports.string().max(1e3),
@@ -37412,12 +37413,14 @@ async function route2(req, res, version2, onNew) {
   if (id && req.method === "PATCH") {
     const b = await body(req);
     if (typeof b.note !== "string") return send(res, 400, { error: "Send { note: string }" });
+    if (b.note.length > NOTE_MAX) return send(res, 400, { error: `A note holds up to ${NOTE_MAX.toLocaleString("en")} characters` });
     const c = editNote(id, b.note);
     return c ? send(res, 200, { comment: forPage2(c) }) : send(res, 404, { error: "No such comment" });
   }
   if (id && parts[2] === "replies" && req.method === "POST") {
     const b = await body(req);
     if (typeof b.text !== "string" || !b.text.trim()) return send(res, 400, { error: "Send { text: string }" });
+    if (b.text.length > NOTE_MAX) return send(res, 400, { error: `A reply holds up to ${NOTE_MAX.toLocaleString("en")} characters` });
     const c = say(id, "you", b.text.trim());
     return c ? send(res, 201, { comment: forPage2(c) }) : send(res, 404, { error: "No such comment" });
   }
@@ -37517,7 +37520,7 @@ if (process.argv[2] === "wait") {
   await runWait(process.argv.slice(3));
   process.exit(0);
 }
-var VERSION = "0.13.0";
+var VERSION = "0.14.0";
 var log = (msg) => process.stderr.write(`inspeck: ${msg}
 `);
 var INSTRUCTIONS = `Inspeck lets a person hover any element of their web app to see its CSS, and click it to leave a note for you. Their notes arrive here.

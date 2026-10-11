@@ -1,4 +1,4 @@
-/* The first-run tour: four short cards above the pill, the first time Inspeck
+/* The first-run tour: three short cards above the pill, the first time Inspeck
  * opens on this machine. A title, one line, the shortcut as a chip; Next,
  * Skip, Back, Got it. Seen is remembered twice: in this page's storage (no
  * round trip next time) and by the plugin (so a second app on another port
@@ -14,10 +14,9 @@ const SEEN_KEY = 'inspeck:tour-seen'
 const k = (text: string) => h('span', { class: 'tour-k' }, text)
 
 const STEPS: Array<{ title: string; line: Array<string | HTMLElement> }> = [
-  { title: 'Inspect', line: ['Hover to outline anything. Hold ', k('Shift'), ' to measure.'] },
-  { title: 'Note', line: ['Click to leave a note. Drag to cover a section.'] },
-  { title: 'CSS', line: ['Press ', k('C'), ' to show CSS as you hover.'] },
-  { title: 'Send to Claude', line: ['Notes wait until you press ', k('↑'), ' in the pill. ', k('⌥ I'), ' opens or closes Inspeck.'] },
+  { title: 'Point and note', line: ['Hover anything to outline it. Click it to leave a note, or drag across an area.'] },
+  { title: 'Send to Claude', line: ['Notes wait on the page until you press ', k('↑ Send'), ' in the pill.'] },
+  { title: 'One key', line: ['Press ', k('I'), ' to turn Inspeck on or off. Every other shortcut is in Settings.'] },
 ]
 
 export interface Tour {
