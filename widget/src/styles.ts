@@ -466,7 +466,7 @@ button { appearance: none; background: none; border: 0; padding: 0; cursor: poin
 .settings {
   position: fixed; right: var(--ix-bar-x); bottom: calc(var(--ix-bar-y) + 50px); width: 252px; padding: 14px 14px 16px; border-radius: 12px;
   background: var(--ix-bg); color: var(--ix-text); box-shadow: var(--ix-shadow); font-family: var(--ix-sans);
-  pointer-events: auto; transition: opacity 160ms ease, transform 220ms var(--ix-ease), height 240ms var(--ix-ease);
+  pointer-events: auto; transition: opacity 160ms ease, transform 220ms var(--ix-ease), height 320ms cubic-bezier(0.32, 0.72, 0, 1);
   box-sizing: border-box; max-height: calc(100vh - var(--ix-bar-y) - 62px); overflow: hidden auto; scrollbar-width: none;
 }
 .settings::-webkit-scrollbar { display: none; }
@@ -514,11 +514,18 @@ button { appearance: none; background: none; border: 0; padding: 0; cursor: poin
 .info-tip b { color: var(--ix-text); font-weight: 600; }
 .info:hover .info-tip, .info:focus-visible .info-tip { opacity: 1; transform: none; }
 
-/* Settings' second page, Shortcuts: it slides in from the right, and the main page back from the left */
-.set-view[data-in="forward"] { animation: ix-page-forward 240ms var(--ix-ease) both; }
-.set-view[data-in="back"] { animation: ix-page-back 240ms var(--ix-ease) both; }
-@keyframes ix-page-forward { from { opacity: 0; transform: translateX(14px); } }
-@keyframes ix-page-back { from { opacity: 0; transform: translateX(-14px); } }
+/* Changing page in Settings: the old page drifts out and fades quickly while the new one drifts in a beat
+   later and settles slowly, so the two cross rather than swap; the panel's height eases on the same curve. */
+.settings { --ix-page: cubic-bezier(0.32, 0.72, 0, 1); }
+.set-view[data-out] { position: absolute; left: 14px; right: 14px; pointer-events: none; }
+.set-view[data-out="forward"] { animation: ix-page-out-left 180ms cubic-bezier(0.4, 0, 1, 1) both; }
+.set-view[data-out="back"] { animation: ix-page-out-right 180ms cubic-bezier(0.4, 0, 1, 1) both; }
+.set-view[data-in="forward"] { animation: ix-page-in-right 320ms var(--ix-page) 50ms both; }
+.set-view[data-in="back"] { animation: ix-page-in-left 320ms var(--ix-page) 50ms both; }
+@keyframes ix-page-out-left { to { opacity: 0; transform: translateX(-18px); filter: blur(1px); } }
+@keyframes ix-page-out-right { to { opacity: 0; transform: translateX(18px); filter: blur(1px); } }
+@keyframes ix-page-in-right { from { opacity: 0; transform: translateX(22px); } }
+@keyframes ix-page-in-left { from { opacity: 0; transform: translateX(-22px); } }
 /* The way there: a row under a hairline, the whole row the button */
 .set-nav {
   display: flex; align-items: center; justify-content: space-between; box-sizing: border-box; width: calc(100% + 12px);

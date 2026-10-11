@@ -19,8 +19,8 @@ const ROWS: Array<{ key: 'sizes' | 'colors'; label: string; options: Array<[stri
   { key: 'colors', label: 'Show colors as', options: [['written', 'Default'], ['hex', 'hex'], ['rgb', 'rgb'], ['oklch', 'oklch']] },
 ]
 
-/** How long the panel takes to resize between its pages (matches the CSS). */
-const RESIZE_MS = 240
+/** How long a page change takes: the panel's height and the pages' slide, on one curve (matches the CSS). */
+const PAGE_MS = 320
 
 export interface Settings {
   readonly open: boolean
@@ -72,27 +72,42 @@ export function createSettings(ui: HTMLElement, onToggle: (open: boolean) => voi
   el.append(main, keys)
 
   let page: 'main' | 'keys' = 'main'
-  let resized = 0
-  /** Slide to a page, the panel's height following from one to the other. */
+  let settle = 0
+  let settled = () => {}
+  /** Slide to a page: the old one slides away and fades as the new one slides in over it, and the
+      panel's height eases from one to the other, all on the same curve. */
   const show = (to: 'main' | 'keys', animate = true) => {
     if (to === page) return
-    const from = el.offsetHeight
+    /* A change still under way finishes at once, so a quick back-and-forth never leaves a page stranded. */
+    clearTimeout(settle)
+    settled()
+    const leaving = page === 'main' ? main : keys
+    const coming = to === 'main' ? main : keys
+    const dir = to === 'keys' ? 'forward' : 'back'
     page = to
-    main.hidden = to !== 'main'
-    keys.hidden = to !== 'keys'
-    const view = to === 'main' ? main : keys
     if (to === 'keys') paint()
-    if (!animate) return
-    view.dataset.in = to === 'keys' ? 'forward' : 'back'
-    view.addEventListener('animationend', () => delete view.dataset.in, { once: true })
-    /* From the old height to the new: measured at its natural size, then eased between the two. */
+    if (!animate) { leaving.hidden = true; coming.hidden = false; return }
+    const from = el.offsetHeight
+    /* The old page lifts out of the flow where it stands, so the new one takes its place underneath it. */
+    leaving.style.top = `${leaving.offsetTop - el.scrollTop}px`
+    leaving.dataset.out = dir
+    coming.hidden = false
+    coming.dataset.in = dir
+    el.scrollTop = 0
     el.style.height = ''
     const next = el.offsetHeight
     el.style.height = `${from}px`
     void el.offsetHeight
     el.style.height = `${next}px`
-    clearTimeout(resized)
-    resized = window.setTimeout(() => { el.style.height = '' }, RESIZE_MS)
+    settled = () => {
+      settled = () => {}
+      leaving.hidden = true
+      delete leaving.dataset.out
+      leaving.style.top = ''
+      delete coming.dataset.in
+      el.style.height = ''
+    }
+    settle = window.setTimeout(settled, PAGE_MS)
   }
 
   const sync = () => {
