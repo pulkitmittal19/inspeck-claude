@@ -11,7 +11,7 @@
  * nobody uses goes away on its own.
  *
  * Mac only, macOS 26 or later (Apple's on-device SpeechAnalyzer). One session at
- * a time: a new one ends the last. The page ends it by asking it to stop (the
+ * a time: a new one ends the last, which hears {type: 'ended'} and keeps its words. The page ends it by asking it to stop (the
  * last words are finished first) or by going away (it's cut off at once).
  */
 import { spawn, type ChildProcess } from 'node:child_process'
@@ -40,6 +40,8 @@ type Event = { type: string; [k: string]: unknown }
 class Listener {
   readonly child: ChildProcess
   ready = false
+  /** Ended because another note started listening: that page is told quietly, not with an error. */
+  replaced = false
   on: ((e: Event) => void) | null = null
   constructor(standby: boolean) {
     this.child = spawn(HELPER, standby ? ['--standby', '--wait', String(WARM_SECONDS)] : [], { stdio: ['pipe', 'pipe', 'ignore'] })
@@ -86,7 +88,7 @@ export function listenStream(req: IncomingMessage, res: ServerResponse): void {
   if (!can.available) { out({ type: 'error', code: 'unsupported', message: can.reason }); res.end(); return }
 
   /* One microphone, one session. A warm listener if there is one; otherwise one from cold. */
-  current?.kill()
+  if (current) { current.replaced = true; current.kill() }
   let l: Listener
   if (warm?.alive) { l = warm; warm = null } else l = new Listener(false)
   current = l
@@ -96,7 +98,7 @@ export function listenStream(req: IncomingMessage, res: ServerResponse): void {
   else l.onReady = () => l.say('start')
   const finish = () => {
     if (current === l) current = null
-    if (!ended) out({ type: 'error', code: 'failed', message: 'The voice listener stopped unexpectedly.' })
+    if (!ended) out(l.replaced ? { type: 'ended', reason: 'replaced' } : { type: 'error', code: 'failed', message: 'The voice listener stopped unexpectedly.' })
     res.end()
   }
   if (!l.alive) finish()

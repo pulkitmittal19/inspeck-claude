@@ -36517,8 +36517,10 @@ var GroupMember = external_exports.object({
 var NOTE_MAX = 4e3;
 var NewComment = external_exports.object({
   kind: external_exports.enum(KINDS).optional(),
-  note: external_exports.string().max(NOTE_MAX),
-  page: external_exports.string().url().max(2e3),
+  /* Counted in UTF-16 units, as the note box counts (an emoji is two), not as zod's max() does. */
+  note: external_exports.string().refine((s) => s.length <= NOTE_MAX, `A note holds up to ${NOTE_MAX} characters`).refine((s) => s.trim().length > 0, "A note needs some words"),
+  /* The page it's on: a web address (Inspeck runs on http and https pages). */
+  page: external_exports.string().url().max(2e3).refine((u) => /^https?:\/\//i.test(u), "The page must be an http or https address"),
   element: external_exports.object({
     selector: external_exports.string().max(1e3),
     tag: external_exports.string().max(40).optional(),
@@ -37134,6 +37136,8 @@ function voiceAvailable() {
 var Listener = class {
   child;
   ready = false;
+  /** Ended because another note started listening: that page is told quietly, not with an error. */
+  replaced = false;
   on = null;
   constructor(standby) {
     this.child = spawn(HELPER, standby ? ["--standby", "--wait", String(WARM_SECONDS)] : [], { stdio: ["pipe", "pipe", "ignore"] });
@@ -37196,7 +37200,10 @@ function listenStream(req, res) {
     res.end();
     return;
   }
-  current?.kill();
+  if (current) {
+    current.replaced = true;
+    current.kill();
+  }
   let l;
   if (warm?.alive) {
     l = warm;
@@ -37212,7 +37219,7 @@ function listenStream(req, res) {
   else l.onReady = () => l.say("start");
   const finish = () => {
     if (current === l) current = null;
-    if (!ended) out({ type: "error", code: "failed", message: "The voice listener stopped unexpectedly." });
+    if (!ended) out(l.replaced ? { type: "ended", reason: "replaced" } : { type: "error", code: "failed", message: "The voice listener stopped unexpectedly." });
     res.end();
   };
   if (!l.alive) finish();
@@ -37261,20 +37268,30 @@ function send(res, status, body2) {
   res.end(JSON.stringify(body2));
 }
 var MAX_BODY = 5 * 1024 * 1024;
+var HttpError = class extends Error {
+  constructor(status, message) {
+    super(message);
+    this.status = status;
+  }
+  status;
+};
 function body(req) {
   return new Promise((resolve, reject) => {
     let size = 0;
     const chunks = [];
     req.on("data", (c) => {
       size += c.length;
-      if (size > MAX_BODY) {
-        reject(new Error("Body too large"));
+      if (size > MAX_BODY * 10) {
         req.destroy();
         return;
       }
-      chunks.push(c);
+      if (size <= MAX_BODY) chunks.push(c);
     });
     req.on("end", () => {
+      if (size > MAX_BODY) {
+        reject(new HttpError(413, `That\u2019s too big for Inspeck: the limit is ${MAX_BODY / 1024 / 1024} MB.`));
+        return;
+      }
       try {
         resolve(chunks.length ? JSON.parse(Buffer.concat(chunks).toString("utf8")) : {});
       } catch {
@@ -37421,6 +37438,7 @@ async function route2(req, res, version2, onNew) {
     const b = await body(req);
     if (typeof b.note !== "string") return send(res, 400, { error: "Send { note: string }" });
     if (b.note.length > NOTE_MAX) return send(res, 400, { error: `A note holds up to ${NOTE_MAX.toLocaleString("en")} characters` });
+    if (!b.note.trim()) return send(res, 400, { error: "A note needs some words (delete it instead)" });
     const c = editNote(id, b.note);
     return c ? send(res, 200, { comment: forPage2(c) }) : send(res, 404, { error: "No such comment" });
   }
@@ -37456,7 +37474,7 @@ function listen(version2, log2, onNew = () => {
       res.writeHead(204).end();
       return;
     }
-    route2(req, res, version2, onNew).catch((err) => send(res, 400, { error: err.message }));
+    route2(req, res, version2, onNew).catch((err) => send(res, err instanceof HttpError ? err.status : 400, { error: err.message }));
   });
   return new Promise((resolve) => {
     let warned = false;

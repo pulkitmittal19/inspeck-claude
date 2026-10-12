@@ -581,7 +581,8 @@ export class App {
     /* I turns Inspeck on and off: one key, anywhere but a text box (there it's a letter). With a note
        open it's a letter too: it goes into the note (below). Pressed while a menu is open, the menu
        stays open (a key doesn't close it the way a click would), which is how you note inside one. */
-    const typing = isEditable(e.composedPath()[0] as Element) || isEditable(document.activeElement)
+    /* A focused dropdown takes letters too: I jumps to its "I…" option. */
+    const typing = isEditable(e.composedPath()[0] as Element) || isEditable(document.activeElement) || document.activeElement instanceof HTMLSelectElement
     if (isToggleKey(e) && !typing && !(this.open && this.pinned)) {
       if (!e.repeat) this.toggleFromKey()
       e.preventDefault()

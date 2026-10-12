@@ -16,6 +16,8 @@ export type VoiceEvent =
   | { type: 'text'; final: string; partial: string }
   | { type: 'done'; text: string }
   | { type: 'error'; code: string; message: string }
+  /** Another note started listening, so this one stopped: what it heard stays. */
+  | { type: 'ended'; reason: string }
 
 let known: boolean | undefined
 let asking: Promise<boolean> | null = null
@@ -37,7 +39,7 @@ export interface Listening { stop(): void; cancel(): void }
 export function listen(on: (e: VoiceEvent) => void): Listening {
   const ctrl = new AbortController()
   let over = false
-  const finish = (e: VoiceEvent) => { if (!over) { over = e.type === 'done' || e.type === 'error'; on(e) } }
+  const finish = (e: VoiceEvent) => { if (!over) { over = e.type === 'done' || e.type === 'error' || e.type === 'ended'; on(e) } }
   void (async () => {
     try {
       const res = await nativeFetch(`${SERVER}/voice/listen`, { method: 'POST', credentials: 'omit', signal: ctrl.signal })

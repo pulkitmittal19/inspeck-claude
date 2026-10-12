@@ -7,15 +7,19 @@
 import { enter, leave } from './anim'
 import { api } from './api'
 import { clear, h } from './dom'
+import { prefs } from './prefs'
 import { actionOf } from './router'
 
 const SEEN_KEY = 'inspeck:tour-seen'
 
 const k = (text: string) => h('span', { class: 'tour-k' }, text)
 
-const STEPS: Array<{ title: string; line: Array<string | HTMLElement> }> = [
+/* A line can depend on a setting: it's worked out when the card shows. */
+const STEPS: Array<{ title: string; line: Array<string | HTMLElement> | (() => Array<string | HTMLElement>) }> = [
   { title: 'Point and note', line: ['Hover anything to outline it. Click it to leave a note, or drag across an area.'] },
-  { title: 'Send to Claude', line: ['Notes wait on the page until you ask Claude to check them. Or turn on Auto-send in Settings.'] },
+  { title: 'Send to Claude', line: () => [prefs.get().send === 'live'
+    ? 'Auto-send is on: each note goes to Claude as you place it. You can turn it off in Settings.'
+    : 'Notes wait on the page until you ask Claude to check them. Or turn on Auto-send in Settings.'] },
   { title: 'One key', line: ['Press ', k('I'), ' to turn Inspeck on or off. Every other shortcut is in Settings.'] },
 ]
 
@@ -48,7 +52,7 @@ export function createTour(ui: HTMLElement): Tour {
         h('button', { type: 'button', class: 'tour-link', 'data-action': last ? 'tour-back' : 'tour-skip' }, last ? 'Back' : 'Skip')),
       h('div', { class: 'tour-body' },
         h('p', { class: 'tour-title' }, s.title),
-        h('p', { class: 'tour-line' }, ...s.line.map(p => typeof p === 'string' ? p : p.cloneNode(true)))),
+        h('p', { class: 'tour-line' }, ...(typeof s.line === 'function' ? s.line() : s.line).map(p => typeof p === 'string' ? p : p.cloneNode(true)))),
       h('div', { class: 'tour-foot' },
         h('button', { type: 'button', class: 'tour-next', 'data-action': last ? 'tour-done' : 'tour-next' }, last ? 'Got it' : 'Next')),
     )

@@ -61,16 +61,22 @@ function send(res: ServerResponse, status: number, body: unknown): void {
 
 const MAX_BODY = 5 * 1024 * 1024
 
+/** An answer with its own status: too big is 413, not the usual 400. */
+class HttpError extends Error { constructor(readonly status: number, message: string) { super(message) } }
+
 function body(req: IncomingMessage): Promise<unknown> {
   return new Promise((resolve, reject) => {
     let size = 0
     const chunks: Buffer[] = []
     req.on('data', (c: Buffer) => {
       size += c.length
-      if (size > MAX_BODY) { reject(new Error('Body too large')); req.destroy(); return }
-      chunks.push(c)
+      /* Too big: stop keeping it but read it to the end, so the page gets an answer it can show
+         rather than a dropped connection. Far too big, and the connection goes. */
+      if (size > MAX_BODY * 10) { req.destroy(); return }
+      if (size <= MAX_BODY) chunks.push(c)
     })
     req.on('end', () => {
+      if (size > MAX_BODY) { reject(new HttpError(413, `That’s too big for Inspeck: the limit is ${MAX_BODY / 1024 / 1024} MB.`)); return }
       try { resolve(chunks.length ? JSON.parse(Buffer.concat(chunks).toString('utf8')) : {}) }
       catch { reject(new Error('Body is not JSON')) }
     })
@@ -217,6 +223,7 @@ async function route(req: IncomingMessage, res: ServerResponse, version: string,
     const b = (await body(req)) as { note?: unknown }
     if (typeof b.note !== 'string') return send(res, 400, { error: 'Send { note: string }' })
     if (b.note.length > NOTE_MAX) return send(res, 400, { error: `A note holds up to ${NOTE_MAX.toLocaleString('en')} characters` })
+    if (!b.note.trim()) return send(res, 400, { error: 'A note needs some words (delete it instead)' })
     const c = store.editNote(id, b.note)
     return c ? send(res, 200, { comment: forPage(c) }) : send(res, 404, { error: 'No such comment' })
   }
@@ -264,7 +271,7 @@ export function listen(version: string, log: (msg: string) => void, onNew: (c: C
       res.writeHead(204).end()
       return
     }
-    route(req, res, version, onNew).catch((err: Error) => send(res, 400, { error: err.message }))
+    route(req, res, version, onNew).catch((err: Error) => send(res, err instanceof HttpError ? err.status : 400, { error: err.message }))
   })
 
   return new Promise(resolve => {

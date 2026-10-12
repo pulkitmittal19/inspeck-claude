@@ -64,8 +64,12 @@ export const NOTE_MAX = 4000
 /** What a page sends when someone places a comment. */
 export const NewComment = z.object({
   kind: z.enum(KINDS).optional(),
-  note: z.string().max(NOTE_MAX),
-  page: z.string().url().max(2000),
+  /* Counted in UTF-16 units, as the note box counts (an emoji is two), not as zod's max() does. */
+  note: z.string()
+    .refine(s => s.length <= NOTE_MAX, `A note holds up to ${NOTE_MAX} characters`)
+    .refine(s => s.trim().length > 0, 'A note needs some words'),
+  /* The page it's on: a web address (Inspeck runs on http and https pages). */
+  page: z.string().url().max(2000).refine(u => /^https?:\/\//i.test(u), 'The page must be an http or https address'),
   element: z.object({
     selector: z.string().max(1000),
     tag: z.string().max(40).optional(),

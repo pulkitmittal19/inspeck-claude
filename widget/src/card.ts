@@ -398,6 +398,11 @@ export function createCard(ui: HTMLElement): Card {
         if (sendAfter && t.value) void send()
         break
       }
+      case 'ended':
+        /* Another note took the mic: stop here, keeping what was heard. */
+        endVoice()
+        sync()
+        break
       case 'error': {
         endVoice()
         sync()

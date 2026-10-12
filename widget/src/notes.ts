@@ -137,7 +137,14 @@ export function createNotes(ui: HTMLElement, onOpen: (note: Note, el: Element | 
       setTimeout(() => m.remove(), 220)
     }
     for (const n of notes) {
-      if (markers.has(n.id)) continue
+      /* One already on the page keeps up with its note: a number that moved up when a note before it was
+         deleted, words that were edited. */
+      const had = markers.get(n.id)
+      if (had) {
+        if (had.textContent !== String(n.n)) had.textContent = String(n.n)
+        had.setAttribute('aria-label', `Note ${n.n}: ${n.note}`)
+        continue
+      }
       const m = h('button', { type: 'button', class: 'marker', 'data-action': 'marker', 'data-id': n.id, 'aria-label': `Note ${n.n}: ${n.note}` }, String(n.n))
       if (born.delete(n.id)) {
         m.setAttribute('data-born', '')

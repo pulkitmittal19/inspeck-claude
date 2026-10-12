@@ -387,6 +387,25 @@ test('a held note waits on the page: the watcher and the push leave it until it 
   assert.ok(left.every(c => c.status !== 'new' && !c.held))
 })
 
+test('notes the box could never send are refused, with a reason', async () => {
+  const at = 'http://localhost:5173/refused'
+  const post = (note, extra = {}) => page(s.port, 'POST', '/comments', { body: { ...fix, page: at, note, screenshot: undefined, ...extra } })
+  assert.equal((await post('😀'.repeat(2000))).status, 201, '2,000 emoji is 4,000 units, the most the box holds')
+  assert.equal((await post('😀'.repeat(2001))).status, 400, 'counted as the box counts: an emoji is two')
+  assert.equal((await post('')).status, 400)
+  assert.equal((await post('  \n ')).status, 400)
+  assert.equal((await post('x', { page: 'javascript:alert(1)' })).status, 400)
+  const ok = (await post('kept')).json.comment
+  assert.equal((await page(s.port, 'PATCH', `/comments/${ok.id}`, { body: { note: '   ' } })).status, 400, 'an edit can’t empty a note')
+})
+
+test('a body over 5 MB gets a 413 with a reason, not a dropped connection', async () => {
+  const big = await page(s.port, 'POST', '/comments', { body: { ...fix, note: 'x', screenshot: 'data:image/png;base64,' + 'A'.repeat(6 * 1024 * 1024) } })
+  assert.equal(big.status, 413)
+  assert.match(big.json.error, /too big/)
+  assert.equal((await page(s.port, 'GET', '/health')).status, 200)
+})
+
 test('deleting a waiting note closes the gap; a number Claude already has never changes', async () => {
   const at = 'http://localhost:5173/numbers'
   const add = async (note, held = true) => (await page(s.port, 'POST', '/comments', { body: { ...fix, page: at, note, screenshot: undefined, held } })).json.comment
