@@ -29,6 +29,8 @@ When you open the person's app in your browser pane:
 
 Notes wait on the page until the person asks you to check them, so you get a batch once they've finished looking. If they've turned on **Auto-send notes to Claude** in Inspeck's settings, each note comes as it's placed instead. `pending` reads waiting notes too: when the person asks you to check their notes, that sends them.
 
+Turning on Auto-send, the person is given a line to send in their chat: **"Listen for my Inspeck notes on http://localhost:3000"** (their app's address). When it comes: call `bind` with `page` set to that address, call `pending` once and handle anything waiting, then start the watcher in the background and say in one short line that you're listening. From then on each note they place wakes you; start the watcher again after each batch.
+
 When the person uses their own browser (Chrome, Safari) instead of your pane, there's no tab to run that line in. Call `bind` with `page` set to the app's address (e.g. `http://localhost:5173`): every note from that site, in any browser, now comes to this session. Then start the watcher as above. If they just say "check my Inspeck notes", `pending` also takes any notes no other session could have picked up and links their site to you; it says so at the top when it does.
 
 Notes may carry `code` (the file and line the element is written on) and `used in` (where the component around it is placed). Open those first. They come from React, Vue, Svelte or a dev plugin such as code-inspector-plugin; when a note has none (a server-rendered page, say), search the code with the selector, the classes and the quoted text.

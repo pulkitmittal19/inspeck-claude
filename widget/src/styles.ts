@@ -506,6 +506,25 @@ button { appearance: none; background: none; border: 0; padding: 0; cursor: poin
 .switch[aria-checked="true"] .knob { transform: translateX(12px); }
 .set-toggle .set-label { display: inline-flex; align-items: center; gap: 5px; }
 .set-toggle { position: relative; }
+/* With Auto-send on: what to send in the Claude chat, opening under the switch. */
+.listen-wrap { display: grid; grid-template-rows: 0fr; opacity: 0; transition: grid-template-rows 260ms var(--ix-ease), opacity 200ms ease; }
+.listen-wrap[data-open] { grid-template-rows: 1fr; opacity: 1; }
+.listen { min-height: 0; overflow: hidden; }
+.listen-line { margin: 10px 0 7px; font: 500 10.5px/1.45 var(--ix-sans); color: var(--ix-dim); white-space: normal; }
+.listen-msg {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 6px 6px 10px; border-radius: 7px;
+  background: rgba(255, 61, 138, 0.08); box-shadow: inset 0 0 0 1px rgba(255, 61, 138, 0.28);
+  font: 500 11.5px/1.2 var(--ix-sans); color: #fff; user-select: text;
+}
+.listen-copy {
+  flex: none; display: grid; place-items: center; width: 22px; height: 22px; border-radius: 5px; color: var(--ix-dim);
+  transition: background 140ms ease, color 140ms ease;
+}
+.listen-copy:hover { background: rgba(255, 255, 255, 0.08); color: #fff; }
+.listen-copy[data-copied] { color: #7EE2A8; }
+.listen-copy[data-copied] svg { animation: ix-check 320ms var(--ix-ease) both; }
+.listen-copy-src { position: fixed; opacity: 0; pointer-events: none; }
+
 /* The explanation spans the row, above it, so it never runs off the panel's edge. */
 .info { display: inline-flex; color: var(--ix-faint); cursor: help; outline: none; }
 .info:hover, .info:focus-visible { color: var(--ix-text); }

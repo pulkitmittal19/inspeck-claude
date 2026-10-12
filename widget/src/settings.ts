@@ -15,6 +15,10 @@ import { SHORTCUTS, shortcutRow } from './keys'
 import { prefs, type Prefs } from './prefs'
 import { actionOf } from './router'
 
+/** What the person sends in their Claude chat so it listens for notes: Claude links this site to the chat
+    and starts its watcher. The address says which app, so the notes go to that chat with others open. */
+export const listenMessage = () => `Listen for my Inspeck notes on ${location.origin}`
+
 const ROWS: Array<{ key: 'sizes' | 'colors'; label: string; options: Array<[string, string]> }> = [
   { key: 'sizes', label: 'Show sizes in', options: [['written', 'Default'], ['px', 'px'], ['rem', 'rem']] },
   { key: 'colors', label: 'Show colors as', options: [['written', 'Default'], ['hex', 'hex'], ['rgb', 'rgb'], ['oklch', 'oklch']] },
@@ -58,8 +62,16 @@ export function createSettings(ui: HTMLElement, onToggle: (open: boolean) => voi
     h('span', { class: 'info-tip', role: 'tooltip', id: 'ix-set-live-more' },
       h('span', {}, h('b', {}, 'On:'), ' each note goes to Claude as you add it, and Claude starts on it.'),
       h('span', {}, h('b', {}, 'Off:'), ' notes wait on the page until you ask Claude to check them in the chat.')))
+  /* Auto-send sends each note to the chat, but Claude only picks one up by itself while the chat is
+     listening, and only the chat can start that. So with Auto-send on, this says what to send there:
+     once per chat, and from then on every note reaches Claude as it's placed. */
+  const copyBtn = h('button', { type: 'button', class: 'listen-copy', 'data-action': 'copy-listen', 'aria-label': 'Copy the message' }, svg(ICONS.copy, 12, 2))
+  const listenHint = h('div', { class: 'listen-wrap' }, h('div', { class: 'listen' },
+    h('p', { class: 'listen-line' }, 'Now send this in your Claude chat, once per chat, so Claude picks notes up as they come:'),
+    h('div', { class: 'listen-msg' }, h('span', {}, listenMessage()), copyBtn)))
   main.append(
     h('div', { class: 'set-row set-toggle' }, h('span', { class: 'set-label', id: 'ix-set-live' }, 'Auto-send notes to Claude', more), live),
+    listenHint,
     h('button', { type: 'button', class: 'set-nav', 'data-action': 'set-page', 'data-page': 'keys' },
       h('span', {}, 'Keyboard shortcuts'), h('span', { class: 'set-nav-end' }, svg(ICONS.chevron, 11, 2.2))),
   )
@@ -107,6 +119,30 @@ export function createSettings(ui: HTMLElement, onToggle: (open: boolean) => voi
       b.setAttribute('aria-checked', String(now[b.dataset.key as 'sizes' | 'colors'] === b.dataset.value))
     }
     live.setAttribute('aria-checked', String(now.send === 'live'))
+    listenHint.toggleAttribute('data-open', now.send === 'live')
+  }
+  /* Copied: the button turns into a tick for a moment. The page's clipboard, or, where that's not
+     allowed (some embedded browsers), a selection copied the old way. */
+  let copiedTimer = 0
+  const copyListen = async () => {
+    let ok = false
+    try { await navigator.clipboard.writeText(listenMessage()); ok = true } catch {
+      const t = h('textarea', { class: 'listen-copy-src', 'aria-hidden': 'true' })
+      t.value = listenMessage()
+      el.appendChild(t)
+      t.select()
+      try { ok = document.execCommand('copy') } catch { /* nothing more to try */ }
+      t.remove()
+    }
+    copyBtn.replaceChildren(svg(ok ? ICONS.check : ICONS.copy, 12, 2.2))
+    copyBtn.toggleAttribute('data-copied', ok)
+    copyBtn.setAttribute('aria-label', ok ? 'Copied' : 'Couldn’t copy: select the message and copy it')
+    clearTimeout(copiedTimer)
+    copiedTimer = window.setTimeout(() => {
+      copyBtn.replaceChildren(svg(ICONS.copy, 12, 2))
+      copyBtn.removeAttribute('data-copied')
+      copyBtn.setAttribute('aria-label', 'Copy the message')
+    }, 1600)
   }
   sync()
   prefs.onChange(sync)
@@ -137,12 +173,14 @@ export function createSettings(ui: HTMLElement, onToggle: (open: boolean) => voi
     handle(e) {
       if (!open || !e.composedPath().includes(el)) return false
       /* The page keeps the keyboard: F, C and Shift still work with the panel open. */
-      if (e.type === 'mousedown') { e.preventDefault(); return true }
+      /* The message to send can be selected and copied by hand. */
+      if (e.type === 'mousedown') { if (!(e.composedPath()[0] as Element).closest?.('.listen-msg > span')) e.preventDefault(); return true }
       if (e.type === 'click') {
         const a = actionOf(e)
         if (a?.action === 'pref' && a.el.dataset.key && a.el.dataset.value) prefs.set({ [a.el.dataset.key]: a.el.dataset.value } as Partial<Prefs>)
         if (a?.action === 'live') prefs.set({ send: prefs.get().send === 'live' ? 'ask' : 'live' })
         if (a?.action === 'set-page') show(a.el.dataset.page === 'keys' ? 'keys' : 'main')
+        if (a?.action === 'copy-listen') void copyListen()
       }
       return true
     },
