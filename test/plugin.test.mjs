@@ -57,7 +57,8 @@ async function start({ home, port } = {}) {
     command: process.execPath,
     args: [join(dir, 'inspeck.mjs')],
     cwd: dir,
-    env: { ...process.env, INSPECK_HOME: home, INSPECK_PORT: String(port) },
+    /* Not an installed copy: it must never touch the real Claude settings (see autoupdate.ts). */
+    env: { ...process.env, INSPECK_HOME: home, INSPECK_PORT: String(port), CLAUDE_PLUGIN_ROOT: '' },
     stderr: 'ignore',
   }))
   /* The HTTP side comes up alongside the protocol; wait until it answers. */

@@ -244,17 +244,61 @@ async function route(req: IncomingMessage, res: ServerResponse, version: string,
   return send(res, 405, { error: 'Method not allowed' })
 }
 
+/** How often a session sharing the port tries for it again. */
+const RETRY_MS = 5000
+
+/** Whether version a is newer than b ("0.15.0" > "0.14.2"). */
+export function newer(a: string, b: string): boolean {
+  const pa = a.split('.').map(Number), pb = b.split('.').map(Number)
+  if (pa.some(Number.isNaN) || pb.some(Number.isNaN) || !pa.length) return false
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const x = pa[i] ?? 0, y = pb[i] ?? 0
+    if (x !== y) return x > y
+  }
+  return false
+}
+
+/** Ask the Inspeck on the port to step aside, if it's an older one. True when it agreed. */
+async function handover(mine: string): Promise<boolean> {
+  try {
+    const h = await fetch(`http://127.0.0.1:${PORT}/health`, { signal: AbortSignal.timeout(1500) }).then(r => r.json()) as { name?: string; version?: string }
+    if (h.name !== 'inspeck' || !h.version || !newer(mine, h.version)) return false
+    const r = await fetch(`http://127.0.0.1:${PORT}/handover`, { method: 'POST', headers: { 'x-inspeck-version': mine }, signal: AbortSignal.timeout(1500) })
+    return r.ok
+  } catch {
+    return false
+  }
+}
+
 /**
  * Start listening. Resolves true when this process owns the port, false when
  * another Inspeck already does — in which case both share the inbox file and
  * nothing is lost; this one just doesn't answer pages. It keeps trying, so if
- * the other session closes, this one takes the port over.
+ * the other session closes, this one takes the port over. And if the one on the
+ * port is an older Inspeck (an update arrived while a chat was open), it's asked
+ * to step aside, so pages get the newest widget without closing any chat.
  */
 export function listen(version: string, log: (msg: string) => void, onNew: (c: Comment) => void = () => {}): Promise<boolean> {
+  let attempt = () => {}
   const server = createServer((req, res) => {
     const origin = req.headers.origin
     if (!hostAllowed(req.headers.host) || !originAllowed(origin)) {
       return send(res, 403, { error: 'Inspeck only accepts comments from local pages and the Inspeck extension' })
+    }
+    /* A newer Inspeck has started (an update came while this session was open) and asks for the port:
+       this one steps aside and shares its inbox, so pages get the newest widget without anyone closing
+       a chat. Only another Inspeck asks this, never a page (a browser always says where it's from). */
+    if (req.method === 'POST' && req.url === '/handover') {
+      const theirs = String(req.headers['x-inspeck-version'] ?? '')
+      if (origin || !newer(theirs, version)) return send(res, 409, { error: 'Only a newer Inspeck can take over' })
+      log(`Inspeck ${theirs} has started: handing it the port and sharing its inbox.`)
+      res.on('finish', () => {
+        server.close()
+        server.closeIdleConnections()
+        /* If that one goes away, take the port back. */
+        setTimeout(attempt, RETRY_MS).unref()
+      })
+      return send(res, 200, { stepping: true })
     }
     if (origin) {
       res.setHeader('access-control-allow-origin', origin)
@@ -276,12 +320,13 @@ export function listen(version: string, log: (msg: string) => void, onNew: (c: C
 
   return new Promise(resolve => {
     let warned = false
-    const attempt = () => {
+    attempt = () => {
       const onError = (err: NodeJS.ErrnoException) => {
         if (err.code !== 'EADDRINUSE') { log(`Could not listen on ${PORT}: ${err.message}`); resolve(false); return }
         if (!warned) { log(`Port ${PORT} is taken, probably by another Claude session's Inspeck. Sharing its inbox.`); warned = true }
         resolve(false)
-        setTimeout(attempt, 5000).unref()
+        /* An older Inspeck on the port is asked to hand it over; then it's ours in a moment. */
+        void handover(version).then(ok => setTimeout(attempt, ok ? 300 : RETRY_MS).unref())
       }
       server.once('error', onError)
       server.listen(PORT, '127.0.0.1', () => {
