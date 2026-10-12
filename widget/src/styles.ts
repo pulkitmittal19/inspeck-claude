@@ -523,7 +523,6 @@ button { appearance: none; background: none; border: 0; padding: 0; cursor: poin
 .listen-copy:hover { background: rgba(255, 255, 255, 0.08); color: #fff; }
 .listen-copy[data-copied] { color: #7EE2A8; }
 .listen-copy[data-copied] svg { animation: ix-check 320ms var(--ix-ease) both; }
-.listen-copy-src { position: fixed; opacity: 0; pointer-events: none; }
 
 /* The explanation spans the row, above it, so it never runs off the panel's edge. */
 .info { display: inline-flex; color: var(--ix-faint); cursor: help; outline: none; }

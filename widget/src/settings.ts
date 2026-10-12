@@ -9,7 +9,7 @@
  * then the quicker ways to look closer. While it's showing, a key you
  * press lights up its keycap, so the list answers "which one was that?". */
 import { enter, leave } from './anim'
-import { h, svg } from './dom'
+import { copyToClipboard, h, svg } from './dom'
 import { ICONS } from './icons'
 import { SHORTCUTS, shortcutRow } from './keys'
 import { prefs, type Prefs } from './prefs'
@@ -128,15 +128,7 @@ export function createSettings(ui: HTMLElement, onToggle: (open: boolean) => voi
      allowed (some embedded browsers), a selection copied the old way. */
   let copiedTimer = 0
   const copyListen = async () => {
-    let ok = false
-    try { await navigator.clipboard.writeText(listenMessage()); ok = true } catch {
-      const t = h('textarea', { class: 'listen-copy-src', 'aria-hidden': 'true' })
-      t.value = listenMessage()
-      el.appendChild(t)
-      t.select()
-      try { ok = document.execCommand('copy') } catch { /* nothing more to try */ }
-      t.remove()
-    }
+    const ok = await copyToClipboard(listenMessage(), el)
     copyBtn.replaceChildren(svg(ok ? ICONS.check : ICONS.copy, 12, 2.2))
     copyBtn.toggleAttribute('data-copied', ok)
     copyBtn.setAttribute('aria-label', ok ? 'Copied' : 'Couldn’t copy: select the message and copy it')

@@ -8,7 +8,7 @@ import { present, rootFontPx } from './css/units'
 import { prefs } from './prefs'
 import { splitList } from './css/rules'
 import { enter, leave, play } from './anim'
-import { clear, h, svg } from './dom'
+import { clear, copyToClipboard, h, svg } from './dom'
 import { ICONS } from './icons'
 import { actionOf } from './router'
 import { cancelFrame, nextFrame } from './native'
@@ -123,6 +123,12 @@ const tool = (action: string, icon: keyof typeof ICONS, label: string) =>
   h('button', { type: 'button', class: 'tool', 'data-action': action, 'aria-label': label, 'data-tip': label }, svg(ICONS[icon], 13))
 
 export const cssText = (d: Description) => d.lines.map(l => `${l.prop}: ${l.value};`).join('\n')
+/** What Copy gives: the note written so far, if any, as a comment on top, then the CSS. A comment keeps it
+    pasteable as CSS and still reads as a note anywhere else. */
+export const copyText = (d: Description, note: string) => {
+  const n = note.trim().replace(/\*\//g, '* /')
+  return n ? `/* Note: ${n} */\n${cssText(d)}` : cssText(d)
+}
 
 
 /** A section whose height animates open and closed. */
@@ -199,6 +205,11 @@ export function createCard(ui: HTMLElement): Card {
       else if (parts.status.textContent === FULL) setOpen(parts.statusWrap, false)
     }
     const has = parts.note.value.trim().length > 0
+    const copy = el.querySelector<HTMLElement>('[data-action="copy"]')
+    if (copy) {
+      const say = has ? 'Copy CSS and note' : 'Copy CSS'
+      if (copy.dataset.tip !== say) { copy.dataset.tip = say; copy.setAttribute('aria-label', say); if (micTipFor === copy) showMicTip(copy) }
+    }
     parts.send.disabled = !has || busy
     parts.send.toggleAttribute('data-ready', has)
     /* The first keystroke folds the CSS away so the note has the room. */
@@ -655,7 +666,16 @@ export function createCard(ui: HTMLElement): Card {
             break
           }
           case 'copy':
-            if (desc) void navigator.clipboard?.writeText(cssText(desc)).then(() => status('CSS copied', 'ok'), () => status('Couldn’t copy', 'error'))
+            if (desc) {
+              const withNote = !!parts.note.value.trim()
+              const note = parts.note
+              void copyToClipboard(copyText(desc, note.value), el).then(ok => {
+                status(ok ? (withNote ? 'CSS and note copied' : 'CSS copied') : 'Couldn’t copy', ok ? 'ok' : 'error')
+                /* The old way moved the selection: the cursor goes back to the end of the note. */
+                note.focus({ preventScroll: true })
+                note.setSelectionRange(note.value.length, note.value.length)
+              })
+            }
             break
           case 'delete':
             if (opts.onDelete) void opts.onDelete().then(() => opts?.onClose(), err => status((err as Error).message, 'error'))

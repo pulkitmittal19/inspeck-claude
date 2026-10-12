@@ -59,3 +59,21 @@ export function isEditable(el: Element | null): boolean {
   if (el instanceof HTMLInputElement) return !['button', 'checkbox', 'radio', 'range', 'color', 'file', 'submit', 'reset', 'image'].includes(el.type)
   return el instanceof HTMLElement && el.isContentEditable
 }
+
+/** Put text on the clipboard: the page's clipboard, or, where a browser won't allow it (some embedded
+    ones), a selection copied the old way. `within` is where the selection briefly lives. True if it went. */
+export async function copyToClipboard(text: string, within: Node): Promise<boolean> {
+  try { await navigator.clipboard.writeText(text); return true } catch { /* not allowed here: the old way */ }
+  const t = document.createElement('textarea')
+  t.value = text
+  t.setAttribute('aria-hidden', 'true')
+  t.style.position = 'fixed'
+  t.style.opacity = '0'
+  t.style.pointerEvents = 'none'
+  within.appendChild(t)
+  t.select()
+  let ok = false
+  try { ok = document.execCommand('copy') } catch { /* nothing more to try */ }
+  t.remove()
+  return ok
+}
