@@ -63,8 +63,10 @@ export function createSettings(ui: HTMLElement, onToggle: (open: boolean) => voi
       h('span', {}, h('b', {}, 'On:'), ' each note goes to Claude as you add it, and Claude starts on it.'),
       h('span', {}, h('b', {}, 'Off:'), ' notes wait on the page until you ask Claude to check them in the chat.')))
   /* Auto-send sends each note to the chat, but Claude only picks one up by itself while the chat is
-     listening, and only the chat can start that. So with Auto-send on, this says what to send there:
-     once per chat, and from then on every note reaches Claude as it's placed. */
+     listening, and only the chat can start that. So turning Auto-send on, this says what to send there:
+     once per chat, and from then on every note reaches Claude as it's placed. It shows just then, as the
+     switch goes on; opening Settings again later, it's gone. */
+  let justTurnedOn = false
   const copyBtn = h('button', { type: 'button', class: 'listen-copy', 'data-action': 'copy-listen', 'aria-label': 'Copy the message' }, svg(ICONS.copy, 12, 2))
   const listenHint = h('div', { class: 'listen-wrap' }, h('div', { class: 'listen' },
     h('p', { class: 'listen-line' }, 'Now send this in your Claude chat, once per chat, so Claude picks notes up as they come:'),
@@ -119,7 +121,8 @@ export function createSettings(ui: HTMLElement, onToggle: (open: boolean) => voi
       b.setAttribute('aria-checked', String(now[b.dataset.key as 'sizes' | 'colors'] === b.dataset.value))
     }
     live.setAttribute('aria-checked', String(now.send === 'live'))
-    listenHint.toggleAttribute('data-open', now.send === 'live')
+    if (now.send !== 'live') justTurnedOn = false
+    listenHint.toggleAttribute('data-open', justTurnedOn)
   }
   /* Copied: the button turns into a tick for a moment. The page's clipboard, or, where that's not
      allowed (some embedded browsers), a selection copied the old way. */
@@ -150,7 +153,7 @@ export function createSettings(ui: HTMLElement, onToggle: (open: boolean) => voi
   const set = (o: boolean) => {
     if (o === open) return
     open = o
-    if (o) { sync(); enter(el) } else leave(el, 120, () => { show('main', false); lit.clear(); paint() })
+    if (o) { sync(); enter(el) } else leave(el, 120, () => { show('main', false); lit.clear(); paint(); justTurnedOn = false; sync() })
     onToggle(o)
   }
 
@@ -178,7 +181,11 @@ export function createSettings(ui: HTMLElement, onToggle: (open: boolean) => voi
       if (e.type === 'click') {
         const a = actionOf(e)
         if (a?.action === 'pref' && a.el.dataset.key && a.el.dataset.value) prefs.set({ [a.el.dataset.key]: a.el.dataset.value } as Partial<Prefs>)
-        if (a?.action === 'live') prefs.set({ send: prefs.get().send === 'live' ? 'ask' : 'live' })
+        if (a?.action === 'live') {
+          const on = prefs.get().send !== 'live'
+          justTurnedOn = on
+          prefs.set({ send: on ? 'live' : 'ask' })
+        }
         if (a?.action === 'set-page') show(a.el.dataset.page === 'keys' ? 'keys' : 'main')
         if (a?.action === 'copy-listen') void copyListen()
       }
