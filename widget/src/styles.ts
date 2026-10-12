@@ -196,10 +196,14 @@ button { appearance: none; background: none; border: 0; padding: 0; cursor: poin
 .c-approx { margin-right: 1px; color: var(--ix-dim); cursor: help; }
 .c-fn, .c-punct { color: var(--ix-c-punct); }
 .res { margin-left: 12px; color: var(--ix-faint); }
+/* Starting with a colour chip, it gives back the chip's 2px of room, so the gap looks the same. */
+.res:has(> .sw:first-child) { margin-left: 10px; }
 /* A colour chip that reads even when the colour is as dark as the card: a
-   ring around it, and a hairline inside so a near-black fill still looks filled. */
+   ring around it, and a hairline inside so a near-black fill still looks filled.
+   The ring sits 1px outside the chip, so the chip keeps 2px of room on its left (1px, at a fractional
+   position, still shaved it): the value it starts is cut off at its edges (an ellipsis). */
 .sw {
-  display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: -1px;
+  display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin: 0 6px 0 2px; vertical-align: -1px;
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.16), 0 0 0 1px rgba(255, 255, 255, 0.42);
 }
 
