@@ -9,11 +9,13 @@
 const GENERATED_ID = /^[:«]|^(radix|headlessui|react-aria|mui|chakra|downshift)-|:r[0-9a-z]+:|\d{4,}/
 const TEST_ATTRS = ['data-testid', 'data-test', 'data-cy', 'data-qa']
 
+import { SHADOW_STEP } from './dom'
+
 const esc = (s: string) => CSS.escape(s)
 
-function unique(sel: string, el: Element): boolean {
+function unique(sel: string, el: Element, scope: Document | ShadowRoot = document): boolean {
   try {
-    const found = document.querySelectorAll(sel)
+    const found = scope.querySelectorAll(sel)
     return found.length === 1 && found[0] === el
   } catch { return false }
 }
@@ -36,20 +38,29 @@ function step(el: Element): string {
 }
 
 export function selectorFor(el: Element): string {
+  /* Inside a web component: the component's selector, then this one within its shadow root. */
+  const root = el.getRootNode()
+  if (root instanceof ShadowRoot) return `${selectorFor(root.host)}${SHADOW_STEP}${selectorWithin(el, root)}`
+  return selectorWithin(el, document)
+}
+
+/** A selector unique within one document or shadow root. */
+function selectorWithin(el: Element, scope: Document | ShadowRoot): string {
   const own = anchorOf(el)
-  if (own && unique(own, el)) return own
+  if (own && unique(own, el, scope)) return own
 
   const path: string[] = []
   for (let cur: Element | null = el; cur && cur !== document.documentElement; cur = cur.parentElement) {
     const a = cur === el ? null : anchorOf(cur)
-    if (a && unique(a, cur)) {
+    if (a && unique(a, cur, scope)) {
       const sel = `${a} > ${path.join(' > ')}`
-      if (unique(sel, el)) return sel
+      if (unique(sel, el, scope)) return sel
     }
     path.unshift(step(cur))
     const sel = path.join(' > ')
-    if (path.length >= 3 && unique(sel, el)) return sel
+    if (path.length >= 3 && unique(sel, el, scope)) return sel
   }
+  /* Short of three steps at the top of a shadow root, the path can still be unique there. */
   return path.join(' > ')
 }
 

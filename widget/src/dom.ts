@@ -53,6 +53,35 @@ export function sheet(css: string): CSSStyleSheet {
 }
 
 /** True when the keyboard is in a field the person is typing into. */
+/* ---------- elements inside web components ----------
+ * A selector into an open shadow root is written host first: `my-card >>> .title` (each `>>>` steps
+ * into the shadow root of what's matched so far). */
+
+export const SHADOW_STEP = ' >>> '
+
+/** The element a selector names, stepping into open shadow roots at each `>>>`. */
+export function queryDeep(selector: string): Element | null {
+  const steps = selector.split(SHADOW_STEP)
+  let scope: Document | ShadowRoot = document
+  let el: Element | null = null
+  for (let i = 0; i < steps.length; i++) {
+    try { el = scope.querySelector(steps[i]) } catch { return null }
+    if (!el) return null
+    if (i < steps.length - 1) {
+      if (!el.shadowRoot) return null
+      scope = el.shadowRoot
+    }
+  }
+  return el
+}
+
+/** An element's parent, or the component it's inside when it's at the top of a shadow root. */
+export function parentAcross(el: Element): Element | null {
+  if (el.parentElement) return el.parentElement
+  const root = el.getRootNode()
+  return root instanceof ShadowRoot ? root.host : null
+}
+
 export function isEditable(el: Element | null): boolean {
   if (!el) return false
   if (el instanceof HTMLTextAreaElement) return true

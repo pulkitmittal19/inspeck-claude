@@ -11,7 +11,7 @@
  */
 import { api, type Note } from './api'
 import { enter, leave } from './anim'
-import { clear, h } from './dom'
+import { clear, h, queryDeep } from './dom'
 import { unionOf, type Box } from './marquee'
 import { actionOf } from './router'
 import { cancelFrame, nextFrame } from './native'
@@ -94,7 +94,7 @@ export function createNotes(ui: HTMLElement, onOpen: (note: Note, el: Element | 
     const cached = els.get(n.id)?.deref()
     if (cached?.isConnected) return cached
     let el: Element | null = null
-    try { el = document.querySelector(n.element.selector) } catch { el = null }
+    el = queryDeep(n.element.selector)
     if (el && n.element.tag && el.tagName.toLowerCase() !== n.element.tag) el = null
     if (el && n.element.text) {
       const now = ((el as HTMLElement).innerText ?? el.textContent ?? '').replace(/\s+/g, ' ').trim()
@@ -109,7 +109,7 @@ export function createNotes(ui: HTMLElement, onOpen: (note: Note, el: Element | 
   function membersOf(n: Note): Element[] {
     const cached = groups.get(n.id)
     if (cached?.length && cached.every(e => e.isConnected)) return cached
-    const found = (n.group ?? []).map(m => { try { return document.querySelector(m.selector) } catch { return null } })
+    const found = (n.group ?? []).map(m => queryDeep(m.selector))
       .filter((e): e is Element => !!e)
     groups.set(n.id, found)
     return found
@@ -123,7 +123,7 @@ export function createNotes(ui: HTMLElement, onOpen: (note: Note, el: Element | 
   }
 
   function findAnchor(n: Note): Element | null {
-    try { return n.element.anchor ? document.querySelector(n.element.anchor) : null } catch { return null }
+    return n.element.anchor ? queryDeep(n.element.anchor) : null
   }
 
   /* ---------- markers ---------- */

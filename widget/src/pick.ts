@@ -7,6 +7,8 @@
  * person wants the inside or the container instead.
  */
 
+import { parentAcross } from './dom'
+
 const CONTROL = [
   'button', 'a[href]', 'input', 'select', 'textarea', 'summary', 'label',
   '[role=button]', '[role=link]', '[role=menuitem]', '[role=menuitemcheckbox]', '[role=menuitemradio]',
@@ -21,9 +23,21 @@ export function elementAt(x: number, y: number, host: Element): Element | null {
     if (el === host || host.contains(el)) continue
     if (el === document.documentElement || el === document.body) return null
     if (invisibleLayer(el)) continue
-    return el
+    return into(el, x, y)
   }
   return null
+}
+
+/** Inside a web component (an open shadow root), the element at the point is in there, not the component
+    itself. A closed one can't be looked into: the component is as far as anyone can see. */
+function into(el: Element, x: number, y: number): Element {
+  for (let depth = 0; el.shadowRoot && depth < 10; depth++) {
+    const root = el.shadowRoot
+    const inner = root.elementsFromPoint(x, y).find(e => e !== el && root.contains(e) && !invisibleLayer(e))
+    if (!inner) break
+    el = inner
+  }
+  return el
 }
 
 /** Media and controls show something even when they paint no box of their own. */
@@ -57,14 +71,15 @@ export function snap(el: Element): Element {
 }
 
 export function parentOf(el: Element): Element | null {
-  const p = el.parentElement
+  const p = parentAcross(el)
   return p && p !== document.body && p !== document.documentElement ? p : null
 }
 
 /** One level in: the child under the pointer, else the first child with a box. */
 export function childToward(el: Element, x: number, y: number): Element | null {
   let first: Element | null = null
-  for (const c of Array.from(el.children)) {
+  /* A web component's inside is its shadow root's, when it's open. */
+  for (const c of Array.from((el.shadowRoot ?? el).children)) {
     const r = c.getBoundingClientRect()
     if (!r.width && !r.height) continue
     first ??= c
