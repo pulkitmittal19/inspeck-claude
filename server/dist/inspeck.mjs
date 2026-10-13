@@ -77,10 +77,10 @@ var require_code = __commonJS({
       }
       get names() {
         var _a3;
-        return (_a3 = this._names) !== null && _a3 !== void 0 ? _a3 : this._names = this._items.reduce((names, c) => {
+        return (_a3 = this._names) !== null && _a3 !== void 0 ? _a3 : this._names = this._items.reduce((names2, c) => {
           if (c instanceof Name)
-            names[c.str] = (names[c.str] || 0) + 1;
-          return names;
+            names2[c.str] = (names2[c.str] || 0) + 1;
+          return names2;
         }, {});
       }
     };
@@ -406,11 +406,11 @@ var require_codegen = __commonJS({
         const rhs = this.rhs === void 0 ? "" : ` = ${this.rhs}`;
         return `${varKind} ${this.name}${rhs};` + _n;
       }
-      optimizeNames(names, constants) {
-        if (!names[this.name.str])
+      optimizeNames(names2, constants) {
+        if (!names2[this.name.str])
           return;
         if (this.rhs)
-          this.rhs = optimizeExpr(this.rhs, names, constants);
+          this.rhs = optimizeExpr(this.rhs, names2, constants);
         return this;
       }
       get names() {
@@ -427,15 +427,15 @@ var require_codegen = __commonJS({
       render({ _n }) {
         return `${this.lhs} = ${this.rhs};` + _n;
       }
-      optimizeNames(names, constants) {
-        if (this.lhs instanceof code_1.Name && !names[this.lhs.str] && !this.sideEffects)
+      optimizeNames(names2, constants) {
+        if (this.lhs instanceof code_1.Name && !names2[this.lhs.str] && !this.sideEffects)
           return;
-        this.rhs = optimizeExpr(this.rhs, names, constants);
+        this.rhs = optimizeExpr(this.rhs, names2, constants);
         return this;
       }
       get names() {
-        const names = this.lhs instanceof code_1.Name ? {} : { ...this.lhs.names };
-        return addExprNames(names, this.rhs);
+        const names2 = this.lhs instanceof code_1.Name ? {} : { ...this.lhs.names };
+        return addExprNames(names2, this.rhs);
       }
     };
     var AssignOp = class extends Assign {
@@ -491,8 +491,8 @@ var require_codegen = __commonJS({
       optimizeNodes() {
         return `${this.code}` ? this : void 0;
       }
-      optimizeNames(names, constants) {
-        this.code = optimizeExpr(this.code, names, constants);
+      optimizeNames(names2, constants) {
+        this.code = optimizeExpr(this.code, names2, constants);
         return this;
       }
       get names() {
@@ -521,20 +521,20 @@ var require_codegen = __commonJS({
         }
         return nodes.length > 0 ? this : void 0;
       }
-      optimizeNames(names, constants) {
+      optimizeNames(names2, constants) {
         const { nodes } = this;
         let i = nodes.length;
         while (i--) {
           const n = nodes[i];
-          if (n.optimizeNames(names, constants))
+          if (n.optimizeNames(names2, constants))
             continue;
-          subtractNames(names, n.names);
+          subtractNames(names2, n.names);
           nodes.splice(i, 1);
         }
         return nodes.length > 0 ? this : void 0;
       }
       get names() {
-        return this.nodes.reduce((names, n) => addNames(names, n.names), {});
+        return this.nodes.reduce((names2, n) => addNames(names2, n.names), {});
       }
     };
     var BlockNode = class extends ParentNode {
@@ -579,20 +579,20 @@ var require_codegen = __commonJS({
           return void 0;
         return this;
       }
-      optimizeNames(names, constants) {
+      optimizeNames(names2, constants) {
         var _a3;
-        this.else = (_a3 = this.else) === null || _a3 === void 0 ? void 0 : _a3.optimizeNames(names, constants);
-        if (!(super.optimizeNames(names, constants) || this.else))
+        this.else = (_a3 = this.else) === null || _a3 === void 0 ? void 0 : _a3.optimizeNames(names2, constants);
+        if (!(super.optimizeNames(names2, constants) || this.else))
           return;
-        this.condition = optimizeExpr(this.condition, names, constants);
+        this.condition = optimizeExpr(this.condition, names2, constants);
         return this;
       }
       get names() {
-        const names = super.names;
-        addExprNames(names, this.condition);
+        const names2 = super.names;
+        addExprNames(names2, this.condition);
         if (this.else)
-          addNames(names, this.else.names);
-        return names;
+          addNames(names2, this.else.names);
+        return names2;
       }
     };
     If.kind = "if";
@@ -607,10 +607,10 @@ var require_codegen = __commonJS({
       render(opts) {
         return `for(${this.iteration})` + super.render(opts);
       }
-      optimizeNames(names, constants) {
-        if (!super.optimizeNames(names, constants))
+      optimizeNames(names2, constants) {
+        if (!super.optimizeNames(names2, constants))
           return;
-        this.iteration = optimizeExpr(this.iteration, names, constants);
+        this.iteration = optimizeExpr(this.iteration, names2, constants);
         return this;
       }
       get names() {
@@ -631,8 +631,8 @@ var require_codegen = __commonJS({
         return `for(${varKind} ${name}=${from}; ${name}<${to}; ${name}++)` + super.render(opts);
       }
       get names() {
-        const names = addExprNames(super.names, this.from);
-        return addExprNames(names, this.to);
+        const names2 = addExprNames(super.names, this.from);
+        return addExprNames(names2, this.to);
       }
     };
     var ForIter = class extends For {
@@ -646,10 +646,10 @@ var require_codegen = __commonJS({
       render(opts) {
         return `for(${this.varKind} ${this.name} ${this.loop} ${this.iterable})` + super.render(opts);
       }
-      optimizeNames(names, constants) {
-        if (!super.optimizeNames(names, constants))
+      optimizeNames(names2, constants) {
+        if (!super.optimizeNames(names2, constants))
           return;
-        this.iterable = optimizeExpr(this.iterable, names, constants);
+        this.iterable = optimizeExpr(this.iterable, names2, constants);
         return this;
       }
       get names() {
@@ -691,20 +691,20 @@ var require_codegen = __commonJS({
         (_b = this.finally) === null || _b === void 0 ? void 0 : _b.optimizeNodes();
         return this;
       }
-      optimizeNames(names, constants) {
+      optimizeNames(names2, constants) {
         var _a3, _b;
-        super.optimizeNames(names, constants);
-        (_a3 = this.catch) === null || _a3 === void 0 ? void 0 : _a3.optimizeNames(names, constants);
-        (_b = this.finally) === null || _b === void 0 ? void 0 : _b.optimizeNames(names, constants);
+        super.optimizeNames(names2, constants);
+        (_a3 = this.catch) === null || _a3 === void 0 ? void 0 : _a3.optimizeNames(names2, constants);
+        (_b = this.finally) === null || _b === void 0 ? void 0 : _b.optimizeNames(names2, constants);
         return this;
       }
       get names() {
-        const names = super.names;
+        const names2 = super.names;
         if (this.catch)
-          addNames(names, this.catch.names);
+          addNames(names2, this.catch.names);
         if (this.finally)
-          addNames(names, this.finally.names);
-        return names;
+          addNames(names2, this.finally.names);
+        return names2;
       }
     };
     var Catch = class extends BlockNode {
@@ -988,15 +988,15 @@ var require_codegen = __commonJS({
       }
     };
     exports.CodeGen = CodeGen;
-    function addNames(names, from) {
+    function addNames(names2, from) {
       for (const n in from)
-        names[n] = (names[n] || 0) + (from[n] || 0);
-      return names;
+        names2[n] = (names2[n] || 0) + (from[n] || 0);
+      return names2;
     }
-    function addExprNames(names, from) {
-      return from instanceof code_1._CodeOrName ? addNames(names, from.names) : names;
+    function addExprNames(names2, from) {
+      return from instanceof code_1._CodeOrName ? addNames(names2, from.names) : names2;
     }
-    function optimizeExpr(expr, names, constants) {
+    function optimizeExpr(expr, names2, constants) {
       if (expr instanceof code_1.Name)
         return replaceName(expr);
       if (!canOptimize(expr))
@@ -1012,18 +1012,18 @@ var require_codegen = __commonJS({
       }, []));
       function replaceName(n) {
         const c = constants[n.str];
-        if (c === void 0 || names[n.str] !== 1)
+        if (c === void 0 || names2[n.str] !== 1)
           return n;
-        delete names[n.str];
+        delete names2[n.str];
         return c;
       }
       function canOptimize(e) {
-        return e instanceof code_1._Code && e._items.some((c) => c instanceof code_1.Name && names[c.str] === 1 && constants[c.str] !== void 0);
+        return e instanceof code_1._Code && e._items.some((c) => c instanceof code_1.Name && names2[c.str] === 1 && constants[c.str] !== void 0);
       }
     }
-    function subtractNames(names, from) {
+    function subtractNames(names2, from) {
       for (const n in from)
-        names[n] = (names[n] || 0) - (from[n] || 0);
+        names2[n] = (names2[n] || 0) - (from[n] || 0);
     }
     function not(x) {
       return typeof x == "boolean" || typeof x == "number" || x === null ? !x : (0, code_1._)`!${par(x)}`;
@@ -1221,7 +1221,7 @@ var require_names = __commonJS({
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     var codegen_1 = require_codegen();
-    var names = {
+    var names2 = {
       // validation function arguments
       data: new codegen_1.Name("data"),
       // data passed to validation function
@@ -1250,7 +1250,7 @@ var require_names = __commonJS({
       jsonLen: new codegen_1.Name("jsonLen"),
       jsonPart: new codegen_1.Name("jsonPart")
     };
-    exports.default = names;
+    exports.default = names2;
   }
 });
 
@@ -13644,9 +13644,9 @@ var asciiTabOrNewline = /[\t\n\r]/g;
 function stripTabAndNewline(value) {
   return value.replace(asciiTabOrNewline, "");
 }
-function urlHostnameOk(url2, hostname3) {
-  hostname3.lastIndex = 0;
-  return hostname3.test(url2.hostname);
+function urlHostnameOk(url2, hostname4) {
+  hostname4.lastIndex = 0;
+  return hostname4.test(url2.hostname);
 }
 function urlProtocolOk(url2, protocol) {
   protocol.lastIndex = 0;
@@ -27437,12 +27437,12 @@ function rewriteKeyNames(ctx) {
   const rewrites = /* @__PURE__ */ new Map();
   for (const record2 of pendingRecords.get(ctx) ?? []) {
     const seen = ctx.seen.get(record2);
-    const names = (seen?.def ?? seen?.schema)?.propertyNames;
-    if (!names || names === true || rewrites.has(names))
+    const names2 = (seen?.def ?? seen?.schema)?.propertyNames;
+    if (!names2 || names2 === true || rewrites.has(names2))
       continue;
-    const rewritten = stringifyKeyNames(bySchema, names, /* @__PURE__ */ new Set());
-    if (rewritten !== names)
-      rewrites.set(names, rewritten);
+    const rewritten = stringifyKeyNames(bySchema, names2, /* @__PURE__ */ new Set());
+    if (rewritten !== names2)
+      rewrites.set(names2, rewritten);
   }
   if (!rewrites.size)
     return;
@@ -36862,6 +36862,8 @@ function closeGap(inbox, gone) {
 // server/src/http.ts
 import { existsSync as existsSync5, mkdirSync as mkdirSync3, readFileSync as readFileSync4, statSync as statSync3, writeFileSync as writeFileSync3 } from "fs";
 import { createServer } from "http";
+import { hostname as hostname3, networkInterfaces } from "os";
+import { execFileSync as execFileSync2 } from "child_process";
 import { dirname as dirname3, join as join5, normalize } from "path";
 import { fileURLToPath as fileURLToPath3 } from "url";
 
@@ -37256,7 +37258,28 @@ function originAllowed(origin) {
     return false;
   }
   if (u.protocol === "chrome-extension:" || u.protocol === "moz-extension:") return true;
-  return isThisMachine(u.hostname);
+  return isThisMachine(u.hostname) || ownAddress(u.hostname);
+}
+var names = null;
+function ownNames() {
+  if (names) return names;
+  const list = [hostname3()];
+  if (process.platform === "darwin") {
+    try {
+      list.push(execFileSync2("scutil", ["--get", "LocalHostName"], { encoding: "utf8", timeout: 1e3 }).trim());
+    } catch {
+    }
+  }
+  names = new Set(list.flatMap((n) => {
+    const b = n.toLowerCase().replace(/\.local$/, "");
+    return b ? [b, `${b}.local`] : [];
+  }));
+  return names;
+}
+function ownAddress(host) {
+  const h = host.replace(/^\[|\]$/g, "").toLowerCase();
+  if (ownNames().has(h)) return true;
+  return Object.values(networkInterfaces()).some((list) => list?.some((a) => a.address.toLowerCase() === h));
 }
 function hostAllowed(host) {
   if (!host) return false;

@@ -21,7 +21,9 @@ export const SERVER = (() => {
 export function allowedHere(): boolean {
   if (script?.hasAttribute('data-inspeck-anywhere')) return true
   const h = location.hostname
-  return h === 'localhost' || h === '127.0.0.1' || h === '[::1]' || h.endsWith('.localhost') || h.endsWith('.test')
+  return h === 'localhost' || h === '127.0.0.1' || h === '[::1]' || h.endsWith('.localhost') || h.endsWith('.test') ||
+    /* The "Network" address a dev server prints, and Bonjour names: the plugin checks it's really this Mac. */
+    h.endsWith('.local') || /^(10|127)\.|^192\.168\.|^172\.(1[6-9]|2\d|3[01])\.|^169\.254\./.test(h)
 }
 
 /** Per-tab memory that survives reloads but not a new tab. */

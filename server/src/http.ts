@@ -15,6 +15,8 @@
  */
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
+import { hostname, networkInterfaces } from 'node:os'
+import { execFileSync } from 'node:child_process'
 import { dirname, join, normalize } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import * as store from './store.js'
@@ -45,7 +47,27 @@ export function originAllowed(origin: string | undefined): boolean {
   let u: URL
   try { u = new URL(origin) } catch { return false }
   if (u.protocol === 'chrome-extension:' || u.protocol === 'moz-extension:') return true
-  return isThisMachine(u.hostname)
+  return isThisMachine(u.hostname) || ownAddress(u.hostname)
+}
+
+/** This Mac's names: its host name, and on a Mac its Bonjour name (System Settings › Sharing), which can differ. */
+let names: Set<string> | null = null
+function ownNames(): Set<string> {
+  if (names) return names
+  const list = [hostname()]
+  if (process.platform === 'darwin') {
+    try { list.push(execFileSync('scutil', ['--get', 'LocalHostName'], { encoding: 'utf8', timeout: 1000 }).trim()) } catch { /* not set */ }
+  }
+  names = new Set(list.flatMap(n => { const b = n.toLowerCase().replace(/\.local$/, ''); return b ? [b, `${b}.local`] : [] }))
+  return names
+}
+
+/** Whether a name or IP is this Mac's own on the network (the "Network" address a dev server prints, or
+    its Bonjour name): a page there is served from this machine. Another device's address is not. */
+export function ownAddress(host: string): boolean {
+  const h = host.replace(/^\[|\]$/g, '').toLowerCase()
+  if (ownNames().has(h)) return true
+  return Object.values(networkInterfaces()).some(list => list?.some(a => a.address.toLowerCase() === h))
 }
 
 function hostAllowed(host: string | undefined): boolean {

@@ -388,6 +388,15 @@ test('a held note waits on the page: the watcher and the push leave it until it 
   assert.ok(left.every(c => c.status !== 'new' && !c.held))
 })
 
+test('a page on this Mac\'s own network address may use Inspeck; another device\'s may not', async () => {
+  const { networkInterfaces } = await import('node:os')
+  const mine = Object.values(networkInterfaces()).flat().find(a => a && a.family === 'IPv4' && !a.internal)?.address
+  if (mine) assert.equal((await page(s.port, 'GET', '/comments?page=x', { origin: `http://${mine}:5173` })).status, 200, mine)
+  assert.equal((await page(s.port, 'GET', '/comments?page=x', { origin: 'http://192.0.2.77:5173' })).status, 403)
+  assert.equal((await page(s.port, 'GET', '/comments?page=x', { origin: 'http://someone-else.local:3000' })).status, 403)
+  assert.equal((await page(s.port, 'GET', '/comments?page=x', { origin: 'null' })).status, 403, 'a file:// page (or any sandboxed frame) never')
+})
+
 test('notes the box could never send are refused, with a reason', async () => {
   const at = 'http://localhost:5173/refused'
   const post = (note, extra = {}) => page(s.port, 'POST', '/comments', { body: { ...fix, page: at, note, screenshot: undefined, ...extra } })

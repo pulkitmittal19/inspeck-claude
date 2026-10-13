@@ -8,6 +8,7 @@ import { App } from './app'
 import { api } from './api'
 import { allowedHere, SERVER, TAB_ID, VERSION } from './env'
 import { installNetworkHold } from './hold'
+import { fileNotice } from './notice'
 
 /** How long Inspeck waits, once the page is parsed, for its slowest files to finish before starting anyway. */
 const LOAD_WAIT_MS = 3000
@@ -34,7 +35,11 @@ function boot(): void {
   }
 }
 
-if (!allowedHere()) {
+if (location.protocol === 'file:') {
+  /* Opened by double-click: such a page can't safely talk to Inspeck (any website can pose as one), so say
+     what to do instead of staying silent. */
+  fileNotice()
+} else if (!allowedHere()) {
   console.info(`Inspeck: not starting on ${location.hostname}, which isn't this machine.`)
 } else if (window.top !== window && !document.currentScript?.hasAttribute('data-inspeck-frames')) {
   /* Inside an iframe (Storybook, an embed): the top page's widget covers it. */
