@@ -183,6 +183,8 @@ button { appearance: none; background: none; border: 0; padding: 0; cursor: poin
 .decl > .more { margin-left: 5px; color: var(--ix-faint); }
 .decl > .res { flex: none; max-width: 45%; overflow: hidden; text-overflow: ellipsis; }
 .decl.empty { color: var(--ix-dim); font-family: var(--ix-sans); }
+/* Set by CSS Inspeck couldn't read: the rendered value, a shade quieter, with a dotted underline that says "see the tip". */
+.decl.unread > .val { opacity: 0.8; text-decoration: underline dotted rgba(244, 244, 245, 0.35); text-underline-offset: 3px; }
 .c-prop { color: var(--ix-c-prop); }
 .c-num { color: var(--ix-c-num); }
 .c-token { color: var(--ix-c-token); }

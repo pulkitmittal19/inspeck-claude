@@ -6,7 +6,7 @@
  *   border-radius: var(--radius-200);                  8px
  *   background: #17171C;
  */
-import { splitList } from './rules'
+import { splitList, unreadableCss } from './rules'
 import { logicalPart, ownWinner, parts, sideOf, winner, type Written } from './cascade'
 
 export type Kind = 'control' | 'text' | 'image' | 'box'
@@ -16,6 +16,8 @@ export interface Line {
   value: string
   /** The resolved value, shown dimmed, when it differs from what's written. */
   resolved?: string
+  /** Set by a stylesheet Inspeck couldn't read: `value` is what renders, not what's written. */
+  unread?: boolean
 }
 
 export interface Description {
@@ -116,6 +118,31 @@ function line(prop: string, written: string, computed: string): Line {
   const value = infinite(hex(unplumb(written.replace(/\s*!important$/, ''))))
   const resolved = clean(computed)
   return writtenUsesLogic(value) && resolved && resolved !== value ? { prop, value, resolved } : { prop, value }
+}
+
+/** What a line's property compares by: the computed shorthand, or the colour for a background. */
+const shownProp = (prop: string) => (prop === 'background' ? 'background-color' : prop)
+
+/** Whether a line's written value, put on an element beside this one, renders as this one does. */
+function rendersAs(el: Element, cs: CSSStyleDeclaration, l: Line): boolean {
+  const parent = el.parentElement
+  if (!parent) return true
+  const probe = document.createElement('div')
+  probe.style.cssText = 'position:absolute;visibility:hidden;pointer-events:none;'
+  probe.style.fontSize = cs.fontSize
+  parent.appendChild(probe)
+  try {
+    probe.style.setProperty(l.prop, l.value.replace(/^≈/, ''))
+    const prop = shownProp(l.prop)
+    return getComputedStyle(probe).getPropertyValue(prop) === cs.getPropertyValue(prop)
+  } finally {
+    probe.remove()
+  }
+}
+
+/** The line as the element renders it, marked as set by CSS Inspeck couldn't read. */
+function rendered(cs: CSSStyleDeclaration, l: Line): Line {
+  return { prop: l.prop, value: clean(cs.getPropertyValue(shownProp(l.prop))), unread: true }
 }
 
 /* ---------------- box shorthands: padding, margin, radius ---------------- */
@@ -366,12 +393,16 @@ export function describe(el: Element): Description {
   }
 
   /* Merge two lines of one shorthand (`font: …` won for size and weight). */
-  const out: Line[] = []
+  let out: Line[] = []
   for (const l of lines) {
     if (!l) continue
     if (out.some(o => o.prop === l.prop && o.value === l.value)) continue
     out.push(l)
   }
+  /* Some of the page's CSS is out of reach (a CDN's that couldn't be fetched either): a line whose written
+     value doesn't render the way the element does was decided by a rule we can't see. Show what renders. */
+  const root = el.getRootNode()
+  if ((root instanceof Document || root instanceof ShadowRoot) && unreadableCss(root)) out = out.map(l => rendersAs(el, cs, l) ? l : rendered(cs, l))
   return {
     kind,
     label: labelOf(el),

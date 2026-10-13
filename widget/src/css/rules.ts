@@ -133,13 +133,53 @@ function rulesOf(sheet: CSSStyleSheet): CSSRuleList | null {
   try { return sheet.cssRules } catch { return null }   /* cross-origin: unreadable */
 }
 
+/* ---------------- stylesheets the page can't read ----------------
+ *
+ * A stylesheet from another server, sent without CORS (most CDNs), keeps its rules from the page's code.
+ * Left out, the card shows a rule it can read in place of the one that wins. So the plugin fetches it
+ * (it isn't a web page, so no such limit), and its rules take the same place in the page's order. */
+
+const borrowed = new Map<string, CSSStyleSheet | 'asking' | 'failed'>()
+let borrowedVersion = 0
+let fetchSheet: ((href: string) => Promise<string>) | null = null
+
+/** How to fetch a stylesheet the page can't read (the plugin's /css). */
+export function borrowSheetsWith(fetcher: (href: string) => Promise<string>): void { fetchSheet = fetcher }
+
+/** The rules of a sheet the page can't read, once fetched; until then null, and the fetch is on its way. */
+function borrowedRules(sheet: CSSStyleSheet): CSSRuleList | null {
+  const href = sheet.href
+  if (!href || !fetchSheet) return null
+  const got = borrowed.get(href)
+  if (got instanceof CSSStyleSheet) return got.cssRules
+  if (!got) {
+    borrowed.set(href, 'asking')
+    fetchSheet(href).then(text => {
+      const copy = new CSSStyleSheet({ baseURL: href } as CSSStyleSheetInit)
+      copy.replaceSync(text)
+      borrowed.set(href, copy)
+    }).catch(() => { borrowed.set(href, 'failed') }).finally(() => { borrowedVersion++ })
+  }
+  return null
+}
+
+/** A sheet's rules, borrowed if the page can't read them itself. */
+function readableRules(sheet: CSSStyleSheet): CSSRuleList | null {
+  return rulesOf(sheet) ?? borrowedRules(sheet)
+}
+
+/** Whether some of the page's CSS is out of reach still (not fetched, or couldn't be). */
+export function unreadableCss(root: Document | ShadowRoot): boolean {
+  return sheetsOf(root).some(s => !readableRules(s))
+}
+
 export function signatureOf(root: Document | ShadowRoot): string {
   let n = 0, parts = 0
   for (const s of sheetsOf(root)) {
     parts++
     n += rulesOf(s)?.length ?? 0
   }
-  return `${parts}:${n}`
+  return `${parts}:${n}:${borrowedVersion}`
 }
 
 export function buildIndex(root: Document | ShadowRoot, skip?: CSSStyleSheet): RuleIndex {
@@ -181,7 +221,7 @@ export function buildIndex(root: Document | ShadowRoot, skip?: CSSStyleSheet): R
       } else if (typeof CSSLayerStatementRule !== 'undefined' && rule instanceof CSSLayerStatementRule) {
         for (const n of rule.nameList) rankOf(layer ? `${layer}.${n}` : n)
       } else if (rule instanceof CSSImportRule) {
-        const inner = rule.styleSheet && rulesOf(rule.styleSheet)
+        const inner = rule.styleSheet && readableRules(rule.styleSheet)
         const name = (rule as CSSImportRule & { layerName?: string | null }).layerName
         if (inner) walk(inner, name != null ? (layer ? `${layer}.${name}` : name || `anon${order}`) : layer, conds, parentSel)
       } else if ('cssRules' in rule && (rule as CSSGroupingRule).cssRules) {
@@ -193,7 +233,7 @@ export function buildIndex(root: Document | ShadowRoot, skip?: CSSStyleSheet): R
 
   for (const sheet of sheetsOf(root)) {
     if (sheet === skip) continue
-    const list = rulesOf(sheet)
+    const list = readableRules(sheet)
     if (list) walk(list, null, [], null)
   }
   return { buckets, signature: signatureOf(root) }

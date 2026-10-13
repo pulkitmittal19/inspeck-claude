@@ -98,6 +98,10 @@ export const api = {
   async stopVoice(): Promise<void> {
     await call('POST', '/voice/stop', {})
   },
+  /** A stylesheet the page can't read itself (another server's, without CORS), fetched by the plugin. */
+  async css(href: string): Promise<string> {
+    return (await call<{ css: string }>('GET', `/css?url=${encodeURIComponent(href)}`)).css
+  },
   /** Settings kept by the plugin, so they follow you to every app and browser. */
   async settings(): Promise<Record<string, unknown>> {
     return call<Record<string, unknown>>('GET', '/settings')

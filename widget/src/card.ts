@@ -90,10 +90,13 @@ export function renderCss(d: Description): HTMLDivElement {
     /* The tip gives the declaration as written, in full. It's worth showing when the row hides something:
        a list cut to its first item, a token's short name, a colour this format can only come near,
        or a value cut off at the card's edge (that one is checked when the pointer arrives). */
-    const hides = items.length > 1 || /var\(|≈/.test(shown)
+    /* A value set by CSS Inspeck couldn't read is what renders, not what's written: the tip says so. */
+    const hides = items.length > 1 || /var\(|≈/.test(shown) || !!l.unread
+    const note = l.unread ? 'Set by a stylesheet Inspeck can’t read: this is what renders, not how it’s written'
+      : shown.includes('≈') ? '≈ the nearest colour this format can show' : null
     const row = h('div', {
-      class: 'decl', 'data-tip': `${l.prop}: ${l.value};`, 'data-tip-code': '', 'data-tip-res': l.resolved ?? null,
-      'data-tip-note': shown.includes('≈') ? '≈ the nearest colour this format can show' : null,
+      class: l.unread ? 'decl unread' : 'decl', 'data-tip': `${l.prop}: ${l.value};`, 'data-tip-code': '', 'data-tip-res': l.resolved ?? null,
+      'data-tip-note': note,
       'data-tip-if': hides ? null : 'clipped',
     },
       h('span', { class: 'c-prop' }, l.prop), h('span', { class: 'c-punct' }, ': '),

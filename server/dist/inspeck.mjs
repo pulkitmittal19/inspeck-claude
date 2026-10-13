@@ -37410,6 +37410,15 @@ async function route2(req, res, version2, onNew) {
   if (url2.pathname === "/voice/listen" && req.method === "POST") return listenStream(req, res);
   if (url2.pathname === "/voice/stop" && req.method === "POST") return send(res, 200, { stopping: stopListening() });
   if (url2.pathname === "/voice/warm" && req.method === "POST") return send(res, 200, { warm: warmVoice() });
+  if (url2.pathname === "/css" && req.method === "GET") {
+    const target = url2.searchParams.get("url") ?? "";
+    if (!/^https?:\/\//i.test(target)) return send(res, 400, { error: "Send ?url= with an http(s) stylesheet address" });
+    try {
+      return send(res, 200, { css: await stylesheet(target) });
+    } catch (err) {
+      return send(res, 502, { error: err.message });
+    }
+  }
   if (req.method === "POST" && url2.pathname === "/bind") {
     const b = await body(req);
     if (typeof b.tabId !== "string" || typeof b.token !== "string" || b.tabId.length > 64) return send(res, 400, { error: "Send { tabId, token }" });
@@ -37476,6 +37485,28 @@ async function route2(req, res, version2, onNew) {
     return remove(id) ? send(res, 200, { ok: true }) : send(res, 404, { error: "No such comment" });
   }
   return send(res, 405, { error: "Method not allowed" });
+}
+var CSS_MAX = 5 * 1024 * 1024;
+var CSS_KEEP_MS = 5 * 6e4;
+var fetchedCss = /* @__PURE__ */ new Map();
+function stylesheet(href) {
+  const now = Date.now();
+  const kept = fetchedCss.get(href);
+  if (kept && now - kept.at < CSS_KEEP_MS) return kept.text;
+  const text2 = (async () => {
+    const r = await fetch(href, { signal: AbortSignal.timeout(8e3), redirect: "follow", headers: { accept: "text/css,*/*;q=0.1" } });
+    if (!r.ok) throw new Error(`The stylesheet answered ${r.status}`);
+    const type = r.headers.get("content-type") ?? "";
+    if (!/css/i.test(type) && !/\.css(\?|#|$)/i.test(new URL(r.url).pathname)) throw new Error("That address isn't a stylesheet");
+    if (Number(r.headers.get("content-length") ?? 0) > CSS_MAX) throw new Error("The stylesheet is too big");
+    const body2 = await r.text();
+    if (body2.length > CSS_MAX) throw new Error("The stylesheet is too big");
+    return body2;
+  })();
+  fetchedCss.set(href, { at: now, text: text2 });
+  text2.catch(() => fetchedCss.delete(href));
+  if (fetchedCss.size > 200) fetchedCss.delete(fetchedCss.keys().next().value);
+  return text2;
 }
 var RETRY_MS = 5e3;
 function newer(a, b) {

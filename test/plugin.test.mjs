@@ -114,11 +114,11 @@ test('the widget is served to a plain script tag, and an unchanged reload is a 3
   assert.equal(again.status, 304)
 })
 
-test('the widget stays small: under 48 KB gzipped (40 before Settings and voice, 45 before Shortcuts)', async () => {
+test('the widget stays small: under 52 KB gzipped (40 before Settings and voice, 45 before Shortcuts, 48 before the robustness round)', async () => {
   const { gzipSync } = await import('node:zlib')
   const { readFileSync } = await import('node:fs')
   const size = gzipSync(readFileSync(join(root, 'server/dist/widget/inspeck.js')), { level: 9 }).length
-  assert.ok(size < 48 * 1024, `widget is ${Math.round(size / 1024)} KB gzipped`)
+  assert.ok(size < 52 * 1024, `widget is ${Math.round(size / 1024)} KB gzipped`)
 })
 
 test('the dev test page only exists with INSPECK_DEV=1', async () => {
@@ -395,6 +395,22 @@ test('a page on this Mac\'s own network address may use Inspeck; another device\
   assert.equal((await page(s.port, 'GET', '/comments?page=x', { origin: 'http://192.0.2.77:5173' })).status, 403)
   assert.equal((await page(s.port, 'GET', '/comments?page=x', { origin: 'http://someone-else.local:3000' })).status, 403)
   assert.equal((await page(s.port, 'GET', '/comments?page=x', { origin: 'null' })).status, 403, 'a file:// page (or any sandboxed frame) never')
+})
+
+test('the plugin fetches a stylesheet the page can\'t read (a CDN\'s), and only stylesheets', async () => {
+  const { createServer } = await import('node:http')
+  const cdn = createServer((req, res) => {
+    if (req.url === '/site.css') return res.writeHead(200, { 'content-type': 'text/css' }).end('.cdn { padding: 18px; }')
+    res.writeHead(200, { 'content-type': 'text/html' }).end('<h1>not css</h1>')
+  })
+  await new Promise(r => cdn.listen(0, '127.0.0.1', r))
+  const base = `http://127.0.0.1:${cdn.address().port}`
+  const ask = u => page(s.port, 'GET', `/css?url=${encodeURIComponent(u)}`)
+  assert.deepEqual((await ask(`${base}/site.css`)).json, { css: '.cdn { padding: 18px; }' })
+  assert.equal((await ask(`${base}/page.html`)).status, 502, 'not a stylesheet')
+  assert.equal((await ask('file:///etc/passwd')).status, 400, 'only http(s)')
+  assert.equal((await page(s.port, 'GET', `/css?url=${encodeURIComponent(base + '/site.css')}`, { origin: 'https://evil.example' })).status, 403, 'only for local pages')
+  cdn.close()
 })
 
 test('notes the box could never send are refused, with a reason', async () => {

@@ -197,6 +197,15 @@ async function route(req: IncomingMessage, res: ServerResponse, version: string,
   if (url.pathname === '/voice/stop' && req.method === 'POST') return send(res, 200, { stopping: stopListening() })
   if (url.pathname === '/voice/warm' && req.method === 'POST') return send(res, 200, { warm: warmVoice() })
 
+  /* A stylesheet the page can't read itself (another server's, sent without CORS: most CDNs). The browser
+     keeps its rules from the page's code, so the widget would show the wrong rule; the plugin isn't a web
+     page and can fetch it. Only http(s), only what really is CSS, at most 5 MB, kept a few minutes. */
+  if (url.pathname === '/css' && req.method === 'GET') {
+    const target = url.searchParams.get('url') ?? ''
+    if (!/^https?:\/\//i.test(target)) return send(res, 400, { error: 'Send ?url= with an http(s) stylesheet address' })
+    try { return send(res, 200, { css: await stylesheet(target) }) } catch (err) { return send(res, 502, { error: (err as Error).message }) }
+  }
+
   /* A Claude session hands its pane's widget a code; from then on that tab's notes go to it. */
   if (req.method === 'POST' && url.pathname === '/bind') {
     const b = (await body(req)) as { tabId?: unknown; token?: unknown }
@@ -264,6 +273,33 @@ async function route(req: IncomingMessage, res: ServerResponse, version: string,
   }
 
   return send(res, 405, { error: 'Method not allowed' })
+}
+
+/* ---------- stylesheets the page can't read ---------- */
+
+const CSS_MAX = 5 * 1024 * 1024
+const CSS_KEEP_MS = 5 * 60_000
+const fetchedCss = new Map<string, { at: number; text: Promise<string> }>()
+
+/** A stylesheet's text, fetched by the plugin. Remembered a few minutes, so a page's every reload doesn't fetch again. */
+function stylesheet(href: string): Promise<string> {
+  const now = Date.now()
+  const kept = fetchedCss.get(href)
+  if (kept && now - kept.at < CSS_KEEP_MS) return kept.text
+  const text = (async () => {
+    const r = await fetch(href, { signal: AbortSignal.timeout(8000), redirect: 'follow', headers: { accept: 'text/css,*/*;q=0.1' } })
+    if (!r.ok) throw new Error(`The stylesheet answered ${r.status}`)
+    const type = r.headers.get('content-type') ?? ''
+    if (!/css/i.test(type) && !/\.css(\?|#|$)/i.test(new URL(r.url).pathname)) throw new Error('That address isn\'t a stylesheet')
+    if (Number(r.headers.get('content-length') ?? 0) > CSS_MAX) throw new Error('The stylesheet is too big')
+    const body = await r.text()
+    if (body.length > CSS_MAX) throw new Error('The stylesheet is too big')
+    return body
+  })()
+  fetchedCss.set(href, { at: now, text })
+  text.catch(() => fetchedCss.delete(href))
+  if (fetchedCss.size > 200) fetchedCss.delete(fetchedCss.keys().next().value!)
+  return text
 }
 
 /** How often a session sharing the port tries for it again. */

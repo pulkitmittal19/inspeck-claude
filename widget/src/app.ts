@@ -3,6 +3,7 @@
 import { api, type GroupMember, type Note } from './api'
 import { createCard, type Card } from './card'
 import { warmUp } from './css/cascade'
+import { borrowSheetsWith } from './css/rules'
 import { h, isEditable } from './dom'
 import { cap, isToggleKey, keyName } from './keys'
 import { createMenuHint, opensMenu, type MenuHint } from './menuhint'
@@ -103,6 +104,8 @@ export class App {
   private menuHintTimer = 0
 
   constructor() {
+    /* Stylesheets the page can't read itself (a CDN's) come through the plugin. */
+    borrowSheetsWith(href => api.css(href))
     this.host = createHost()
     /* First in the layer, so the card, markers and pill all sit above it. */
     this.frost = h('div', { class: 'frost', hidden: true })
