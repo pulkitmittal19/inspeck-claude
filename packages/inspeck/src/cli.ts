@@ -254,6 +254,34 @@ function printTag() {
   say('    Add it in development only; on any address that isn\'t this machine the widget stays silent anyway.')
 }
 
+/* A Content-Security-Policy that only allows the page's own address blocks the widget, and nothing of
+   Inspeck runs to say so. Vite and Astro apps load it through their own dev server, which such a policy
+   allows; the others load it from 127.0.0.1, so the policy has to allow that, in development only. */
+
+const CSP_FILES = [
+  'index.html', 'next.config.js', 'next.config.mjs', 'next.config.ts', 'middleware.ts', 'middleware.js', 'src/middleware.ts', 'src/middleware.js',
+  'app/layout.tsx', 'app/layout.jsx', 'src/app/layout.tsx', 'src/app/layout.jsx', 'pages/_document.tsx', 'pages/_document.jsx',
+  'nuxt.config.ts', 'nuxt.config.js', 'server.js', 'server.ts',
+]
+
+/** The first of the app's files that sets a Content-Security-Policy, if one does. */
+export function cspFileIn(cwd: string): string | null {
+  for (const f of CSP_FILES) {
+    const p = join(cwd, f)
+    try { if (existsSync(p) && /content-security-policy/i.test(readFileSync(p, 'utf8'))) return p } catch { /* unreadable: skip */ }
+  }
+  return null
+}
+
+function cspHint(cwd: string): void {
+  const kind = detect(cwd).kind
+  if (kind === 'vite' || kind === 'astro') return
+  const file = cspFileIn(cwd)
+  if (!file) return
+  const origin = new URL(TAG_SRC).origin
+  warn(`${relative(cwd, file) || file} sets a Content-Security-Policy, which would block Inspeck. In development only, add ${origin} to its script-src and connect-src.`)
+}
+
 async function wireApp(flags: Flags): Promise<void> {
   const { cwd } = flags
   const app = detect(cwd)
@@ -358,6 +386,7 @@ export async function main(argv: string[]): Promise<number> {
   if (!flags.skipPlugin && plugin && flags.autoUpdate) turnOnAutoUpdate()
   say('')
   await wireApp(flags)
+  cspHint(flags.cwd)
   say('')
   say('Next, in Claude: /inspeck:start')
   say('It opens your app, turns Inspeck on and links it to the chat. Or open the app in your own browser and press I.')

@@ -10,7 +10,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 
 const pkg = join(dirname(fileURLToPath(import.meta.url)), '..', 'packages', 'inspeck')
 const BIN = join(pkg, 'dist/bin.js')
-const { wireVite, wireNext, wireHtml, wireAstro, wireNuxt, withAutoUpdate } = await import(pathToFileURL(join(pkg, 'dist/cli.js')).href)
+const { wireVite, wireNext, wireHtml, wireAstro, wireNuxt, cspFileIn, withAutoUpdate } = await import(pathToFileURL(join(pkg, 'dist/cli.js')).href)
 const vitePlugin = await import(pathToFileURL(join(pkg, 'dist/vite.js')).href)
 
 test('Vite: inspeck() goes first in the plugins list, the import after the others; twice changes nothing', () => {
@@ -213,4 +213,11 @@ test('the Vite plugin puts the widget on every HTML page the dev server sends, a
   assert.equal(once.body.match(/inspeck\.js/g).length, 1, 'never twice')
   const js = await respond('*/*', 'text/javascript', ['console.log("</body>")'])
   assert.equal(js.body, 'console.log("</body>")', 'not HTML: untouched')
+})
+
+test('a Content-Security-Policy in the app is found, so init can say what to allow', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'inspeck-csp-'))
+  assert.equal(cspFileIn(dir), null)
+  writeFileSync(join(dir, 'next.config.mjs'), `export default { async headers() { return [{ source: '/(.*)', headers: [{ key: 'Content-Security-Policy', value: "script-src 'self'" }] }] } }`)
+  assert.equal(cspFileIn(dir), join(dir, 'next.config.mjs'))
 })

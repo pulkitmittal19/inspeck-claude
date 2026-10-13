@@ -216,6 +216,44 @@ function printTag() {
   say(`      ${HTML_TAG}`);
   say("    Add it in development only; on any address that isn't this machine the widget stays silent anyway.");
 }
+var CSP_FILES = [
+  "index.html",
+  "next.config.js",
+  "next.config.mjs",
+  "next.config.ts",
+  "middleware.ts",
+  "middleware.js",
+  "src/middleware.ts",
+  "src/middleware.js",
+  "app/layout.tsx",
+  "app/layout.jsx",
+  "src/app/layout.tsx",
+  "src/app/layout.jsx",
+  "pages/_document.tsx",
+  "pages/_document.jsx",
+  "nuxt.config.ts",
+  "nuxt.config.js",
+  "server.js",
+  "server.ts"
+];
+function cspFileIn(cwd) {
+  for (const f of CSP_FILES) {
+    const p = join(cwd, f);
+    try {
+      if (existsSync(p) && /content-security-policy/i.test(readFileSync(p, "utf8"))) return p;
+    } catch {
+    }
+  }
+  return null;
+}
+function cspHint(cwd) {
+  const kind = detect(cwd).kind;
+  if (kind === "vite" || kind === "astro") return;
+  const file = cspFileIn(cwd);
+  if (!file) return;
+  const origin = new URL(TAG_SRC).origin;
+  warn(`${relative(cwd, file) || file} sets a Content-Security-Policy, which would block Inspeck. In development only, add ${origin} to its script-src and connect-src.`);
+}
 async function wireApp(flags) {
   const { cwd } = flags;
   const app = detect(cwd);
@@ -346,6 +384,7 @@ async function main(argv) {
   if (!flags.skipPlugin && plugin && flags.autoUpdate) turnOnAutoUpdate();
   say("");
   await wireApp(flags);
+  cspHint(flags.cwd);
   say("");
   say("Next, in Claude: /inspeck:start");
   say("It opens your app, turns Inspeck on and links it to the chat. Or open the app in your own browser and press I.");
@@ -354,6 +393,7 @@ async function main(argv) {
 }
 export {
   HTML_TAG,
+  cspFileIn,
   main,
   wireAstro,
   wireHtml,
