@@ -151,11 +151,12 @@ ${src.slice(own.index)}`, result: "added" };
   if (inline >= 0) return { src: `${src.slice(0, inline)}${NEXT_TAG}${src.slice(inline)}`, result: "added" };
   return { src, result: "manual" };
 }
+var HTML_TAG = `<script>/* Inspeck: loads on this computer only, never on the live site */ if (/^(localhost|127\\.0\\.0\\.1|\\[::1\\])$|\\.localhost$/.test(location.hostname)) document.head.appendChild(Object.assign(document.createElement('script'), { src: '${TAG_SRC}', async: true }))</script>`;
 function wireHtml(src) {
   if (src.includes("inspeck.js")) return { src, result: "present" };
   const body = /^([ \t]*)<\/body>/im.exec(src);
   if (!body) return { src, result: "manual" };
-  const line = `${body[1]}  <script src="${TAG_SRC}" async></script>
+  const line = `${body[1]}  ${HTML_TAG}
 `;
   return { src: src.slice(0, body.index) + line + src.slice(body.index), result: "added" };
 }
@@ -173,7 +174,7 @@ function printNextTag() {
   say(`      ${NEXT_TAG}`);
 }
 function printTag() {
-  say(`      <script src="${TAG_SRC}" async></script>`);
+  say(`      ${HTML_TAG}`);
   say("    Add it in development only; on any address that isn't this machine the widget stays silent anyway.");
 }
 async function wireApp(flags) {
@@ -278,6 +279,7 @@ async function main(argv) {
   return 0;
 }
 export {
+  HTML_TAG,
   main,
   wireHtml,
   wireNext,

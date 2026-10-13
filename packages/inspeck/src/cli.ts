@@ -178,12 +178,17 @@ export function wireNext(src: string): { src: string; result: 'added' | 'present
   return { src, result: 'manual' }
 }
 
+/* A plain page has no development build to leave the tag out of, so the tag checks for itself: it loads
+   Inspeck only when the page is opened on this computer, never on a deployed site (where a visitor's
+   browser could ask them about local network access). */
+export const HTML_TAG = `<script>/* Inspeck: loads on this computer only, never on the live site */ if (/^(localhost|127\\.0\\.0\\.1|\\[::1\\])$|\\.localhost$/.test(location.hostname)) document.head.appendChild(Object.assign(document.createElement('script'), { src: '${TAG_SRC}', async: true }))</script>`
+
 /** Add the tag before </body> in a plain HTML page. */
 export function wireHtml(src: string): { src: string; result: 'added' | 'present' | 'manual' } {
   if (src.includes('inspeck.js')) return { src, result: 'present' }
   const body = /^([ \t]*)<\/body>/im.exec(src)
   if (!body) return { src, result: 'manual' }
-  const line = `${body[1]}  <script src="${TAG_SRC}" async></script>\n`
+  const line = `${body[1]}  ${HTML_TAG}\n`
   return { src: src.slice(0, body.index) + line + src.slice(body.index), result: 'added' }
 }
 
@@ -199,7 +204,7 @@ function printNextTag() {
 }
 
 function printTag() {
-  say(`      <script src="${TAG_SRC}" async></script>`)
+  say(`      ${HTML_TAG}`)
   say('    Add it in development only; on any address that isn\'t this machine the widget stays silent anyway.')
 }
 

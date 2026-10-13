@@ -47,7 +47,7 @@ test('Next.js: create-next-app\'s one-line <body>{children}</body> gets the tag 
 test('HTML: the tag before </body>', () => {
   const { src, result } = wireHtml(`<html>\n  <body>\n    <h1>Hi</h1>\n  </body>\n</html>\n`)
   assert.equal(result, 'added')
-  assert.match(src, /\n {4}<script src="http:\/\/127\.0\.0\.1:4848\/inspeck\.js" async><\/script>\n {2}<\/body>/)
+  assert.match(src, /\n {4}<script>\/\* Inspeck: loads on this computer only, never on the live site \*\/ if \(.*location\.hostname\)\) .*src: 'http:\/\/127\.0\.0\.1:4848\/inspeck\.js'.*<\/script>\n {2}<\/body>/)
 })
 
 test('auto-update: added to empty or existing settings, kept once on, and a local-folder marketplace left alone', () => {
@@ -131,7 +131,7 @@ test('a plain HTML page is only changed when asked (--yes); otherwise the tag is
   assert.equal(p.read('index.html'), html, 'not a terminal and no --yes: untouched')
   assert.match(out, /left it alone/)
   p.run('--yes')
-  assert.match(p.read('index.html'), /<script src="http:\/\/127\.0\.0\.1:4848\/inspeck\.js" async><\/script>\n {2}<\/body>/)
+  assert.match(p.read('index.html'), /\n {4}<script>\/\* Inspeck: loads on this computer only, never on the live site \*\/ if \(.*location\.hostname\)\) .*src: 'http:\/\/127\.0\.0\.1:4848\/inspeck\.js'.*<\/script>\n {2}<\/body>/)
 })
 
 test('no Claude Code on the machine: it says how to get it, and still wires the app', () => {

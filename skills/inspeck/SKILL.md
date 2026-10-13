@@ -24,7 +24,7 @@ css      border-radius: var(--radius-200);   8px
 
 When you open the person's app in your browser pane:
 
-1. Call `bind`, and run the line of JavaScript it returns in that browser tab. If the app doesn't load Inspeck itself, the line adds it to the page, so nothing in their code has to change. Notes from that tab now come to this session, even with other Claude sessions open. After a full page reload, run the line again (an added widget doesn't survive one).
+1. Call `bind`, and run the line of JavaScript it returns in that browser tab. Notes from that tab now come to this session, even with other Claude sessions open, and keep coming after reloads. If the app doesn't load Inspeck itself, the line adds it to the page, but only until a full reload; so offer once to add it to the app the standard way (see the start skill: `npx inspeck init --skip-plugin --yes`, or the guarded tag for plain HTML). Never put a session token or a `bind(...)` call in their code.
 2. Start the watcher **in the background** with the command `bind` gives you (`node ".../inspeck.mjs" wait`). It finishes, printing the notes, the moment the person sends them. Handle them, then start it again.
 
 Notes wait on the page until the person asks you to check them, so you get a batch once they've finished looking. If they've turned on **Auto-send notes to Claude** in Inspeck's settings, each note comes as it's placed instead. `pending` reads waiting notes too: when the person asks you to check their notes, that sends them.

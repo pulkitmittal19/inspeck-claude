@@ -37638,7 +37638,7 @@ if (process.argv[2] === "wait") {
   await runWait(process.argv.slice(3));
   process.exit(0);
 }
-var VERSION = "0.16.2";
+var VERSION = "0.16.3";
 var UPDATING = keepUpToDate();
 var log = (msg) => process.stderr.write(`inspeck: ${msg}
 `);
@@ -37647,7 +37647,7 @@ var INSTRUCTIONS = `Inspeck lets a person hover any element of their web app to 
 Each note carries the element's selector, the React component that rendered it, its key CSS exactly as written (tokens as var(--x), with the resolved value), and, for things inside a menu, the buttons that open it ("inside More \u203A Share"). A note on a dragged area lists each element inside it (or says it's empty space) with the area's position; treat it as one request about all of them.
 
 Setting up, once per session, when you open the person's app in your browser pane:
-1. Call bind. It returns one line of JavaScript; run it in the browser pane tab showing the app. If the app doesn't load Inspeck itself, the line adds it to the page (run it again after a full reload). Notes from that tab now come to this session.
+1. Call bind. It returns one line of JavaScript; run it in the browser pane tab showing the app. Notes from that tab now come to this session, and keep coming after reloads. If the app doesn't load Inspeck itself, the line adds it to the page only until a full reload: offer once to add it to the app (npx inspeck init --skip-plugin --yes, in development only), and never write a session token or bind(...) call into their code.
 2. Start the watcher as a background task: ${WAIT_COMMAND}
    It finishes, printing the notes, the moment they're sent. Handle them, then start it again.
 Notes wait on the page until the person asks you for them ("check my Inspeck notes"), unless they've turned on Auto-send notes to Claude in Inspeck's settings; then each comes as it's placed. The watcher wakes you only for notes that have come; pending reads waiting ones too, so asking for the notes is how they're sent.
@@ -37771,7 +37771,7 @@ server.registerTool("bind", {
 Start the watcher in the background: ${WAIT_COMMAND}`);
   }
   return text([
-    "Run this in the browser pane tab showing the app. If the app doesn't load Inspeck itself, this adds it to the page (until the page fully reloads: run it again then), and links the tab to this session:",
+    "Run this in the browser pane tab showing the app. It links the tab to this session (the link survives reloads). If the app doesn't load Inspeck itself, it also adds it to the page, but only until a full reload: offer once to add it to the app (npx inspeck init --skip-plugin --yes, development only). Never copy this line, or its token, into their code.",
     "",
     paneLine(SESSION.token),
     "",
