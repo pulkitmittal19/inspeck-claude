@@ -106,6 +106,8 @@ function turnOnAutoUpdate(): void {
 /* ---------- 2. the app ---------- */
 
 type App =
+  | { kind: 'astro'; config: string }
+  | { kind: 'nuxt'; config: string }
   | { kind: 'vite'; config: string }
   | { kind: 'next'; layout: string | null }
   | { kind: 'html'; file: string }
@@ -120,6 +122,11 @@ const firstExisting = (cwd: string, names: string[]) => names.map(n => join(cwd,
 function detect(cwd: string): App {
   const pkg = readJson(join(cwd, 'package.json'))
   const deps = { ...pkg?.dependencies, ...pkg?.devDependencies }
+  /* Astro and Nuxt render pages their own way: each has its own config to wire. */
+  const astro = firstExisting(cwd, ['astro.config.mjs', 'astro.config.ts', 'astro.config.js', 'astro.config.mts'])
+  if (astro || deps.astro) return astro ? { kind: 'astro', config: astro } : { kind: 'other' }
+  const nuxt = firstExisting(cwd, ['nuxt.config.ts', 'nuxt.config.js', 'nuxt.config.mjs'])
+  if (nuxt || deps.nuxt) return nuxt ? { kind: 'nuxt', config: nuxt } : { kind: 'other' }
   const vite = firstExisting(cwd, ['vite.config.ts', 'vite.config.mts', 'vite.config.js', 'vite.config.mjs', 'vite.config.cjs'])
   if (vite) return { kind: 'vite', config: vite }
   if (deps.next) {
@@ -162,6 +169,45 @@ export function wireVite(src: string, file: string): { src: string; result: 'add
     ? `const inspeck = require('inspeck/vite').default\n${out}`
     : afterImports(out, `import inspeck from 'inspeck/vite'`)
   return { src: out, result: 'added' }
+}
+
+/** Add `inspeck()` to Astro's Vite plugins: Astro's dev server is Vite, so the plugin works there as it does
+    in any Vite app (it puts the widget on every page Astro renders). */
+export function wireAstro(src: string): { src: string; result: 'added' | 'present' | 'manual' } {
+  if (/['"]inspeck\/vite['"]/.test(src) || src.includes('inspeck.js')) return { src, result: 'present' }
+  let out: string | null = null
+  const vite = /\bvite\s*:\s*\{/.exec(src)
+  if (vite) {
+    const plugins = /\bplugins\s*:\s*\[/.exec(src.slice(vite.index))
+    if (plugins) {
+      const open = vite.index + plugins.index + plugins[0].length
+      out = `${src.slice(0, open)}${/^\s*\]/.test(src.slice(open)) ? 'inspeck()' : 'inspeck(), '}${src.slice(open)}`
+    } else {
+      const open = vite.index + vite[0].length
+      out = `${src.slice(0, open)} plugins: [inspeck()],${src.slice(open)}`
+    }
+  } else {
+    const config = /\b(defineConfig\(\s*\{|export\s+default\s+\{)/.exec(src)
+    if (config) {
+      const open = config.index + config[0].length
+      const empty = /^\s*\}/.test(src.slice(open))
+      out = `${src.slice(0, open)}\n  vite: { plugins: [inspeck()] },${empty ? '\n' : ''}${src.slice(open).replace(/^\s*(?=\})/, empty ? '' : '$&')}`
+    }
+  }
+  if (!out) return { src, result: 'manual' }
+  return { src: afterImports(out, `import inspeck from 'inspeck/vite'`), result: 'added' }
+}
+
+/** Add the tag to Nuxt's page head, in development only (Nuxt renders pages outside Vite's reach). */
+const NUXT_HEAD = `$development: { app: { head: { script: [{ src: '${TAG_SRC}', async: true }] } } },`
+
+export function wireNuxt(src: string): { src: string; result: 'added' | 'present' | 'manual' } {
+  if (src.includes('inspeck.js')) return { src, result: 'present' }
+  if (/\$development\s*:/.test(src)) return { src, result: 'manual' }
+  const config = /\b(defineNuxtConfig\(\s*\{|export\s+default\s+\{)/.exec(src)
+  if (!config) return { src, result: 'manual' }
+  const open = config.index + config[0].length
+  return { src: `${src.slice(0, open)}\n  ${NUXT_HEAD}${src.slice(open)}`, result: 'added' }
 }
 
 /** Add a development-only tag before </body> in a Next.js layout or _document. */
@@ -214,6 +260,35 @@ async function wireApp(flags: Flags): Promise<void> {
   const rel = (p: string) => relative(cwd, p) || p
   say('Your app')
 
+  if (app.kind === 'astro') {
+    if (!flags.skipInstall) {
+      const [pm, args] = packageManager(cwd)
+      const r = run(pm, args, cwd)
+      if (!r.ok) { warn(`\`${pm} ${args.join(' ')}\` failed:\n${r.out.trim()}`); return }
+      done(`installed inspeck with ${pm}`)
+    }
+    const { src, result } = wireAstro(readFileSync(app.config, 'utf8'))
+    if (result === 'present') done(`${rel(app.config)} already loads Inspeck`)
+    else if (result === 'added') { writeFileSync(app.config, src); done(`added inspeck() to Vite in ${rel(app.config)} (only in astro dev, never in a build)`) }
+    else {
+      warn(`couldn't find where to add it in ${rel(app.config)}. Add this yourself:`)
+      say(`      import inspeck from 'inspeck/vite'`)
+      say('      vite: { plugins: [inspeck()] }')
+    }
+    return
+  }
+
+  if (app.kind === 'nuxt') {
+    const { src, result } = wireNuxt(readFileSync(app.config, 'utf8'))
+    if (result === 'present') done(`${rel(app.config)} already loads Inspeck`)
+    else if (result === 'added') { writeFileSync(app.config, src); done(`added a development-only script to ${rel(app.config)}`) }
+    else {
+      warn(`couldn't find where to add it in ${rel(app.config)}. Add this to defineNuxtConfig yourself:`)
+      say(`      ${NUXT_HEAD}`)
+    }
+    return
+  }
+
   if (app.kind === 'vite') {
     if (!flags.skipInstall) {
       const [pm, args] = packageManager(cwd)
@@ -244,7 +319,7 @@ async function wireApp(flags: Flags): Promise<void> {
   if (app.kind === 'html') {
     const current = readFileSync(app.file, 'utf8')
     if (current.includes('inspeck.js')) { done(`${rel(app.file)} already loads Inspeck`); return }
-    note(`${rel(app.file)} is a plain page, so the tag can't be development-only. Off this machine it stays silent, but remove it before you ship.`)
+    note(`${rel(app.file)} is a plain page: the tag loads Inspeck only when the page is opened on this computer, never on a deployed site.`)
     if (!(await confirm(`Add the tag to ${rel(app.file)}?`, flags))) { note('left it alone. To add it yourself:'); printTag(); return }
     const { src, result } = wireHtml(current)
     if (result === 'added') { writeFileSync(app.file, src); done(`added the tag to ${rel(app.file)}`) }
@@ -252,7 +327,7 @@ async function wireApp(flags: Flags): Promise<void> {
     return
   }
 
-  note('No Vite, Next.js or plain index.html here. Add this to your page\'s HTML, in development only:')
+  note('No Vite, Next.js, Astro, Nuxt or plain index.html here. Add this to your page\'s HTML (it loads only on this computer):')
   printTag()
 }
 

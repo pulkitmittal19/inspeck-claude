@@ -10,7 +10,8 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 
 const pkg = join(dirname(fileURLToPath(import.meta.url)), '..', 'packages', 'inspeck')
 const BIN = join(pkg, 'dist/bin.js')
-const { wireVite, wireNext, wireHtml, withAutoUpdate } = await import(pathToFileURL(join(pkg, 'dist/cli.js')).href)
+const { wireVite, wireNext, wireHtml, wireAstro, wireNuxt, withAutoUpdate } = await import(pathToFileURL(join(pkg, 'dist/cli.js')).href)
+const vitePlugin = await import(pathToFileURL(join(pkg, 'dist/vite.js')).href)
 
 test('Vite: inspeck() goes first in the plugins list, the import after the others; twice changes nothing', () => {
   const src = `import { defineConfig } from 'vite'\nimport react from '@vitejs/plugin-react'\n\nexport default defineConfig({\n  plugins: [react()],\n})\n`
@@ -149,4 +150,67 @@ test('--no-auto-update leaves Claude Code\'s settings alone', () => {
   const p = project({ 'vite.config.js': `export default { plugins: [] }\n` }, { pluginInstalled: true })
   p.run('--skip-install', '--no-auto-update')
   assert.equal(p.settings(), null)
+})
+
+test('Astro: inspeck() goes into its Vite plugins, wherever the config has room; twice changes nothing', () => {
+  const plain = wireAstro(`import { defineConfig } from 'astro/config'\n\nexport default defineConfig({})\n`)
+  assert.equal(plain.result, 'added')
+  assert.match(plain.src, /import inspeck from 'inspeck\/vite'/)
+  assert.match(plain.src, /defineConfig\(\{\n  vite: \{ plugins: \[inspeck\(\)\] \},/)
+  assert.equal(wireAstro(plain.src).result, 'present')
+  assert.match(wireAstro(`export default defineConfig({ vite: { plugins: [tailwind()] } })`).src, /plugins: \[inspeck\(\), tailwind\(\)\]/)
+  assert.match(wireAstro(`export default defineConfig({ vite: { ssr: {} } })`).src, /vite: \{ plugins: \[inspeck\(\)\], ssr/)
+  assert.equal(wireAstro(`module.exports = makeConfig()`).result, 'manual')
+})
+
+test('Nuxt: a development-only script in the page head; twice changes nothing', () => {
+  const out = wireNuxt(`export default defineNuxtConfig({\n  devtools: { enabled: true },\n})\n`)
+  assert.equal(out.result, 'added')
+  assert.match(out.src, /\$development: \{ app: \{ head: \{ script: \[\{ src: 'http:\/\/127\.0\.0\.1:4848\/inspeck\.js', async: true \}\] \} \} \},/)
+  assert.equal(wireNuxt(out.src).result, 'present')
+  assert.equal(wireNuxt(`export default defineNuxtConfig({ $development: { ssr: false } })`).result, 'manual')
+})
+
+test('the Vite plugin puts the widget on every HTML page the dev server sends, and leaves the rest alone', async () => {
+  const p = vitePlugin.default({ port: 4999 })
+  assert.equal(p.apply, 'serve', 'never in a build')
+  const proxy = p.config().server.proxy['/__inspeck']
+  assert.equal(proxy.target, 'http://127.0.0.1:4999')
+  assert.equal(proxy.rewrite('/__inspeck/inspeck.js'), '/inspeck.js')
+  let mw
+  p.configureServer({ middlewares: { use: fn => { mw = fn } } })
+  /* A stand-in response, written the ways frameworks write: setHeader + end, writeHead + several writes. */
+  const respond = (accept, contentType, parts, viaWriteHead) => new Promise(done => {
+    const headers = {}
+    const out = []
+    const res = {
+      headersSent: false,
+      getHeader: k => headers[k.toLowerCase()],
+      setHeader(k, v) { if (this.headersSent) throw new Error('ERR_HTTP_HEADERS_SENT'); headers[k.toLowerCase()] = v },
+      removeHeader(k) { if (this.headersSent) throw new Error('ERR_HTTP_HEADERS_SENT'); delete headers[k.toLowerCase()] },
+      writeHead(status, h) { for (const [k, v] of Object.entries(h ?? {})) headers[k.toLowerCase()] = v; this.headersSent = true; return this },
+      /* As in Node: once headers are sent, changing one throws. */
+      get _sent() { return this.headersSent },
+      write(c) { out.push(typeof c === 'string' ? c : Buffer.from(c).toString()); return true },
+      end(c) { if (c != null && typeof c !== 'function') out.push(typeof c === 'string' ? c : Buffer.from(c).toString()); done({ body: out.join(''), headers }); return this },
+    }
+    mw({ method: 'GET', headers: { accept } }, res, () => {
+      if (viaWriteHead) { res.writeHead(200, { 'Content-Type': contentType, 'Content-Length': 999 }); for (const x of parts.slice(0, -1)) res.write(x); res.end(parts.at(-1)) }
+      else { res.setHeader('content-type', contentType); res.setHeader('content-length', 999); res.end(parts.join('')) }
+    })
+  })
+  const ssr = await respond('text/html', 'text/html; charset=utf-8', ['<html><body><h1>', 'Svelte', '</h1></body></html>'], true)
+  assert.equal(ssr.body, '<html><body><h1>Svelte</h1><script src="/__inspeck/inspeck.js" async></script></body></html>')
+  assert.equal(ssr.headers['content-length'], undefined, 'no stale length')
+  const spa = await respond('text/html', 'text/html', ['<html><body><div id="app"></div></body></html>'])
+  assert.match(spa.body, /<script src="\/__inspeck\/inspeck\.js" async><\/script><\/body>/)
+  assert.equal(Number(spa.headers['content-length']), Buffer.byteLength(spa.body))
+  /* Astro and SvelteKit write plain bytes, not text: they must come out as the page, not as numbers. */
+  const enc = new TextEncoder()
+  const bytes = await respond('text/html', 'text/html', [enc.encode('<!DOCTYPE html><html><body>'), enc.encode('Astro ✓</body></html>')], true)
+  assert.equal(bytes.body, '<!DOCTYPE html><html><body>Astro ✓<script src="/__inspeck/inspeck.js" async></script></body></html>')
+  const once = await respond('text/html', 'text/html', ['<body><script src="/__inspeck/inspeck.js" async></script></body>'])
+  assert.equal(once.body.match(/inspeck\.js/g).length, 1, 'never twice')
+  const js = await respond('*/*', 'text/javascript', ['console.log("</body>")'])
+  assert.equal(js.body, 'console.log("</body>")', 'not HTML: untouched')
 })

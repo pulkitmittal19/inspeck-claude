@@ -7,9 +7,12 @@ export const VERSION = __INSPECK_VERSION__
    once anything async has run. */
 const script = document.currentScript as HTMLScriptElement | null
 
-/** The Inspeck server that served this script, e.g. http://127.0.0.1:4848. */
+/** The Inspeck server that served this script, e.g. http://127.0.0.1:4848, or the app's own dev server
+    when it passes Inspeck through (http://192.168.1.5:5173/__inspeck, see the Vite plugin). */
 export const SERVER = (() => {
-  try { if (script?.src) return new URL(script.src).origin } catch { /* fall through */ }
+  try {
+    if (script?.src) { const u = new URL(script.src); return u.origin + u.pathname.replace(/\/inspeck\.js$/, '') }
+  } catch { /* fall through */ }
   return 'http://127.0.0.1:4848'
 })()
 
