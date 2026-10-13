@@ -45,28 +45,54 @@ export function splitList(sel: string): string[] {
   return out.filter(Boolean)
 }
 
-/** The last compound selector: `.card > .btn:hover` → `.btn:hover`. */
+/** How many characters an escape takes from a backslash at i: a hex escape with the space that may end it
+    (Tailwind's `.\\32 xl\\:p-4` is the class `2xl:p-4`), or the one character after it. */
+function escapeLength(sel: string, i: number): number {
+  const hex = /^[0-9a-fA-F]{1,6}[ \t\n]?/.exec(sel.slice(i + 1))
+  return 1 + (hex ? hex[0].length : 1)
+}
+
+/** The last compound selector: `.card > .btn:hover` → `.btn:hover`. Read forwards, so escapes are whole. */
 export function rightmost(sel: string): string {
-  let depth = 0
-  for (let i = sel.length - 1; i >= 0; i--) {
+  let depth = 0, start = 0
+  for (let i = 0; i < sel.length; i++) {
     const ch = sel[i]
-    if (ch === ')' || ch === ']') depth++
-    else if (ch === '(' || ch === '[') depth--
-    else if (depth === 0 && (ch === ' ' || ch === '>' || ch === '+' || ch === '~') && sel[i - 1] !== '\\') return sel.slice(i + 1).trim()
+    if (ch === '\\') { i += escapeLength(sel, i) - 1; continue }
+    if (ch === '(' || ch === '[') depth++
+    else if (ch === ')' || ch === ']') depth--
+    else if (depth === 0 && (ch === ' ' || ch === '>' || ch === '+' || ch === '~')) start = i + 1
   }
-  return sel.trim()
+  return sel.slice(start).trim()
 }
 
 const unescape = (s: string) => s.replace(/\\([0-9a-fA-F]{1,6}\s?|.)/g, (_, c: string) =>
   /^[0-9a-fA-F]/.test(c) && c.trim().length > 1 ? String.fromCodePoint(parseInt(c, 16)) : c)
 
-/** Where a selector lives in the index: id, then a class, then the tag, else *. */
+/**
+ * Where a selector lives in the index: id, then a class, then the tag, else *. Read a character at a
+ * time, so an escaped character is part of a name: Tailwind's `.bg-\[\#e0f2fe\]` is the class
+ * `bg-[#e0f2fe]`, not a class `bg-` and an id `e0f2fe]`. Names inside [attributes] and :pseudo(…)
+ * arguments don't count.
+ */
 export function bucketOf(sel: string): string {
-  const c = rightmost(sel).replace(/:(?:is|where|not|has|nth-[a-z-]+|host|host-context)\([^)]*\)/g, '')
-  const id = /#((?:\\.|[\w-])+)/.exec(c)
-  if (id) return `#${unescape(id[1])}`
-  const cls = /\.((?:\\.|[\w-])+)/.exec(c)
-  if (cls) return `.${unescape(cls[1])}`
+  const c = rightmost(sel)
+  let id = '', cls = ''
+  let depth = 0
+  for (let i = 0; i < c.length; i++) {
+    const ch = c[i]
+    if (ch === '\\') { i += escapeLength(c, i) - 1; continue }
+    if (ch === '(' || ch === '[') { depth++; continue }
+    if (ch === ')' || ch === ']') { depth--; continue }
+    if (depth || (ch !== '#' && ch !== '.')) continue
+    let j = i + 1
+    while (j < c.length && (c[j] === '\\' || /[\w\-\u00A0-\uFFFF]/.test(c[j]))) j += c[j] === '\\' ? escapeLength(c, j) : 1
+    const name = unescape(c.slice(i + 1, j))
+    if (ch === '#' && !id) id = name
+    if (ch === '.' && !cls) cls = name
+    i = j - 1
+  }
+  if (id) return `#${id}`
+  if (cls) return `.${cls}`
   const tag = /^([a-zA-Z][\w-]*)/.exec(c)
   if (tag) return tag[1].toLowerCase()
   return '*'
