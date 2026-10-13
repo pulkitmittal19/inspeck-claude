@@ -9,6 +9,9 @@ import { api } from './api'
 import { allowedHere, SERVER, TAB_ID, VERSION } from './env'
 import { installNetworkHold } from './hold'
 
+/** How long Inspeck waits, once the page is parsed, for its slowest files to finish before starting anyway. */
+const LOAD_WAIT_MS = 3000
+
 type Global = { app?: App; version: string; server: string; tab: string; bind(token: string): Promise<string>; destroy(): void }
 declare global { interface Window { __INSPECK__?: Global } }
 
@@ -38,8 +41,21 @@ if (!allowedHere()) {
 } else {
   /* Now, not at boot: a request already on its way when you freeze is held too. */
   installNetworkHold()
-  /* After load and a quiet moment, so we never race the app's hydration. */
-  const start = () => ('requestIdleCallback' in window ? requestIdleCallback(boot, { timeout: 1500 }) : setTimeout(boot, 200))
+  /* After load and a quiet moment, so we never race the app's hydration. But not only after load: one
+     image, font or tracker that never finishes would keep load from ever firing. So once the page itself
+     is parsed, a few seconds is as long as Inspeck waits for the rest. */
+  let started = false
+  const start = () => {
+    if (started) return
+    started = true
+    if ('requestIdleCallback' in window) requestIdleCallback(boot, { timeout: 1500 })
+    else setTimeout(boot, 200)
+  }
+  const fallback = () => setTimeout(start, LOAD_WAIT_MS)
   if (document.readyState === 'complete') start()
-  else window.addEventListener('load', start, { once: true })
+  else {
+    window.addEventListener('load', start, { once: true })
+    if (document.readyState === 'interactive') fallback()
+    else document.addEventListener('DOMContentLoaded', fallback, { once: true })
+  }
 }
