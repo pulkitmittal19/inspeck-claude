@@ -9,6 +9,7 @@ import { api } from './api'
 import { allowedHere, SERVER, TAB_ID, VERSION } from './env'
 import { installNetworkHold } from './hold'
 import { fileNotice } from './notice'
+import { sameOriginTop, topRunsInspeck } from './frames'
 
 /** How long Inspeck waits, once the page is parsed, for its slowest files to finish before starting anyway. */
 const LOAD_WAIT_MS = 3000
@@ -19,7 +20,9 @@ declare global { interface Window { __INSPECK__?: Global } }
 function boot(): void {
   /* Hot reload re-runs this script; one widget per page. */
   if (window.__INSPECK__?.app) return
-  const app = new App()
+  /* In a frame of a page that runs Inspeck: quietly, following that page (see frames.ts). */
+  const top = sameOriginTop()
+  const app = new App({ quietIn: top && topRunsInspeck(top) ? top : null })
   window.__INSPECK__ = {
     app, version: VERSION, server: SERVER, tab: TAB_ID,
     /* Called by Claude in its browser pane (the bind tool says how). */
@@ -41,8 +44,6 @@ if (location.protocol === 'file:') {
   fileNotice()
 } else if (!allowedHere()) {
   console.info(`Inspeck: not starting on ${location.hostname}, which isn't this machine.`)
-} else if (window.top !== window && !document.currentScript?.hasAttribute('data-inspeck-frames')) {
-  /* Inside an iframe (Storybook, an embed): the top page's widget covers it. */
 } else {
   /* Now, not at boot: a request already on its way when you freeze is held too. */
   installNetworkHold()

@@ -10,7 +10,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 
 const pkg = join(dirname(fileURLToPath(import.meta.url)), '..', 'packages', 'inspeck')
 const BIN = join(pkg, 'dist/bin.js')
-const { wireVite, wireNext, wireHtml, wireAstro, wireNuxt, cspFileIn, withAutoUpdate } = await import(pathToFileURL(join(pkg, 'dist/cli.js')).href)
+const { wireVite, wireNext, wireHtml, wireAstro, wireNuxt, cspFileIn, wireStorybookHead, withAutoUpdate } = await import(pathToFileURL(join(pkg, 'dist/cli.js')).href)
 const vitePlugin = await import(pathToFileURL(join(pkg, 'dist/vite.js')).href)
 
 test('Vite: inspeck() goes first in the plugins list, the import after the others; twice changes nothing', () => {
@@ -220,4 +220,13 @@ test('a Content-Security-Policy in the app is found, so init can say what to all
   assert.equal(cspFileIn(dir), null)
   writeFileSync(join(dir, 'next.config.mjs'), `export default { async headers() { return [{ source: '/(.*)', headers: [{ key: 'Content-Security-Policy', value: "script-src 'self'" }] }] } }`)
   assert.equal(cspFileIn(dir), join(dir, 'next.config.mjs'))
+})
+
+test('Storybook: the local-only tag in .storybook/preview-head.html, kept with what is there; twice changes nothing', () => {
+  const fresh = wireStorybookHead(null)
+  assert.equal(fresh.result, 'added')
+  assert.match(fresh.src, /^<script>\/\* Inspeck: loads on this computer only/)
+  const kept = wireStorybookHead('<link rel="preconnect" href="https://fonts.gstatic.com">\n')
+  assert.match(kept.src, /^<link rel="preconnect"[^\n]*\n<script>/)
+  assert.equal(wireStorybookHead(kept.src).result, 'present')
 })

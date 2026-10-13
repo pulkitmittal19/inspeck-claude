@@ -254,6 +254,25 @@ function printTag() {
   say('    Add it in development only; on any address that isn\'t this machine the widget stays silent anyway.')
 }
 
+/* Storybook shows each story in a frame of its own page, which no app config reaches. Its standard place
+   for extra tags is .storybook/preview-head.html: the local-only tag goes there, and Inspeck runs in the
+   story's frame with its own pill. */
+
+/** Add the tag to a Storybook preview head (the file's text, or null if it doesn't exist yet). */
+export function wireStorybookHead(src: string | null): { src: string; result: 'added' | 'present' } {
+  if (src?.includes('inspeck.js')) return { src, result: 'present' }
+  return { src: `${src ? `${src.replace(/\s*$/, '')}\n` : ''}${HTML_TAG}\n`, result: 'added' }
+}
+
+function wireStorybook(cwd: string): void {
+  if (!existsSync(join(cwd, '.storybook'))) return
+  const file = join(cwd, '.storybook', 'preview-head.html')
+  const { src, result } = wireStorybookHead(existsSync(file) ? readFileSync(file, 'utf8') : null)
+  if (result === 'present') { done('Storybook already loads Inspeck'); return }
+  writeFileSync(file, src)
+  done('added Inspeck to Storybook (.storybook/preview-head.html): it runs in each story, on this computer only')
+}
+
 /* A Content-Security-Policy that only allows the page's own address blocks the widget, and nothing of
    Inspeck runs to say so. Vite and Astro apps load it through their own dev server, which such a policy
    allows; the others load it from 127.0.0.1, so the policy has to allow that, in development only. */
@@ -386,6 +405,7 @@ export async function main(argv: string[]): Promise<number> {
   if (!flags.skipPlugin && plugin && flags.autoUpdate) turnOnAutoUpdate()
   say('')
   await wireApp(flags)
+  wireStorybook(flags.cwd)
   cspHint(flags.cwd)
   say('')
   say('Next, in Claude: /inspeck:start')

@@ -8,6 +8,7 @@
  */
 
 import { parentAcross } from './dom'
+import { framedByInspeck } from './frames'
 
 const CONTROL = [
   'button', 'a[href]', 'input', 'select', 'textarea', 'summary', 'label',
@@ -22,6 +23,8 @@ export function elementAt(x: number, y: number, host: Element): Element | null {
   for (const el of document.elementsFromPoint(x, y)) {
     if (el === host || host.contains(el)) continue
     if (el === document.documentElement || el === document.body) return null
+    /* A frame with its own Inspeck answers for what's in it (see frames.ts). */
+    if (framedByInspeck(el)) return null
     if (invisibleLayer(el)) continue
     return into(el, x, y)
   }

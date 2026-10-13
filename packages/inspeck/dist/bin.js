@@ -218,6 +218,23 @@ function printTag() {
   say(`      ${HTML_TAG}`);
   say("    Add it in development only; on any address that isn't this machine the widget stays silent anyway.");
 }
+function wireStorybookHead(src) {
+  if (src?.includes("inspeck.js")) return { src, result: "present" };
+  return { src: `${src ? `${src.replace(/\s*$/, "")}
+` : ""}${HTML_TAG}
+`, result: "added" };
+}
+function wireStorybook(cwd) {
+  if (!existsSync(join(cwd, ".storybook"))) return;
+  const file = join(cwd, ".storybook", "preview-head.html");
+  const { src, result } = wireStorybookHead(existsSync(file) ? readFileSync(file, "utf8") : null);
+  if (result === "present") {
+    done("Storybook already loads Inspeck");
+    return;
+  }
+  writeFileSync(file, src);
+  done("added Inspeck to Storybook (.storybook/preview-head.html): it runs in each story, on this computer only");
+}
 var CSP_FILES = [
   "index.html",
   "next.config.js",
@@ -386,6 +403,7 @@ async function main(argv) {
   if (!flags.skipPlugin && plugin && flags.autoUpdate) turnOnAutoUpdate();
   say("");
   await wireApp(flags);
+  wireStorybook(flags.cwd);
   cspHint(flags.cwd);
   say("");
   say("Next, in Claude: /inspeck:start");

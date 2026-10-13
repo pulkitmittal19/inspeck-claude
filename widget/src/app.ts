@@ -4,6 +4,7 @@ import { api, type GroupMember, type Note } from './api'
 import { createCard, type Card } from './card'
 import { warmUp } from './css/cascade'
 import { borrowSheetsWith } from './css/rules'
+import { peerIn, reachFrames } from './frames'
 import { h, isEditable } from './dom'
 import { cap, isToggleKey, keyName } from './keys'
 import { createMenuHint, opensMenu, type MenuHint } from './menuhint'
@@ -102,8 +103,13 @@ export class App {
   /** Put away with I to open a menu: the pill says what's next until Inspeck is back. */
   private menuWait = 0
   private menuHintTimer = 0
+  /** Inside a frame of a page that runs Inspeck: that page's window. This one then runs quietly (see frames.ts). */
+  private quietIn: Window | null
+  private unreach: () => void = () => {}
+  private unfollow: () => void = () => {}
 
-  constructor() {
+  constructor(opts: { quietIn?: Window | null } = {}) {
+    this.quietIn = opts.quietIn ?? null
     /* Stylesheets the page can't read itself (a CDN's) come through the plugin. */
     borrowSheetsWith(href => api.css(href))
     this.host = createHost()
@@ -149,19 +155,40 @@ export class App {
       ui: e => this.onUi(e),
       page: e => this.onPage(e),
     })
-    if (tabStore.get('open') === '1') this.setOpen(true)
+    if (this.quietIn) {
+      /* No pill, no tour: open when the page around is, and closing either closes both. */
+      this.host.ui.setAttribute('data-quiet', '')
+      const top = this.quietIn
+      const follow = (e: Event) => this.setOpen(!!(e as CustomEvent<boolean>).detail)
+      try { top.addEventListener('inspeck:open', follow) } catch { /* gone */ }
+      this.unfollow = () => { try { top.removeEventListener('inspeck:open', follow) } catch { /* gone */ } }
+      window.addEventListener('pagehide', () => this.unfollow(), { once: true })
+      if (peerIn(top)?.open) this.setOpen(true)
+    } else {
+      /* Frames on this page get their own quiet Inspeck: the pointer over a frame is the frame's to see. */
+      this.unreach = reachFrames()
+      if (tabStore.get('open') === '1') this.setOpen(true)
+    }
   }
 
   setOpen(open: boolean): void {
     if (open === this.open) return
     this.open = open
     this.toolbar.setOpen(open)
-    tabStore.set('open', open ? '1' : null)
+    if (this.quietIn) {
+      /* Opened or closed from in here (I, Escape): the page around follows, and tells its other frames. */
+      const peer = peerIn(this.quietIn)
+      if (peer && peer.open !== open) peer.setOpen(open)
+    } else {
+      tabStore.set('open', open ? '1' : null)
+      /* Frames running quietly open and close with this page. */
+      window.dispatchEvent(new CustomEvent('inspeck:open', { detail: open }))
+    }
     if (open) {
       if (this.menuWait) { clearTimeout(this.menuWait); this.menuWait = 0; this.toolbar.setStatus(null) }
       prefs.sync()
       void checkVoice()
-      this.tour.start()
+      if (!this.quietIn) this.tour.start()
       warmUp()
       if (this.pointer.x >= 0) this.schedulePick()
     } else {
@@ -674,6 +701,8 @@ export class App {
   }
 
   destroy(): void {
+    this.unreach()
+    this.unfollow()
     this.notes.destroy()
     this.unroute()
     this.host.destroy()

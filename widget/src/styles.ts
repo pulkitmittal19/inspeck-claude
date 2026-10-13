@@ -438,6 +438,8 @@ button { appearance: none; background: none; border: 0; padding: 0; cursor: poin
 /* The pill and what belongs to it (Settings, the tour, the Frozen line, its tips) sit above a note card,
    which is drawn later and would otherwise cover them. */
 .bar, .settings, .tour, .bar-status { z-index: 5; }
+/* Inside a frame of a page that runs Inspeck: no pill of its own; the page's pill is the one. */
+.ix[data-quiet] :is(.bar, .tip, .bar-status, .settings, .tour) { display: none !important; }
 .tip { z-index: 6; }
 
 /* the first-run tour: one card above the pill, a step at a time */
