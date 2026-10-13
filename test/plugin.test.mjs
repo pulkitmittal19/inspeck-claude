@@ -413,6 +413,18 @@ test('the plugin fetches a stylesheet the page can\'t read (a CDN\'s), and only 
   cdn.close()
 })
 
+test('a Vue note without a line gets one: the element in its file, the component where it is used', async () => {
+  const { mkdtempSync, writeFileSync, mkdirSync } = await import('node:fs')
+  const dir = mkdtempSync(join(tmpdir(), 'inspeck-vue-'))
+  mkdirSync(join(dir, 'components'))
+  writeFileSync(join(dir, 'components', 'PriceCard.vue'), '<template>\n  <div class="card">\n    <button\n      class="buy"\n    >Buy now for {{ price }}</button>\n  </div>\n</template>\n')
+  writeFileSync(join(dir, 'App.vue'), '<template>\n  <main>\n    <PriceCard />\n  </main>\n</template>\n')
+  const { json } = await page(s.port, 'POST', '/comments', { body: { ...fix, page: 'http://localhost:5173/vue', note: 'Buy button', screenshot: undefined,
+    element: { selector: 'div.card > button.buy', tag: 'button', text: 'Buy now for 12' },
+    source: [{ file: join(dir, 'components', 'PriceCard.vue'), line: 0 }, { file: join(dir, 'App.vue'), line: 0 }] } })
+  assert.deepEqual(json.comment.source.map(s => [s.file.split('/').pop(), s.line]), [['PriceCard.vue', 3], ['App.vue', 3]])
+})
+
 test('notes the box could never send are refused, with a reason', async () => {
   const at = 'http://localhost:5173/refused'
   const post = (note, extra = {}) => page(s.port, 'POST', '/comments', { body: { ...fix, page: at, note, screenshot: undefined, ...extra } })

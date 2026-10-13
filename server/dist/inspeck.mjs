@@ -37120,6 +37120,52 @@ function resolveSource(at) {
     return at;
   }
 }
+var escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+function lineOf(src, re) {
+  const m = re.exec(src);
+  return m ? src.slice(0, m.index).split("\n").length : 0;
+}
+function elementLine(src, clue) {
+  const words = (clue.text ?? "").trim().split(/\s+/).slice(0, 8).join(" ");
+  const lead = /^[^\d{}<>]{3,}/.exec(words)?.[0].trim();
+  const tag = clue.tag?.toLowerCase();
+  if (lead) {
+    const m = new RegExp(escapeRe(lead).replace(/\s+/g, "\\s+")).exec(src);
+    if (m) {
+      const before = src.slice(Math.max(0, m.index - 400), m.index);
+      const open3 = tag ? before.toLowerCase().lastIndexOf(`<${tag}`) : -1;
+      const at = open3 >= 0 && !/<\/?[a-z]/i.test(before.slice(open3 + 1).replace(/^[a-z-]+[^>]*>/i, "")) ? m.index - before.length + open3 : m.index;
+      return src.slice(0, at).split("\n").length;
+    }
+  }
+  if (!tag) return 0;
+  const cls = /\.([\w-]+)(?![^[]*\])/.exec(clue.selector?.split(/\s|>/).pop() ?? "")?.[1];
+  if (cls) {
+    const at = lineOf(src, new RegExp(`<${tag}\\b[^>]*class(?:Name)?=["'\`][^"'\`]*\\b${escapeRe(cls)}\\b`, "i"));
+    if (at) return at;
+  }
+  return lineOf(src, new RegExp(`<${tag}\\b`, "i"));
+}
+function findLines(sources, clue) {
+  return sources.map((at, i) => {
+    if (at.line || !isAbsolute2(at.file) || !/\.(vue|svelte|html?|astro|[jt]sx?)$/.test(at.file)) return at;
+    let src;
+    try {
+      if (!statSync2(at.file).isFile() || statSync2(at.file).size > 2e6) return at;
+      src = readFileSync3(at.file, "utf8");
+    } catch {
+      return at;
+    }
+    let line = 0;
+    if (i === 0) line = elementLine(src, clue);
+    else {
+      const name = sources[i - 1].file.split(/[\\/]/).pop().replace(/\.\w+$/, "");
+      const kebab = name.replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase();
+      line = lineOf(src, new RegExp(`<(${escapeRe(name)}|${escapeRe(kebab)})\\b`));
+    }
+    return line ? { ...at, line } : at;
+  });
+}
 
 // server/src/voice.ts
 import { spawn } from "child_process";
@@ -37460,7 +37506,7 @@ async function route2(req, res, version2, onNew) {
       return send(res, 400, { error: "Comment is not in the Inspeck format", issues: parsed.error.issues });
     }
     const note = parsed.data;
-    if (note.source) note.source = note.source.map(resolveSource);
+    if (note.source) note.source = findLines(note.source.map(resolveSource), { text: note.element.text, tag: note.element.tag, selector: note.element.selector });
     for (const m of note.group ?? []) if (m.source) m.source = resolveSource(m.source);
     const created = add(note, route(note.page, note.tabId));
     onNew(created);

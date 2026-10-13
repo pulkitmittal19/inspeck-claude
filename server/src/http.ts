@@ -23,7 +23,7 @@ import * as store from './store.js'
 import { HOME } from './store.js'
 import { bindTab, route as routeNote } from './sessions.js'
 import { isThisMachine, NewComment, NOTE_MAX, pageKey, type Comment } from './format.js'
-import { resolveSource } from './sourcemap.js'
+import { findLines, resolveSource } from './sourcemap.js'
 import { listenStream, stopListening, voiceAvailable, warmVoice } from './voice.js'
 
 /** Settings the widget may keep, and the values each may take. */
@@ -243,7 +243,7 @@ async function route(req: IncomingMessage, res: ServerResponse, version: string,
     }
     /* Places in compiled server code (a server component's JSX) become places in the source. */
     const note = parsed.data
-    if (note.source) note.source = note.source.map(resolveSource)
+    if (note.source) note.source = findLines(note.source.map(resolveSource), { text: note.element.text, tag: note.element.tag, selector: note.element.selector })
     for (const m of note.group ?? []) if (m.source) m.source = resolveSource(m.source)
     const created = store.add(note, routeNote(note.page, note.tabId))
     onNew(created)

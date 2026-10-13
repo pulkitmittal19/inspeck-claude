@@ -99,3 +99,62 @@ export function resolveSource(at: SourceAt): SourceAt {
     return at
   }
 }
+
+/* ---------------- a line for a file that came without one ----------------
+ *
+ * Vue in development says which file a component is in (`__file`), not where in it. This server can read
+ * the file, so it finds the line: the element by its text (up to the first {{ }}, which renders as
+ * something else), else by its tag and a class; the file a component is used in, by the component's tag. */
+
+interface Clue { text?: string; tag?: string; selector?: string }
+
+const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+/** The first line of `src` that matches, 1-based, or 0. */
+function lineOf(src: string, re: RegExp): number {
+  const m = re.exec(src)
+  return m ? src.slice(0, m.index).split('\n').length : 0
+}
+
+/** Where in its file an element is written, from what the page shows of it. */
+function elementLine(src: string, clue: Clue): number {
+  /* Words as shown, before the first number or symbol a template might have filled in. */
+  const words = (clue.text ?? '').trim().split(/\s+/).slice(0, 8).join(' ')
+  const lead = /^[^\d{}<>]{3,}/.exec(words)?.[0].trim()
+  const tag = clue.tag?.toLowerCase()
+  if (lead) {
+    const m = new RegExp(escapeRe(lead).replace(/\s+/g, '\\s+')).exec(src)
+    if (m) {
+      /* The text sits inside its element: the line is where that element's tag opens, if it's close by. */
+      const before = src.slice(Math.max(0, m.index - 400), m.index)
+      const open = tag ? before.toLowerCase().lastIndexOf(`<${tag}`) : -1
+      const at = open >= 0 && !/<\/?[a-z]/i.test(before.slice(open + 1).replace(/^[a-z-]+[^>]*>/i, '')) ? m.index - before.length + open : m.index
+      return src.slice(0, at).split('\n').length
+    }
+  }
+  if (!tag) return 0
+  const cls = /\.([\w-]+)(?![^[]*\])/.exec(clue.selector?.split(/\s|>/).pop() ?? '')?.[1]
+  if (cls) {
+    const at = lineOf(src, new RegExp(`<${tag}\\b[^>]*class(?:Name)?=["'\`][^"'\`]*\\b${escapeRe(cls)}\\b`, 'i'))
+    if (at) return at
+  }
+  return lineOf(src, new RegExp(`<${tag}\\b`, 'i'))
+}
+
+/** Fill in the lines a page couldn't give: the element in the first file, each component where it's used. */
+export function findLines(sources: SourceAt[], clue: Clue): SourceAt[] {
+  return sources.map((at, i) => {
+    if (at.line || !isAbsolute(at.file) || !/\.(vue|svelte|html?|astro|[jt]sx?)$/.test(at.file)) return at
+    let src: string
+    try { if (!statSync(at.file).isFile() || statSync(at.file).size > 2_000_000) return at; src = readFileSync(at.file, 'utf8') } catch { return at }
+    let line = 0
+    if (i === 0) line = elementLine(src, clue)
+    else {
+      /* The component the previous file is, used here: <HelloWorld …> or <hello-world …>. */
+      const name = sources[i - 1].file.split(/[\\/]/).pop()!.replace(/\.\w+$/, '')
+      const kebab = name.replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase()
+      line = lineOf(src, new RegExp(`<(${escapeRe(name)}|${escapeRe(kebab)})\\b`))
+    }
+    return line ? { ...at, line } : at
+  })
+}
