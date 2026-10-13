@@ -37738,7 +37738,7 @@ if (process.argv[2] === "wait") {
   await runWait(process.argv.slice(3));
   process.exit(0);
 }
-var VERSION = "0.16.3";
+var VERSION = "0.17.0";
 var UPDATING = keepUpToDate();
 var log = (msg) => process.stderr.write(`inspeck: ${msg}
 `);
