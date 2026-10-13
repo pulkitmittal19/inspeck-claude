@@ -14,14 +14,37 @@ const CONTROL = [
   '[role=gridcell]', '[role=row]', '[role=combobox]', '[role=slider]',
 ].join(',')
 
-/** The topmost page element at a point, looking through Inspeck's own layer. */
+/** The topmost page element at a point, looking through Inspeck's own layer, and through layers nobody
+    can see (see invisibleLayer): the pointer means what shows there. */
 export function elementAt(x: number, y: number, host: Element): Element | null {
   for (const el of document.elementsFromPoint(x, y)) {
     if (el === host || host.contains(el)) continue
     if (el === document.documentElement || el === document.body) return null
+    if (invisibleLayer(el)) continue
     return el
   }
   return null
+}
+
+/** Media and controls show something even when they paint no box of their own. */
+const SHOWS = /^(img|svg|video|canvas|iframe|embed|object|input|select|textarea|button|picture)$/i
+
+/**
+ * A layer lying over the page that you can't see at this point, so it can't be what the pointer means:
+ *  - faded right out (opacity 0, itself or a parent): a menu or a panel hidden that way but still there;
+ *  - positioned over the page and painting nothing of its own here: a click-catcher, a "stretched link"
+ *    over a card, the empty holder of a cookie banner or a chat widget, a fixed footer's wrapper.
+ * It's only called for the element the pointer is on itself, not one of its children (those come first
+ * in the hit list), so a positioned box is skipped only where it's see-through.
+ */
+export function invisibleLayer(el: Element): boolean {
+  for (let e: Element | null = el; e && e !== document.body; e = e.parentElement) {
+    if (Number(getComputedStyle(e).opacity) === 0) return true
+  }
+  if (SHOWS.test(el.tagName)) return false
+  const position = getComputedStyle(el).position
+  if (position !== 'absolute' && position !== 'fixed') return false
+  return !paints(el)
 }
 
 /** Snap the raw element to what a person most likely means. */
