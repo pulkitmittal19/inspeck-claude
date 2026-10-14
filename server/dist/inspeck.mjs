@@ -7196,8 +7196,8 @@ var require_dist = __commonJS({
 });
 
 // server/src/index.ts
-import { readFileSync as readFileSync6, writeFileSync as writeFileSync5, mkdirSync as mkdirSync5 } from "fs";
-import { extname, join as join7 } from "path";
+import { readFileSync as readFileSync7, writeFileSync as writeFileSync6, mkdirSync as mkdirSync6 } from "fs";
+import { extname, join as join8 } from "path";
 
 // node_modules/zod/v3/helpers/util.js
 var util;
@@ -37696,6 +37696,79 @@ function keepUpToDate() {
   }
 }
 
+// server/src/outdated.ts
+import { existsSync as existsSync7, mkdirSync as mkdirSync5, readFileSync as readFileSync6, readdirSync as readdirSync2, writeFileSync as writeFileSync5 } from "fs";
+import { dirname as dirname5, join as join7 } from "path";
+var NEEDED = "0.11.0";
+var OFFERED = () => join7(HOME, "update-offered.json");
+var older = (a, b) => {
+  const pa = a.split(".").map((n) => parseInt(n, 10) || 0), pb = b.split(".").map((n) => parseInt(n, 10) || 0);
+  for (let i = 0; i < 3; i++) if ((pa[i] ?? 0) !== (pb[i] ?? 0)) return (pa[i] ?? 0) < (pb[i] ?? 0);
+  return false;
+};
+var readJson2 = (p) => {
+  try {
+    return JSON.parse(readFileSync6(p, "utf8"));
+  } catch {
+    return null;
+  }
+};
+var SKIP = /* @__PURE__ */ new Set(["node_modules", "dist", "build", "out", "coverage", ".next", ".nuxt", ".svelte-kit", ".turbo", ".git"]);
+function candidates(cwd) {
+  const out = [cwd];
+  let level = [cwd];
+  for (let depth = 0; depth < 2 && out.length < 80; depth++) {
+    const next = [];
+    for (const dir of level) {
+      try {
+        for (const d of readdirSync2(dir, { withFileTypes: true })) {
+          if (d.isDirectory() && !SKIP.has(d.name) && !d.name.startsWith(".")) next.push(join7(dir, d.name));
+        }
+      } catch {
+      }
+    }
+    out.push(...next);
+    level = next;
+  }
+  return out.slice(0, 80);
+}
+function versionIn(dir, spec) {
+  const installed = readJson2(join7(dir, "node_modules", "inspeck", "package.json"))?.version;
+  if (typeof installed === "string") return installed;
+  return /(\d+\.\d+\.\d+)/.exec(spec)?.[1] ?? null;
+}
+function updateCommand(dir) {
+  for (let d = dir, i = 0; i < 5; i++, d = dirname5(d)) {
+    if (existsSync7(join7(d, "pnpm-lock.yaml"))) return `pnpm add -D inspeck@latest`;
+    if (existsSync7(join7(d, "yarn.lock"))) return `yarn add -D inspeck@latest`;
+    if (existsSync7(join7(d, "bun.lockb")) || existsSync7(join7(d, "bun.lock"))) return `bun add -d inspeck@latest`;
+    if (existsSync7(join7(d, "package-lock.json"))) break;
+    if (dirname5(d) === d) break;
+  }
+  return `npm install -D inspeck@latest`;
+}
+function outdatedPackage(cwd) {
+  const offered = readJson2(OFFERED()) ?? {};
+  for (const dir of candidates(cwd)) {
+    const pkg = readJson2(join7(dir, "package.json"));
+    const spec = pkg?.devDependencies?.inspeck ?? pkg?.dependencies?.inspeck;
+    if (typeof spec !== "string" || /^(file:|link:|workspace:|git|https?:)/.test(spec)) continue;
+    const version2 = versionIn(dir, spec);
+    if (!version2 || !older(version2, NEEDED) || offered[dir]) continue;
+    return { dir, version: version2, command: updateCommand(dir) };
+  }
+  return null;
+}
+function markOffered(dir) {
+  try {
+    const offered = readJson2(OFFERED()) ?? {};
+    offered[dir] = (/* @__PURE__ */ new Date()).toISOString();
+    mkdirSync5(HOME, { recursive: true });
+    writeFileSync5(OFFERED(), JSON.stringify(offered, null, 2));
+  } catch {
+  }
+}
+
 // server/src/wait.ts
 import { fileURLToPath as fileURLToPath4 } from "url";
 var SELF = fileURLToPath4(import.meta.url);
@@ -37738,8 +37811,10 @@ if (process.argv[2] === "wait") {
   await runWait(process.argv.slice(3));
   process.exit(0);
 }
-var VERSION = "0.17.0";
+var VERSION = "0.17.1";
 var UPDATING = keepUpToDate();
+var OUTDATED = outdatedPackage(process.cwd());
+if (OUTDATED) markOffered(OUTDATED.dir);
 var log = (msg) => process.stderr.write(`inspeck: ${msg}
 `);
 var INSTRUCTIONS = `Inspeck lets a person hover any element of their web app to see its CSS, and click it to leave a note for you. Their notes arrive here.
@@ -37764,7 +37839,9 @@ Before you click in the browser pane yourself, close Inspeck there (press Escape
 
 Notes arrive at http://127.0.0.1:${PORT}.${UPDATING ? `
 
-Inspeck has just turned on auto-update for itself, so new versions install on their own. Tell the person once, in one short line, at a natural moment (not as the first thing you say); they can turn it off in /plugin \u203A Marketplaces \u203A inspeck.` : ""}`;
+Inspeck has just turned on auto-update for itself, so new versions install on their own. Tell the person once, in one short line, at a natural moment (not as the first thing you say); they can turn it off in /plugin \u203A Marketplaces \u203A inspeck.` : ""}${OUTDATED ? `
+
+This project's Inspeck dev plugin (the inspeck npm package in ${OUTDATED.dir}) is ${OUTDATED.version}, older than ${NEEDED}, which some of Inspeck's fixes need (the Network address, server-rendered pages such as SvelteKit and Astro, strict security policies) and which then keeps itself current through this plugin. Early on, at a natural moment, ask the person once in one line: "Update Inspeck's dev plugin in this project? (one command)". On yes, run \`${OUTDATED.command}\` in ${OUTDATED.dir}, then restart their dev server if it's running. If they say no, don't ask again.` : ""}`;
 var MIME = { ".png": "image/png", ".jpg": "image/jpeg", ".webp": "image/webp" };
 function contentFor(c) {
   const out = [
@@ -37772,7 +37849,7 @@ function contentFor(c) {
   ];
   if (c.screenshot) {
     try {
-      out.push({ type: "image", data: readFileSync6(c.screenshot).toString("base64"), mimeType: MIME[extname(c.screenshot)] ?? "image/png" });
+      out.push({ type: "image", data: readFileSync7(c.screenshot).toString("base64"), mimeType: MIME[extname(c.screenshot)] ?? "image/png" });
     } catch {
       out.push({ type: "text", text: "(The screenshot for this comment is missing from disk.)" });
     }
@@ -37896,8 +37973,8 @@ server.registerTool("dismiss", {
 });
 function noteClient() {
   try {
-    mkdirSync5(HOME, { recursive: true });
-    writeFileSync5(join7(HOME, "last-client.json"), JSON.stringify({
+    mkdirSync6(HOME, { recursive: true });
+    writeFileSync6(join8(HOME, "last-client.json"), JSON.stringify({
       at: (/* @__PURE__ */ new Date()).toISOString(),
       client: server.server.getClientVersion(),
       capabilities: server.server.getClientCapabilities()

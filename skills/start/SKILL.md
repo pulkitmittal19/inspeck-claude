@@ -34,6 +34,8 @@ Then call the Inspeck `bind` tool and run the line it returns in that tab. It li
 
 No browser pane? Call `bind` with `page` set to the app's address instead, so notes from it in any browser come here. The app needs Inspeck in its pages for that: add it as above if it doesn't load `inspeck.js` yet.
 
+If Inspeck's instructions for this chat say the project's Inspeck dev plugin is older than it should be and you haven't asked yet, ask now, in one line, and update it on yes (the instructions give the command); then restart the dev server.
+
 ## 3. Listen for notes
 
 Start the watcher `bind` gave you, as a background task. When it finishes it prints the new notes: handle them (see the inspeck skill), then start it again.

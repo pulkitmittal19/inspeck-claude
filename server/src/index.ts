@@ -23,6 +23,7 @@ import * as store from './store.js'
 import { listen, PORT } from './http.js'
 import { heading, pageLabel, render, summaryLine, type Comment } from './format.js'
 import { keepUpToDate } from './autoupdate.js'
+import { markOffered, NEEDED, outdatedPackage } from './outdated.js'
 import { belongsTo, bindSite, claudePid, register, unclaimed } from './sessions.js'
 import { runWait, WAIT_COMMAND } from './wait.js'
 
@@ -37,6 +38,9 @@ declare const __INSPECK_VERSION__: string
 const VERSION = __INSPECK_VERSION__
 /* People who added Inspeck from /plugin never ran `npx inspeck init`, which turns on auto-update; do it once for them. */
 const UPDATING = keepUpToDate()
+/* A project still on an inspeck npm package from before it became a pass-through: offered an update, once. */
+const OUTDATED = outdatedPackage(process.cwd())
+if (OUTDATED) markOffered(OUTDATED.dir)
 const log = (msg: string) => process.stderr.write(`inspeck: ${msg}\n`)
 
 const INSTRUCTIONS = `Inspeck lets a person hover any element of their web app to see its CSS, and click it to leave a note for you. Their notes arrive here.
@@ -61,7 +65,9 @@ Before you click in the browser pane yourself, close Inspeck there (press Escape
 
 Notes arrive at http://127.0.0.1:${PORT}.${UPDATING ? `
 
-Inspeck has just turned on auto-update for itself, so new versions install on their own. Tell the person once, in one short line, at a natural moment (not as the first thing you say); they can turn it off in /plugin › Marketplaces › inspeck.` : ''}`
+Inspeck has just turned on auto-update for itself, so new versions install on their own. Tell the person once, in one short line, at a natural moment (not as the first thing you say); they can turn it off in /plugin › Marketplaces › inspeck.` : ''}${OUTDATED ? `
+
+This project's Inspeck dev plugin (the inspeck npm package in ${OUTDATED.dir}) is ${OUTDATED.version}, older than ${NEEDED}, which some of Inspeck's fixes need (the Network address, server-rendered pages such as SvelteKit and Astro, strict security policies) and which then keeps itself current through this plugin. Early on, at a natural moment, ask the person once in one line: "Update Inspeck's dev plugin in this project? (one command)". On yes, run \`${OUTDATED.command}\` in ${OUTDATED.dir}, then restart their dev server if it's running. If they say no, don't ask again.` : ''}`
 
 const MIME: Record<string, string> = { '.png': 'image/png', '.jpg': 'image/jpeg', '.webp': 'image/webp' }
 

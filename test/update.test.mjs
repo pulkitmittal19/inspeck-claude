@@ -116,3 +116,36 @@ test('a newer Inspeck takes the port from an older one; the older takes it back 
   await s.stop()
   rmSync(tmp, { recursive: true, force: true })
 })
+
+test('a project on an inspeck npm package from before 0.11 is offered the update once, in its own package manager', async () => {
+  const tmp = mkdtempSync(join(tmpdir(), 'inspeck-old-'))
+  const home = join(tmp, 'home'), project = join(tmp, 'repo')
+  /* A monorepo: the app with the package is in apps/admin, the chat opens at the root. */
+  mkdirSync(join(project, 'apps', 'admin', 'node_modules', 'inspeck'), { recursive: true })
+  writeFileSync(join(project, 'package.json'), JSON.stringify({ name: 'repo', private: true }))
+  writeFileSync(join(project, 'pnpm-lock.yaml'), '')
+  writeFileSync(join(project, 'apps', 'admin', 'package.json'), JSON.stringify({ devDependencies: { inspeck: '^0.10.2' } }))
+  writeFileSync(join(project, 'apps', 'admin', 'node_modules', 'inspeck', 'package.json'), JSON.stringify({ name: 'inspeck', version: '0.10.2' }))
+  const open = async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'inspeck-srv-'))
+    copyFileSync(join(root, 'server/dist/inspeck.mjs'), join(dir, 'inspeck.mjs'))
+    const client = new Client({ name: 'test-claude', version: '0' })
+    await client.connect(new StdioClientTransport({
+      command: process.execPath, args: [join(dir, 'inspeck.mjs')], cwd: project,
+      env: { ...process.env, INSPECK_HOME: home, INSPECK_PORT: String(49600 + Math.floor(Math.random() * 90)), CLAUDE_PLUGIN_ROOT: '' }, stderr: 'ignore',
+    }))
+    const said = client.getInstructions() ?? ''
+    await client.close()
+    return said
+  }
+  const first = await open()
+  assert.match(first, /Inspeck dev plugin \(the inspeck npm package in .*apps\/admin\) is 0\.10\.2, older than 0\.11\.0/)
+  assert.match(first, /`pnpm add -D inspeck@latest`/, "the project's own package manager")
+  assert.doesNotMatch(await open(), /Inspeck dev plugin/, 'offered once')
+
+  /* Up to date: nothing to offer. */
+  rmSync(home, { recursive: true, force: true })
+  writeFileSync(join(project, 'apps', 'admin', 'node_modules', 'inspeck', 'package.json'), JSON.stringify({ name: 'inspeck', version: '0.11.0' }))
+  assert.doesNotMatch(await open(), /Inspeck dev plugin/)
+  rmSync(tmp, { recursive: true, force: true })
+})
