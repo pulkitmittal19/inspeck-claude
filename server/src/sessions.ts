@@ -45,25 +45,47 @@ export interface Route {
 const DIR = join(HOME, 'sessions')
 const BINDINGS = join(HOME, 'bindings.json')
 
-function ps(pid: number): { ppid: number; comm: string } | null {
+function ps(pid: number, field: 'comm' | 'args' = 'comm'): { ppid: number; comm: string } | null {
   try {
-    const out = execFileSync('ps', ['-o', 'ppid=,comm=', '-p', String(pid)], { encoding: 'utf8', timeout: 1500 }).trim()
+    const out = execFileSync('ps', ['-o', `ppid=,${field}=`, '-p', String(pid)], { encoding: 'utf8', timeout: 1500 }).trim()
     const m = /^(\d+)\s+(.*)$/.exec(out)
     return m ? { ppid: Number(m[1]), comm: m[2] } : null
   } catch { return null }
 }
 
-/** This process's Claude session: the nearest ancestor named `claude`. */
-export function claudePid(): number | null {
-  if (process.env.INSPECK_SESSION_PID) return Number(process.env.INSPECK_SESSION_PID)
+/** Whether a process is Claude Code, however it was installed: the app's or the installer's `claude`, the
+    installer's versioned binary (…/claude/versions/2.1.281, which `claude` links to), or npm's `node …/claude-code/cli.js`. */
+function isClaude(pid: number, comm: string): boolean {
+  if (basename(comm) === 'claude' || /[\\/]claude[\\/]versions[\\/][^\\/]+$/.test(comm)) return true
+  if (basename(comm) !== 'node') return false
+  const args = ps(pid, 'args')?.comm ?? ''
+  return /@anthropic-ai[\\/]claude-code[\\/]|[\\/]claude(\s|$)/.test(args)
+}
+
+let found: { pid: number; command: string } | null | undefined
+
+/** This process's Claude session: the nearest ancestor that is Claude Code, and the command that runs it. */
+function claudeProcess(): { pid: number; command: string } | null {
+  if (found !== undefined) return found
+  found = null
   let pid = process.ppid
   for (let i = 0; i < 8 && pid > 1; i++) {
     const p = ps(pid)
-    if (!p) return null
-    if (basename(p.comm) === 'claude') return pid
+    if (!p) break
+    if (isClaude(pid, p.comm)) { found = { pid, command: basename(p.comm) === 'node' ? 'claude' : p.comm }; break }
     pid = p.ppid
   }
-  return null
+  return found
+}
+
+export function claudePid(): number | null {
+  if (process.env.INSPECK_SESSION_PID) return Number(process.env.INSPECK_SESSION_PID)
+  return claudeProcess()?.pid ?? null
+}
+
+/** The Claude Code program this session runs, to run its own commands with (the desktop app's isn't on the PATH). */
+export function claudeCommand(): string {
+  return claudeProcess()?.command ?? 'claude'
 }
 
 export function alive(pid: number): boolean {

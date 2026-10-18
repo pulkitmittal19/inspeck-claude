@@ -22,7 +22,7 @@ const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJA
 
 /* A page, over HTTP. node:http rather than fetch so Origin and Host can be set
    to anything — the attacks below need exactly that. */
-function page(port, method, path, { body, origin = 'http://localhost:5173', host } = {}) {
+function page(port, method, path, { body, origin = 'http://localhost:5173', host, call = true } = {}) {
   return new Promise((resolve, reject) => {
     const data = body === undefined ? undefined : JSON.stringify(body)
     const req = http.request({
@@ -30,6 +30,8 @@ function page(port, method, path, { body, origin = 'http://localhost:5173', host
       headers: {
         ...(origin ? { origin } : {}),
         ...(host ? { host } : {}),
+        /* Every call from the widget carries it (see CALL_HEADER in http.ts). */
+        ...(call ? { 'x-inspeck': '1' } : {}),
         ...(data ? { 'content-type': 'application/json', 'content-length': Buffer.byteLength(data) } : {}),
       },
     }, res => {
@@ -43,7 +45,7 @@ function page(port, method, path, { body, origin = 'http://localhost:5173', host
   })
 }
 
-async function start({ home, port } = {}) {
+async function start({ home, port, env = { INSPECK_ALLOWED_ORIGINS: 'https://linear.app' } } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'inspeck-test-'))
   copyFileSync(join(root, 'server/dist/inspeck.mjs'), join(dir, 'inspeck.mjs'))
   mkdirSync(join(dir, 'widget'))
@@ -58,7 +60,7 @@ async function start({ home, port } = {}) {
     args: [join(dir, 'inspeck.mjs')],
     cwd: dir,
     /* Not an installed copy: it must never touch the real Claude settings (see autoupdate.ts). */
-    env: { ...process.env, INSPECK_HOME: home, INSPECK_PORT: String(port), CLAUDE_PLUGIN_ROOT: '' },
+    env: { ...process.env, INSPECK_HOME: home, INSPECK_PORT: String(port), CLAUDE_PLUGIN_ROOT: '', INSPECK_LATEST_URL: 'off', ...env },
     stderr: 'ignore',
   }))
   /* The HTTP side comes up alongside the protocol; wait until it answers. */
@@ -122,7 +124,7 @@ test('the widget stays small: under 52 KB gzipped (40 before Settings and voice,
 })
 
 test('the dev test page only exists with INSPECK_DEV=1', async () => {
-  const r = await raw(s.port, '/__dev/')
+  const r = await raw(s.port, '/__dev/', { 'x-inspeck': '1' })
   assert.equal(r.status, 404)
 })
 
@@ -210,7 +212,7 @@ test('voice: the server says whether it can listen, and a session it can\'t run 
   assert.equal(v.available, false)
   assert.match(v.reason, /Mac|macOS|listener/)
   const r = await new Promise((resolve, reject) => {
-    const req = http.request({ host: '127.0.0.1', port: s.port, method: 'POST', path: '/voice/listen', headers: { origin: 'http://localhost:5173' } }, res => {
+    const req = http.request({ host: '127.0.0.1', port: s.port, method: 'POST', path: '/voice/listen', headers: { origin: 'http://localhost:5173', 'x-inspeck': '1' } }, res => {
       let raw = ''; res.on('data', c => { raw += c }); res.on('end', () => resolve({ status: res.statusCode, type: res.headers['content-type'], lines: raw.trim().split('\n').map(l => JSON.parse(l)) }))
     })
     req.on('error', reject); req.end()
@@ -270,10 +272,42 @@ test('a local page can leave a fix, and the address decides the kind', async () 
   assert.equal(r.json.comment.page, 'http://localhost:5173/v2/conversations', 'the fragment is not part of the page')
 })
 
-test('the extension can leave a reference from another site', async () => {
+test('a browser extension is not trusted: any of them could otherwise read notes and post them', async () => {
   const r = await page(s.port, 'POST', '/comments', { body: reference, origin: 'chrome-extension://abcdefghijklmnop' })
+  assert.equal(r.status, 403)
+  assert.equal((await page(s.port, 'GET', '/comments', { origin: 'moz-extension://x' })).status, 403)
+})
+
+test('a site named in INSPECK_ALLOWED_ORIGINS can leave a reference', async () => {
+  const r = await page(s.port, 'POST', '/comments', { body: reference, origin: 'https://linear.app' })
   assert.equal(r.status, 201)
   assert.equal(r.json.comment.kind, 'reference')
+})
+
+test('a call without the widget\'s header is refused, so a plain <img>, link or form can\'t reach Inspeck', async () => {
+  const r = await page(s.port, 'POST', '/comments', { body: fix, call: false })
+  assert.equal(r.status, 403)
+  assert.match(r.json.error, /reload the page/, 'an older widget open before an update is told what to do')
+  assert.equal((await page(s.port, 'GET', '/css?url=' + encodeURIComponent('http://169.254.169.254/x.css'), { call: false, origin: undefined })).status, 403)
+  assert.equal((await page(s.port, 'GET', '/health', { call: false })).status, 200, 'health needs no header')
+  const pre = await page(s.port, 'OPTIONS', '/comments', {})
+  assert.match(pre.headers['access-control-allow-headers'], /x-inspeck/)
+})
+
+test('a page sees and changes only its own site\'s notes', async () => {
+  const mine = await page(s.port, 'POST', '/comments', { body: { ...fix, page: 'http://localhost:5173/own', screenshot: undefined } })
+  assert.equal(mine.status, 201)
+  const other = 'http://localhost:3000'
+  assert.equal((await page(s.port, 'POST', '/comments', { body: { ...fix, page: 'http://localhost:5173/x', screenshot: undefined }, origin: other })).status, 403, 'can\'t leave a note on another site')
+  const all = (await page(s.port, 'GET', '/comments', { origin: other })).json.comments
+  assert.ok(!all.some(c => c.id === mine.json.comment.id), 'another site\'s notes aren\'t listed')
+  const listed = (await page(s.port, 'GET', '/comments?page=' + encodeURIComponent('http://localhost:5173/own'), { origin: other })).json.comments
+  assert.equal(listed.length, 0, 'not even by naming the page')
+  assert.equal((await page(s.port, 'PATCH', `/comments/${mine.json.comment.id}`, { body: { note: 'changed' }, origin: other })).status, 403)
+  assert.equal((await page(s.port, 'POST', `/comments/${mine.json.comment.id}/replies`, { body: { text: 'hi' }, origin: other })).status, 403)
+  assert.equal((await page(s.port, 'DELETE', `/comments/${mine.json.comment.id}`, { origin: other })).status, 403)
+  assert.equal((await page(s.port, 'POST', '/comments/send', { body: { site: 'http://localhost:5173' }, origin: other })).status, 403)
+  assert.equal((await page(s.port, 'DELETE', `/comments/${mine.json.comment.id}`)).status, 200, 'its own page can')
 })
 
 test('an ordinary website cannot slip a comment in', async () => {
@@ -337,7 +371,7 @@ test('Open comment gives Claude the words and the picture', async () => {
 })
 
 test('a reference is worded as a translation into your tokens', async () => {
-  const { json } = await page(s.port, 'GET', '/comments?page=' + encodeURIComponent(reference.page))
+  const { json } = await page(s.port, 'GET', '/comments?page=' + encodeURIComponent(reference.page), { origin: 'https://linear.app' })
   const r = await s.client.callTool({ name: 'get', arguments: { id: json.comments[0].id } })
   assert.match(r.content[0].text, /spacing\s+gap 6px\s+→ your --space-1\.5/)
   assert.match(r.content[0].text, /other\s+border-radius 6px\s+no token of yours matches/)
@@ -377,7 +411,7 @@ test('a held note waits on the page: the watcher and the push leave it until it 
 
   /* Turning on Auto-send notes to Claude sends everything waiting on the site. */
   for (const note of ['Held: one', 'Held: two']) await page(s.port, 'POST', '/comments', { body: { ...fix, page: `${at}/${note.length}`, note, screenshot: undefined, held: true } })
-  await page(s.port, 'POST', '/comments', { body: { ...fix, page: 'http://localhost:3000/x', note: 'Held: other site', screenshot: undefined, held: true } })
+  await page(s.port, 'POST', '/comments', { body: { ...fix, page: 'http://localhost:3000/x', note: 'Held: other site', screenshot: undefined, held: true }, origin: 'http://localhost:3000' })
   assert.equal((await page(s.port, 'POST', '/comments/send', { body: { site: 'http://localhost:5173/anything' } })).json.sent, 2, 'only this site')
   assert.equal((await page(s.port, 'POST', '/comments/send', { body: {} })).status, 400)
 
@@ -405,17 +439,25 @@ test('the plugin fetches a stylesheet the page can\'t read (a CDN\'s), and only 
   })
   await new Promise(r => cdn.listen(0, '127.0.0.1', r))
   const base = `http://127.0.0.1:${cdn.address().port}`
-  const ask = u => page(s.port, 'GET', `/css?url=${encodeURIComponent(u)}`)
+  /* The real one never fetches from this machine or the network's plumbing (cloud machines keep secrets at 169.254.169.254). */
+  for (const internal of [`${base}/site.css`, `http://localhost:${cdn.address().port}/site.css`, 'http://169.254.169.254/latest/meta-data/x.css', 'http://[::1]/x.css']) {
+    assert.equal((await page(s.port, 'GET', `/css?url=${encodeURIComponent(internal)}`)).status, 502, internal)
+  }
+  /* A test copy that may, standing in for a CDN. */
+  const t = await start({ env: { INSPECK_TEST_LOCAL_CSS: '1' } })
+  const ask = u => page(t.port, 'GET', `/css?url=${encodeURIComponent(u)}`)
   assert.deepEqual((await ask(`${base}/site.css`)).json, { css: '.cdn { padding: 18px; }' })
   assert.equal((await ask(`${base}/page.html`)).status, 502, 'not a stylesheet')
   assert.equal((await ask('file:///etc/passwd')).status, 400, 'only http(s)')
-  assert.equal((await page(s.port, 'GET', `/css?url=${encodeURIComponent(base + '/site.css')}`, { origin: 'https://evil.example' })).status, 403, 'only for local pages')
+  assert.equal((await page(t.port, 'GET', `/css?url=${encodeURIComponent(base + '/site.css')}`, { origin: 'https://evil.example' })).status, 403, 'only for local pages')
+  await t.stop()
   cdn.close()
 })
 
 test('a Vue note without a line gets one: the element in its file, the component where it is used', async () => {
   const { mkdtempSync, writeFileSync, mkdirSync } = await import('node:fs')
-  const dir = mkdtempSync(join(tmpdir(), 'inspeck-vue-'))
+  /* In the project the session is open in: Inspeck reads files there, and nowhere else. */
+  const dir = mkdtempSync(join(s.dir, 'vue-'))
   mkdirSync(join(dir, 'components'))
   writeFileSync(join(dir, 'components', 'PriceCard.vue'), '<template>\n  <div class="card">\n    <button\n      class="buy"\n    >Buy now for {{ price }}</button>\n  </div>\n</template>\n')
   writeFileSync(join(dir, 'App.vue'), '<template>\n  <main>\n    <PriceCard />\n  </main>\n</template>\n')
@@ -423,6 +465,14 @@ test('a Vue note without a line gets one: the element in its file, the component
     element: { selector: 'div.card > button.buy', tag: 'button', text: 'Buy now for 12' },
     source: [{ file: join(dir, 'components', 'PriceCard.vue'), line: 0 }, { file: join(dir, 'App.vue'), line: 0 }] } })
   assert.deepEqual(json.comment.source.map(s => [s.file.split('/').pop(), s.line]), [['PriceCard.vue', 3], ['App.vue', 3]])
+
+  /* The same file outside any project is left alone: a page can't make Inspeck read it. */
+  const away = mkdtempSync(join(tmpdir(), 'inspeck-away-'))
+  writeFileSync(join(away, 'Secret.vue'), '<template>\n  <button class="buy">Buy now</button>\n</template>\n')
+  const outside = await page(s.port, 'POST', '/comments', { body: { ...fix, page: 'http://localhost:5173/vue', note: 'Buy button', screenshot: undefined,
+    element: { selector: 'button.buy', tag: 'button', text: 'Buy now' }, source: [{ file: join(away, 'Secret.vue'), line: 0 }] } })
+  assert.ok(!outside.json.comment.source[0].line, 'no line found')
+  rmSync(away, { recursive: true, force: true })
 })
 
 test('notes the box could never send are refused, with a reason', async () => {

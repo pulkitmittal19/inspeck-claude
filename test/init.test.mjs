@@ -30,6 +30,16 @@ test('Vite: an empty list, a CommonJS config, a hand-written tag, and no list at
   assert.equal(wireVite(`export default defineConfig({ server: { port: 3000 } })`, 'vite.config.ts').result, 'manual')
 })
 
+test('Vite: only the config\'s own plugins list, never a worker\'s or Rollup\'s; when unsure it\'s left to do by hand', () => {
+  const worker = `export default defineConfig({\n  worker: { plugins: [wasm()] },\n  // plugins: [old()]\n  plugins: [react()],\n})\n`
+  assert.match(wireVite(worker, 'vite.config.ts').src, /worker: \{ plugins: \[wasm\(\)\] \},\n  \/\/ plugins: \[old\(\)\]\n  plugins: \[inspeck\(\), react\(\)\]/)
+  const onlyRollup = `export default defineConfig({\n  build: { rollupOptions: { plugins: [visualizer()] } },\n})\n`
+  assert.equal(wireVite(onlyRollup, 'vite.config.ts').result, 'manual', 'no plugins list of its own')
+  const fn = `export default defineConfig(({ mode }) => ({\n  plugins: [vue()],\n}))\n`
+  assert.match(wireVite(fn, 'vite.config.ts').src, /plugins: \[inspeck\(\), vue\(\)\]/, 'a config written as a function')
+  assert.equal(wireVite(`const plugins = [react()]\nexport default defineConfig({ plugins })`, 'vite.config.ts').result, 'manual')
+})
+
 test('Next.js: a development-only tag before </body>, indented to match', () => {
   const layout = `export default function RootLayout({ children }) {\n  return (\n    <html lang="en">\n      <body>{children}\n      </body>\n    </html>\n  )\n}\n`
   const { src, result } = wireNext(layout)
@@ -213,6 +223,28 @@ test('the Vite plugin puts the widget on every HTML page the dev server sends, a
   assert.equal(once.body.match(/inspeck\.js/g).length, 1, 'never twice')
   const js = await respond('*/*', 'text/javascript', ['console.log("</body>")'])
   assert.equal(js.body, 'console.log("</body>")', 'not HTML: untouched')
+})
+
+test('the Vite plugin answers /__inspeck/ only on this computer, and says which site is asking', async () => {
+  const { networkInterfaces } = await import('node:os')
+  const p = vitePlugin.default({ port: 4999 })
+  const used = []
+  p.configureServer({ middlewares: { use: fn => used.push(fn) } })
+  const guard = used[0]
+  const run = (remoteAddress, host, url = '/__inspeck/comments', headers = {}) => {
+    const req = { url, method: 'GET', socket: { remoteAddress }, headers: { host, ...headers } }
+    let status = 200, passed = false
+    guard(req, { set statusCode(v) { status = v }, setHeader() {}, end() {} }, () => { passed = true })
+    return { passed, status, origin: req.headers.origin }
+  }
+  assert.deepEqual(run('127.0.0.1', 'localhost:5173'), { passed: true, status: 200, origin: 'http://localhost:5173' })
+  assert.equal(run('::ffff:127.0.0.1', 'app.localhost:5173').passed, true)
+  assert.equal(run('192.168.1.40', '192.168.1.5:5173').status, 403, 'another device on the Wi-Fi')
+  assert.equal(run('127.0.0.1', 'evil.example:5173').status, 403, 'a site pointing its name here')
+  const lan = Object.values(networkInterfaces()).flat().find(a => a && a.family === 'IPv4' && !a.internal)?.address
+  if (lan) assert.equal(run(lan, `${lan}:5173`).passed, true, 'this computer on its own network address')
+  assert.equal(run('192.168.1.40', '192.168.1.5:5173', '/').passed, true, 'the app itself is still served to everyone')
+  assert.equal(run('127.0.0.1', 'localhost:5173', '/__inspeck/x', { origin: 'http://localhost:5173' }).origin, 'http://localhost:5173')
 })
 
 test('a Content-Security-Policy in the app is found, so init can say what to allow', () => {

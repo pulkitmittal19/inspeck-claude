@@ -2,7 +2,7 @@
 
 // packages/inspeck/src/cli.ts
 import { spawnSync } from "child_process";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
+import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "fs";
 import { homedir } from "os";
 import { dirname, join, relative } from "path";
 import { createInterface } from "readline/promises";
@@ -69,7 +69,11 @@ function withAutoUpdate(src) {
   return { src: JSON.stringify(settings, null, 2) + "\n", result: "added" };
 }
 function turnOnAutoUpdate() {
-  const file = settingsFile();
+  let file = settingsFile();
+  try {
+    file = realpathSync(file);
+  } catch {
+  }
   const { src, result } = withAutoUpdate(existsSync(file) ? readFileSync(file, "utf8") : null);
   if (result === "added") {
     mkdirSync(dirname(file), { recursive: true });
@@ -136,11 +140,48 @@ ${src}`;
   return `${src.slice(0, at)}
 ${line}${src.slice(at)}`;
 }
+function pluginsIn(src, from) {
+  let depth = 0;
+  for (let i = from; i < src.length; i++) {
+    const c = src[i];
+    if (c === "/" && src[i + 1] === "/") {
+      i = src.indexOf("\n", i);
+      if (i < 0) return -1;
+      continue;
+    }
+    if (c === "/" && src[i + 1] === "*") {
+      i = src.indexOf("*/", i + 2) + 1;
+      if (i <= 0) return -1;
+      continue;
+    }
+    if (c === '"' || c === "'" || c === "`") {
+      for (i++; i < src.length && src[i] !== c; i++) if (src[i] === "\\") i++;
+      continue;
+    }
+    if (c === "{" || c === "[" || c === "(") {
+      depth++;
+      continue;
+    }
+    if (c === "}" || c === "]" || c === ")") {
+      if (--depth < 0) return -1;
+      continue;
+    }
+    if (depth === 0) {
+      const m = /^plugins\s*:\s*\[/.exec(src.slice(i, i + 40));
+      if (m && !/[\w$]/.test(src[i - 1] ?? "")) return i + m[0].length;
+    }
+  }
+  return -1;
+}
+function configStart(src) {
+  const m = /\b(?:defineConfig\s*\(\s*(?:(?:async\s*)?\([^)]*\)\s*=>\s*\(?\s*)?\{|export\s+default\s+\{|module\.exports\s*=\s*\{)/.exec(src);
+  return m ? m.index + m[0].length : -1;
+}
 function wireVite(src, file) {
   if (/['"]inspeck\/vite['"]/.test(src) || src.includes("inspeck.js")) return { src, result: "present" };
-  const plugins = /\bplugins\s*:\s*\[/.exec(src);
-  if (!plugins) return { src, result: "manual" };
-  const open = plugins.index + plugins[0].length;
+  const start = configStart(src);
+  const open = start < 0 ? -1 : pluginsIn(src, start);
+  if (open < 0) return { src, result: "manual" };
   const empty = /^\s*\]/.test(src.slice(open));
   let out = `${src.slice(0, open)}${empty ? "inspeck()" : "inspeck(), "}${src.slice(open)}`;
   out = file.endsWith(".cjs") ? `const inspeck = require('inspeck/vite').default
@@ -152,13 +193,12 @@ function wireAstro(src) {
   let out = null;
   const vite = /\bvite\s*:\s*\{/.exec(src);
   if (vite) {
-    const plugins = /\bplugins\s*:\s*\[/.exec(src.slice(vite.index));
-    if (plugins) {
-      const open = vite.index + plugins.index + plugins[0].length;
+    const open = pluginsIn(src, vite.index + vite[0].length);
+    if (open >= 0) {
       out = `${src.slice(0, open)}${/^\s*\]/.test(src.slice(open)) ? "inspeck()" : "inspeck(), "}${src.slice(open)}`;
     } else {
-      const open = vite.index + vite[0].length;
-      out = `${src.slice(0, open)} plugins: [inspeck()],${src.slice(open)}`;
+      const open2 = vite.index + vite[0].length;
+      out = `${src.slice(0, open2)} plugins: [inspeck()],${src.slice(open2)}`;
     }
   } else {
     const config = /\b(defineConfig\(\s*\{|export\s+default\s+\{)/.exec(src);

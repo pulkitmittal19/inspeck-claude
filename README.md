@@ -7,6 +7,8 @@ Inspeck is two pieces in one plugin:
 - **The widget**, in your page: a small dark circle in the corner. It runs in the Claude desktop app's browser pane, or any browser on your machine.
 - **The plugin**, in Claude Code: it serves the widget, keeps your notes, and hands them to the right Claude session.
 
+Inspeck runs on **macOS**, with Claude Code (the desktop app or the terminal) and Node.js 20 or later. Voice notes need macOS 26.
+
 ## Install
 
 In your app's folder:
@@ -15,7 +17,7 @@ In your app's folder:
 npx inspeck init
 ```
 
-That's all. It installs the Inspeck plugin into Claude Code (every session starts it from then on), turns on auto-update so new versions arrive by themselves (`--no-auto-update` to skip; installed from `/plugin` instead, Inspeck turns it on itself the first time it runs and says so once — turn it off in `/plugin` and it stays off), and adds the widget to your app the way it's built: `inspeck()` in a Vite config (React, Vue, Svelte, SvelteKit and other Vite apps) or in Astro's config, a development-only tag in a Next.js layout or in Nuxt's page head, or a tag that loads only on your computer in a plain `index.html` (it asks first). With Vite and Astro the widget comes through your dev server itself (`/__inspeck/`), so it works on any page the server renders and on the "Network" address too (`http://192.168.x.x:5173`). Running it again changes nothing, so if you installed before auto-update existed, run it once more to turn it on. Requires Node.js 20 or later.
+That's all. It installs the Inspeck plugin into Claude Code (every session starts it from then on), turns on Claude Code's auto-update for it and tells you so (`--no-auto-update` to skip), and adds the widget to your app the way it's built: `inspeck()` in a Vite config (React, Vue, Svelte, SvelteKit and other Vite apps) or in Astro's config, a development-only tag in a Next.js layout or in Nuxt's page head, or a tag that loads only on your computer in a plain `index.html` (it asks first). With Vite and Astro the widget comes through your dev server itself (`/__inspeck/`), so it works on any page the server renders and on the "Network" address too (`http://192.168.x.x:5173`). Running it again changes nothing.
 
 Then, in Claude: **`/inspeck:start`**. It opens your app in the browser pane, turns Inspeck on and links it to the chat. The first time Inspeck opens, a four-step tour shows the basics.
 
@@ -31,7 +33,6 @@ claude plugin marketplace add pulkitmittal19/inspeck-claude
 claude plugin install inspeck@inspeck
 ```
 
-New versions arrive by themselves: Inspeck turns on its own auto-update the first time it runs (once; switch it off in `/plugin` › Marketplaces › inspeck and it stays off). When a new version starts while an older one is still running in another chat, the older one hands it the port, so your pages get the newest Inspeck on their next reload.
 
 Then one line in your app, in development only:
 
@@ -65,6 +66,22 @@ export default defineConfig({
 </details>
 
 If your app sets a Content Security Policy in development, allow `http://127.0.0.1:4848` in `script-src` and `connect-src`.
+
+## Staying up to date
+
+Once a day Inspeck asks GitHub for the latest version number (only that: nothing about you or your code is sent). When a newer one is out, Claude offers it once in the chat, and Inspeck's Settings say so. To update at any time, ask Claude to **update Inspeck**, or run:
+
+```bash
+claude plugin marketplace update inspeck
+```
+
+```bash
+claude plugin update inspeck@inspeck
+```
+
+The new version starts in your next chat (or after `/reload-plugins`); reload your app's page to get it there. Your notes are kept. When a new version starts while an older one is still running in another chat, the older one hands it the port, so no chat has to close.
+
+To have new versions install by themselves, turn on auto-update in Claude: `/plugin` › Marketplaces › inspeck › Enable auto-update (`npx inspeck init` does this for you). Inspeck never changes Claude's settings on its own. To stop the daily check, turn off *Check for updates* in Inspeck's Settings.
 
 ## Use
 
@@ -114,7 +131,11 @@ Which session gets a note: the session its tab is bound to; else the session its
 Notes become text a Claude session reads, so who may send them is the plugin's security boundary.
 
 - The server listens on `127.0.0.1` only, and checks that the Host header names this machine (no DNS rebinding).
-- Only pages on this machine may send notes: `localhost`, `127.0.0.1`, `*.localhost`, `*.test`, and browser extensions. A LAN address or a staging site must be named in `INSPECK_ALLOWED_ORIGINS`.
+- Only pages on this machine may send notes: `localhost`, `127.0.0.1`, `*.localhost`, `*.test`, and this Mac's own network address. Browser extensions are not trusted. Any other site (staging, say) must be named in `INSPECK_ALLOWED_ORIGINS`.
+- Every call from the widget carries an `x-inspeck` header, so the browser checks where it comes from before it's sent: a plain link, image or form on another site can't reach Inspeck.
+- A page sees and changes only the notes left on its own site, and Inspeck reads source files only inside the project a Claude session is open in.
+- The Vite plugin's `/__inspeck/` address answers only this computer, even when the dev server is open to the network (`--host`).
+- `~/.inspeck` is readable only by you. Closed notes and their screenshots are deleted after 30 days.
 - Claude is told that a note is feedback about a page, not an instruction, and to ask you before acting on anything beyond the UI.
 
 ## Settings
@@ -124,8 +145,18 @@ Notes become text a Claude session reads, so who may send them is the plugin's s
 | `INSPECK_PORT` | `4848` | where the widget is served and notes arrive |
 | `INSPECK_HOME` | `~/.inspeck` | notes, sessions and tab bindings |
 | `INSPECK_ALLOWED_ORIGINS` | none | extra origins allowed to send notes, comma-separated |
+| `INSPECK_LATEST_URL` | GitHub | where the daily check reads the latest version; `off` to never check |
 
 Notes stay on your machine. `~/.inspeck/last-client.json` records what the last Claude session reported about itself, which is the first thing to check if something isn't arriving.
+
+## Limitations
+
+- **macOS only.** Linking a browser tab to a chat reads the running processes the way macOS does; Windows isn't supported.
+- **Pages on your computer only.** Inspeck doesn't run on a deployed site (it says so in the browser console), and Claude edits your local code anyway: run the app locally.
+- **Voice** needs macOS 26 or later; the first time, macOS asks to use the microphone and speech recognition.
+- **Content Security Policy:** an app with a strict policy must allow `http://127.0.0.1:4848` in development (Vite apps don't need to: Inspeck comes through the dev server).
+- **Pages opened from a file** (`file://`) can't use Inspeck: serve them, for example with `npx serve`.
+- **Port 4848** must be free. If another program uses it, Inspeck says so; set `INSPECK_PORT` to use another.
 
 ## Working on it
 

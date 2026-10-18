@@ -1,17 +1,20 @@
 /* The `inspeck` npm package in a project (the Vite plugin, `npx inspeck init`) is a dependency of that
- * project: nothing updates it by itself. Since 0.11.0 it's a thin pass-through and everything that
- * changes lives in this plugin, which does update itself; so a project only needs bringing up to 0.11.0
+ * project: nothing updates it by itself. Since 0.11.0 it's a thin pass-through (and since 0.12.0 it answers only this computer) and everything that
+ * changes lives in this plugin, which does update itself; so a project only needs bringing up to date
  * once. When a chat opens in a project still on an older one, Claude is asked to offer that, once.
  *
- * Once per project, ever: a note in Inspeck's folder remembers it was offered, so a "no" is respected.
+ * Once per project for each version needed: a note in Inspeck's folder remembers it was offered, so a "no"
+ * is respected until a newer fix needs a newer package.
  */
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { HOME } from './store.js'
 
-/** The first version that's a pass-through (see above). */
-export const NEEDED = '0.11.0'
-const OFFERED = () => join(HOME, 'update-offered.json')
+/** The first version that's a pass-through (see above), with its forwarding closed to other devices on the network. */
+export const NEEDED = '0.12.0'
+const OFFERED = () => join(HOME, 'package-update-offered.json')
+/** What the offer is remembered under: the project, and the version it was offered for. */
+const offerKey = (dir: string) => `${dir} ${NEEDED}`
 
 export interface Outdated { dir: string; version: string; command: string }
 
@@ -72,7 +75,7 @@ export function outdatedPackage(cwd: string): Outdated | null {
     const spec = pkg?.devDependencies?.inspeck ?? pkg?.dependencies?.inspeck
     if (typeof spec !== 'string' || /^(file:|link:|workspace:|git|https?:)/.test(spec)) continue
     const version = versionIn(dir, spec)
-    if (!version || !older(version, NEEDED) || offered[dir]) continue
+    if (!version || !older(version, NEEDED) || offered[offerKey(dir)]) continue
     return { dir, version, command: updateCommand(dir) }
   }
   return null
@@ -82,7 +85,7 @@ export function outdatedPackage(cwd: string): Outdated | null {
 export function markOffered(dir: string): void {
   try {
     const offered = readJson(OFFERED()) ?? {}
-    offered[dir] = new Date().toISOString()
+    offered[offerKey(dir)] = new Date().toISOString()
     mkdirSync(HOME, { recursive: true })
     writeFileSync(OFFERED(), JSON.stringify(offered, null, 2))
   } catch { /* can't remember: it may be offered again */ }

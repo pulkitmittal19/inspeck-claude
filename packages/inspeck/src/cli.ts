@@ -13,10 +13,10 @@
  *     Anything else gets the tag printed to paste.
  *
  * Running it twice changes nothing: every step checks first. No dependencies;
- * Node 18+.
+ * Node 20+.
  */
 import { spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join, relative } from 'node:path'
 import { createInterface } from 'node:readline/promises'
@@ -88,7 +88,9 @@ export function withAutoUpdate(src: string | null): { src: string; result: 'adde
 }
 
 function turnOnAutoUpdate(): void {
-  const file = settingsFile()
+  /* Written where it really is: settings kept in a dotfiles folder and linked here stay linked. */
+  let file = settingsFile()
+  try { file = realpathSync(file) } catch { /* not there yet */ }
   const { src, result } = withAutoUpdate(existsSync(file) ? readFileSync(file, 'utf8') : null)
   if (result === 'added') {
     mkdirSync(dirname(file), { recursive: true })
@@ -157,12 +159,44 @@ function afterImports(src: string, line: string): string {
   return `${src.slice(0, at)}\n${line}${src.slice(at)}`
 }
 
-/** Add `inspeck()` to a Vite config. 'present' if it's already wired (this package or a hand-written tag). */
+/**
+ * Where `plugins: [` opens directly in the object whose `{` is just before `from`: not one nested deeper (a
+ * `worker: { plugins }` or a Rollup options block), which is a different list. -1 if there's none. Strings and
+ * comments are skipped, so a brace in them doesn't count.
+ */
+export function pluginsIn(src: string, from: number): number {
+  let depth = 0
+  for (let i = from; i < src.length; i++) {
+    const c = src[i]
+    if (c === '/' && src[i + 1] === '/') { i = src.indexOf('\n', i); if (i < 0) return -1; continue }
+    if (c === '/' && src[i + 1] === '*') { i = src.indexOf('*/', i + 2) + 1; if (i <= 0) return -1; continue }
+    if (c === '"' || c === "'" || c === '`') {
+      for (i++; i < src.length && src[i] !== c; i++) if (src[i] === '\\') i++
+      continue
+    }
+    if (c === '{' || c === '[' || c === '(') { depth++; continue }
+    if (c === '}' || c === ']' || c === ')') { if (--depth < 0) return -1; continue }
+    if (depth === 0) {
+      const m = /^plugins\s*:\s*\[/.exec(src.slice(i, i + 40))
+      if (m && !/[\w$]/.test(src[i - 1] ?? '')) return i + m[0].length
+    }
+  }
+  return -1
+}
+
+/** Where the config object itself opens: `defineConfig({`, `export default {`, or `defineConfig(() => ({`. */
+function configStart(src: string): number {
+  const m = /\b(?:defineConfig\s*\(\s*(?:(?:async\s*)?\([^)]*\)\s*=>\s*\(?\s*)?\{|export\s+default\s+\{|module\.exports\s*=\s*\{)/.exec(src)
+  return m ? m.index + m[0].length : -1
+}
+
+/** Add `inspeck()` to a Vite config. 'present' if it's already wired (this package or a hand-written tag);
+    'manual' when its own plugin list can't be told apart for sure (then the line is shown to add by hand). */
 export function wireVite(src: string, file: string): { src: string; result: 'added' | 'present' | 'manual' } {
   if (/['"]inspeck\/vite['"]/.test(src) || src.includes('inspeck.js')) return { src, result: 'present' }
-  const plugins = /\bplugins\s*:\s*\[/.exec(src)
-  if (!plugins) return { src, result: 'manual' }
-  const open = plugins.index + plugins[0].length
+  const start = configStart(src)
+  const open = start < 0 ? -1 : pluginsIn(src, start)
+  if (open < 0) return { src, result: 'manual' }
   const empty = /^\s*\]/.test(src.slice(open))
   let out = `${src.slice(0, open)}${empty ? 'inspeck()' : 'inspeck(), '}${src.slice(open)}`
   out = file.endsWith('.cjs')
@@ -178,9 +212,8 @@ export function wireAstro(src: string): { src: string; result: 'added' | 'presen
   let out: string | null = null
   const vite = /\bvite\s*:\s*\{/.exec(src)
   if (vite) {
-    const plugins = /\bplugins\s*:\s*\[/.exec(src.slice(vite.index))
-    if (plugins) {
-      const open = vite.index + plugins.index + plugins[0].length
+    const open = pluginsIn(src, vite.index + vite[0].length)
+    if (open >= 0) {
       out = `${src.slice(0, open)}${/^\s*\]/.test(src.slice(open)) ? 'inspeck()' : 'inspeck(), '}${src.slice(open)}`
     } else {
       const open = vite.index + vite[0].length

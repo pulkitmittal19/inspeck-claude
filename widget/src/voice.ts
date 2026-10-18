@@ -42,7 +42,7 @@ export function listen(on: (e: VoiceEvent) => void): Listening {
   const finish = (e: VoiceEvent) => { if (!over) { over = e.type === 'done' || e.type === 'error' || e.type === 'ended'; on(e) } }
   void (async () => {
     try {
-      const res = await nativeFetch(`${SERVER}/voice/listen`, { method: 'POST', credentials: 'omit', signal: ctrl.signal })
+      const res = await nativeFetch(`${SERVER}/voice/listen`, { method: 'POST', credentials: 'omit', headers: { 'x-inspeck': '1' }, signal: ctrl.signal })
       if (!res.ok || !res.body) throw new Error(`Inspeck answered ${res.status}`)
       const reader = res.body.pipeThrough(new TextDecoderStream()).getReader()
       let rest = ''

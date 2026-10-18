@@ -32,7 +32,7 @@ async function session(name) {
   mkdirSync(join(dir, 'widget'))
   copyFileSync(join(root, 'server/dist/widget/inspeck.js'), join(dir, 'widget/inspeck.js'))
   const pid = standIn()
-  const env = { ...process.env, INSPECK_HOME: home, INSPECK_PORT: String(port), INSPECK_SESSION_PID: String(pid) }
+  const env = { ...process.env, INSPECK_HOME: home, INSPECK_PORT: String(port), INSPECK_SESSION_PID: String(pid), INSPECK_LATEST_URL: 'off' }
   const client = new Client({ name: `claude-${name}`, version: '0' })
   await client.connect(new StdioClientTransport({ command: process.execPath, args: [join(dir, 'inspeck.mjs')], cwd: dir, env, stderr: 'ignore' }))
   cleanup.push(() => { void client.close(); rmSync(dir, { recursive: true, force: true }) })
@@ -42,7 +42,7 @@ async function session(name) {
 function post(path, body, origin = 'http://localhost:5173') {
   return new Promise((resolve, reject) => {
     const data = JSON.stringify(body)
-    const req = http.request({ host: '127.0.0.1', port, method: 'POST', path, headers: { origin, 'content-type': 'application/json', 'content-length': Buffer.byteLength(data) } }, res => {
+    const req = http.request({ host: '127.0.0.1', port, method: 'POST', path, headers: { origin, 'x-inspeck': '1', 'content-type': 'application/json', 'content-length': Buffer.byteLength(data) } }, res => {
       let raw = ''
       res.on('data', c => { raw += c })
       res.on('end', () => resolve({ status: res.statusCode, json: raw ? JSON.parse(raw) : null }))
@@ -107,7 +107,7 @@ test('a note from an ordinary browser that no session can place goes to the firs
   /* Nothing listens on this port, so no project can be found for the page: as
      with an app in Chrome when no session is open in its folder. */
   const page = 'http://localhost:5199/inbox'
-  const first = await post('/comments', note('From Chrome', { page }))
+  const first = await post('/comments', note('From Chrome', { page }), new URL(page).origin)
   assert.equal(first.json.comment.to.how, 'waiting')
   assert.doesNotMatch(await A.tool('watch', { seconds: 5 }), /From Chrome/, 'nobody picks it up by themselves')
 
@@ -116,14 +116,14 @@ test('a note from an ordinary browser that no session can place goes to the firs
   assert.match(checked, /From Chrome/)
   assert.doesNotMatch(await A.tool('pending'), /From Chrome/)
 
-  const next = await post('/comments', note('Second from Chrome', { page: 'http://localhost:5199/settings' }))
+  const next = await post('/comments', note('Second from Chrome', { page: 'http://localhost:5199/settings' }), 'http://localhost:5199')
   assert.equal(next.json.comment.to.how, 'site')
   assert.equal(next.json.comment.to.pid, B.pid)
 })
 
 test('bind with a page links that whole site to the session', async () => {
   assert.match(await A.tool('bind', { page: 'http://localhost:5198' }), /Notes from http:\/\/localhost:5198 now come to this session/)
-  const r = await post('/comments', note('Site linked to A', { page: 'http://localhost:5198/x' }))
+  const r = await post('/comments', note('Site linked to A', { page: 'http://localhost:5198/x' }), 'http://localhost:5198')
   assert.equal(r.json.comment.to.how, 'site')
   assert.equal(r.json.comment.to.pid, A.pid)
   assert.match(await A.tool('pending'), /Site linked to A/)
@@ -138,7 +138,7 @@ test('with one session open, an unbound tab’s note goes to it', async () => {
     copyFileSync(join(root, 'server/dist/inspeck.mjs'), join(dir, 'inspeck.mjs'))
     const pid = standIn()
     const p = port + 1
-    const env = { ...process.env, INSPECK_HOME: solo, INSPECK_PORT: String(p), INSPECK_SESSION_PID: String(pid) }
+    const env = { ...process.env, INSPECK_HOME: solo, INSPECK_PORT: String(p), INSPECK_SESSION_PID: String(pid), INSPECK_LATEST_URL: 'off' }
     const client = new Client({ name: 'claude-solo', version: '0' })
     await client.connect(new StdioClientTransport({ command: process.execPath, args: [join(dir, 'inspeck.mjs')], cwd: dir, env, stderr: 'ignore' }))
     cleanup.push(() => { void client.close(); rmSync(dir, { recursive: true, force: true }); rmSync(solo, { recursive: true, force: true }) })
@@ -148,7 +148,7 @@ test('with one session open, an unbound tab’s note goes to it', async () => {
   for (let i = 0; i < 50; i++) {
     r = await new Promise(resolve => {
       const data = JSON.stringify(note('Unbound tab'))
-      const req = http.request({ host: '127.0.0.1', port: S.p, method: 'POST', path: '/comments', headers: { origin: 'http://localhost:5173', 'content-type': 'application/json', 'content-length': Buffer.byteLength(data) } }, res => {
+      const req = http.request({ host: '127.0.0.1', port: S.p, method: 'POST', path: '/comments', headers: { origin: 'http://localhost:5173', 'x-inspeck': '1', 'content-type': 'application/json', 'content-length': Buffer.byteLength(data) } }, res => {
         let raw = ''; res.on('data', c => { raw += c }); res.on('end', () => resolve({ status: res.statusCode, json: raw ? JSON.parse(raw) : null }))
       })
       req.on('error', () => resolve(null))

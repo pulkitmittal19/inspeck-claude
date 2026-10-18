@@ -14,6 +14,8 @@ It installs the [Inspeck plugin for Claude Code](https://github.com/pulkitmittal
 
 Inside the Claude app's browser pane you only need the plugin: Claude adds the widget to the page when it opens your app.
 
+Inspeck runs on macOS with Node.js 20 or later. The Vite plugin works only while serving, never in a build, and its `/__inspeck/` address answers only your own computer, even when the dev server is open to the network (`--host`).
+
 ## Vite, by hand
 
 ```bash

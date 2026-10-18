@@ -45,7 +45,7 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<T>
     res = await nativeFetch(`${SERVER}${path}`, {
       method,
       credentials: 'omit',
-      headers: body ? { 'content-type': 'application/json' } : undefined,
+      headers: { 'x-inspeck': '1', ...(body ? { 'content-type': 'application/json' } : {}) },
       body: body ? JSON.stringify(body) : undefined,
     })
   } catch {
@@ -105,6 +105,10 @@ export const api = {
   /** Settings kept by the plugin, so they follow you to every app and browser. */
   async settings(): Promise<Record<string, unknown>> {
     return call<Record<string, unknown>>('GET', '/settings')
+  },
+  /** This Inspeck's version, and a newer one if the daily check found it. */
+  async update(): Promise<{ version: string; latest: string | null; checking: boolean }> {
+    return call('GET', '/update')
   },
   async saveSettings(settings: Record<string, unknown>): Promise<void> {
     await call('POST', '/settings', settings)

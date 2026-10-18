@@ -9,19 +9,32 @@
  *   - The Host header must name this machine. That stops DNS rebinding, where
  *     a public site points its own hostname at 127.0.0.1 to get in.
  *   - A browser always sends Origin on a cross-site request and a page can't
- *     fake it. Only pages on this machine (localhost, *.localhost, *.test) and
- *     browser extensions are let in; anything else — a LAN address, staging —
- *     must be named in INSPECK_ALLOWED_ORIGINS.
+ *     fake it. Only pages on this machine (localhost, *.localhost, *.test, its
+ *     own network address) are let in; anything else, staging say, must be
+ *     named in INSPECK_ALLOWED_ORIGINS.
+ *   - Every call but /health and the widget itself carries an x-inspeck
+ *     header. A page can't add a header to a request for another site without
+ *     the browser asking first, and asking is where Origin is checked: so no
+ *     page reaches Inspeck with a plain <img>, link or form that skips it.
+ *
+ * And a page sees only its own site's notes: one local app can't read or
+ * change the notes left on another.
  */
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import { randomBytes, timingSafeEqual } from 'node:crypto'
+import { lookup } from 'node:dns/promises'
+import { isIP } from 'node:net'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import { hostname, networkInterfaces } from 'node:os'
 import { execFileSync } from 'node:child_process'
-import { dirname, join, normalize } from 'node:path'
+import { dirname, isAbsolute, join, normalize, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import * as store from './store.js'
 import { HOME } from './store.js'
-import { bindTab, route as routeNote } from './sessions.js'
+import { bindTab, liveSessions, projectOf, real, route as routeNote } from './sessions.js'
+import { newer, updateState } from './updates.js'
+
+export { newer }
 import { isThisMachine, NewComment, NOTE_MAX, pageKey, type Comment } from './format.js'
 import { findLines, resolveSource } from './sourcemap.js'
 import { listenStream, stopListening, voiceAvailable, warmVoice } from './voice.js'
@@ -32,7 +45,12 @@ const SETTINGS: Record<string, string[]> = {
   colors: ['written', 'hex', 'rgb', 'oklch'],
   /* Auto-send notes to Claude (live), or keep them on the page until you send them (ask). */
   send: ['ask', 'live'],
+  /* Look for a newer Inspeck once a day, and say when there is one (check), or never (off). */
+  updates: ['check', 'off'],
 }
+
+/** The header every call from the widget carries (see the top of this file). */
+export const CALL_HEADER = 'x-inspeck'
 
 export const PORT = Number(process.env.INSPECK_PORT) || 4848
 
@@ -46,7 +64,6 @@ export function originAllowed(origin: string | undefined): boolean {
   if (EXTRA_ORIGINS.includes(origin)) return true
   let u: URL
   try { u = new URL(origin) } catch { return false }
-  if (u.protocol === 'chrome-extension:' || u.protocol === 'moz-extension:') return true
   return isThisMachine(u.hostname) || ownAddress(u.hostname)
 }
 
@@ -143,6 +160,22 @@ function devFile(req: IncomingMessage, res: ServerResponse, name: string): void 
   sendFile(req, res, path, type)
 }
 
+/** Whether a page at `origin` may see or change notes left on `page`: only its own site's. No Origin is a
+    program on this machine, not a page (a page's every call carries Origin, see CALL_HEADER): it may. */
+function ownSite(origin: string | undefined, page: string): boolean {
+  if (!origin) return true
+  try { return new URL(page).origin === origin } catch { return false }
+}
+
+/** Whether a file is in a project Inspeck works for: an open Claude session's, this one's, or the one serving
+    the page. Only those are read to place a note in the code; a page can't make Inspeck read anything else. */
+function inProject(file: string, page: string): boolean {
+  const inside = (f: string, dir: string) => { const r = relative(dir, f); return !!r && !r.startsWith('..') && !isAbsolute(r) }
+  const f = real(file)
+  const served = projectOf(page)
+  return [process.cwd(), ...liveSessions().map(s => s.cwd), ...(served ? [served] : [])].some(dir => inside(f, real(dir)))
+}
+
 /* What a page gets back about a comment: everything it needs to draw the badge
    and show Claude's replies, minus the file path on this machine. */
 function forPage(c: Comment) {
@@ -153,6 +186,7 @@ function forPage(c: Comment) {
 async function route(req: IncomingMessage, res: ServerResponse, version: string, onNew: (c: Comment) => void): Promise<void> {
   const url = new URL(req.url ?? '/', `http://${req.headers.host}`)
   const parts = url.pathname.split('/').filter(Boolean)
+  const origin = req.headers.origin
 
   if (req.method === 'GET' && url.pathname === '/health') {
     return send(res, 200, { ok: true, name: 'inspeck', version })
@@ -165,6 +199,10 @@ async function route(req: IncomingMessage, res: ServerResponse, version: string,
   if (DEV && req.method === 'GET' && parts[0] === '__dev') {
     return devFile(req, res, parts.slice(1).join('/'))
   }
+
+  /* Everything else is a call from the widget. Without the header it's either not the widget, or one
+     loaded before Inspeck was updated, which a reload fixes. */
+  if (!req.headers[CALL_HEADER]) return send(res, 403, { error: 'Inspeck was updated: reload the page.' })
 
   /* The widget's first-run tour, seen once per machine rather than once per app. */
   if (url.pathname === '/tour' && (req.method === 'GET' || req.method === 'POST')) {
@@ -191,6 +229,9 @@ async function route(req: IncomingMessage, res: ServerResponse, version: string,
     return send(res, 200, read())
   }
 
+  /* This Inspeck's version and the newest one out, when the daily check found one. */
+  if (url.pathname === '/update' && req.method === 'GET') return send(res, 200, updateState(version))
+
   /* Voice for notes: whether it works here, a listening session streamed as it goes, and stopping it. */
   if (url.pathname === '/voice' && req.method === 'GET') return send(res, 200, voiceAvailable())
   if (url.pathname === '/voice/listen' && req.method === 'POST') return listenStream(req, res)
@@ -216,15 +257,22 @@ async function route(req: IncomingMessage, res: ServerResponse, version: string,
 
   if (parts[0] !== 'comments') return send(res, 404, { error: 'Not found' })
   const id = parts[1]
+  /* One note by its id: only from a page on its own site. */
+  if (id && id !== 'send') {
+    const c = store.get(id)
+    if (!c) return send(res, 404, { error: 'No such comment' })
+    if (!ownSite(origin, c.page)) return send(res, 403, { error: 'That note is on another site' })
+  }
 
   /* Send the notes held on a page (the pill's Send), or on a whole site (Auto-send notes to Claude turned on). */
   if (id === 'send' && req.method === 'POST') {
     const b = (await body(req)) as { page?: unknown; site?: unknown }
-    const origin = (u: string) => { try { return new URL(u).origin } catch { return null } }
+    const siteOf = (u: string) => { try { return new URL(u).origin } catch { return null } }
     let which: ((c: Comment) => boolean) | null = null
     if (typeof b.page === 'string') { const key = pageKey(b.page); which = c => c.page === key }
-    else if (typeof b.site === 'string' && origin(b.site)) { const o = origin(b.site); which = c => origin(c.page) === o }
+    else if (typeof b.site === 'string' && siteOf(b.site)) { const o = siteOf(b.site); which = c => siteOf(c.page) === o }
     if (!which) return send(res, 400, { error: 'Send { page } or { site }' })
+    if (!ownSite(origin, String(b.page ?? b.site))) return send(res, 403, { error: 'A page can only send its own site\'s notes' })
     const sent = store.release(which)
     for (const c of sent) onNew(c)
     return send(res, 200, { sent: sent.length })
@@ -232,7 +280,7 @@ async function route(req: IncomingMessage, res: ServerResponse, version: string,
 
   if (!id && req.method === 'GET') {
     const page = url.searchParams.get('page')
-    const list = page ? store.forPage(page) : store.open()
+    const list = (page ? store.forPage(page) : store.open()).filter(c => ownSite(origin, c.page))
     return send(res, 200, { comments: list.map(forPage) })
   }
 
@@ -243,8 +291,10 @@ async function route(req: IncomingMessage, res: ServerResponse, version: string,
     }
     /* Places in compiled server code (a server component's JSX) become places in the source. */
     const note = parsed.data
-    if (note.source) note.source = findLines(note.source.map(resolveSource), { text: note.element.text, tag: note.element.tag, selector: note.element.selector })
-    for (const m of note.group ?? []) if (m.source) m.source = resolveSource(m.source)
+    if (!ownSite(origin, note.page)) return send(res, 403, { error: 'A page can only leave notes on its own site' })
+    const may = (file: string) => inProject(file, note.page)
+    if (note.source) note.source = findLines(note.source.map(at => resolveSource(at, may)), { text: note.element.text, tag: note.element.tag, selector: note.element.selector }, may)
+    for (const m of note.group ?? []) if (m.source) m.source = resolveSource(m.source, may)
     const created = store.add(note, routeNote(note.page, note.tabId))
     onNew(created)
     return send(res, 201, { comment: forPage(created) })
@@ -278,55 +328,106 @@ async function route(req: IncomingMessage, res: ServerResponse, version: string,
 /* ---------- stylesheets the page can't read ---------- */
 
 const CSS_MAX = 5 * 1024 * 1024
+/** All the stylesheets kept at once, together. */
+const CSS_KEPT_MAX = 40 * 1024 * 1024
 const CSS_KEEP_MS = 5 * 60_000
-const fetchedCss = new Map<string, { at: number; text: Promise<string> }>()
+const fetchedCss = new Map<string, { at: number; size: number; text: Promise<string> }>()
+
+/** Whether an address is this machine or the network's own plumbing (link-local, where cloud machines keep
+    their secrets): never fetched for a page. A stylesheet on this machine the page can read itself. */
+export function internalAddress(ip: string): boolean {
+  const v4 = /^(?:::ffff:)?(\d+)\.(\d+)\.\d+\.\d+$/i.exec(ip)
+  if (v4) { const [a, b] = [Number(v4[1]), Number(v4[2])]; return a === 127 || a === 0 || (a === 169 && b === 254) }
+  const h = ip.toLowerCase()
+  return h === '::1' || h === '::' || /^fe[89ab]/.test(h)
+}
+
+/** Only for Inspeck's own tests, which serve their "CDN" on this machine. */
+const LOCAL_CSS = process.env.INSPECK_TEST_LOCAL_CSS === '1'
+
+/** Fetch a stylesheet, following redirects one at a time so each address is checked before it's asked. */
+async function fetchCss(href: string): Promise<Response> {
+  let at = href
+  for (let hops = 0; hops < 5; hops++) {
+    const u = new URL(at)
+    if (!/^https?:$/.test(u.protocol)) throw new Error('Only http(s) stylesheets')
+    const host = u.hostname.replace(/^\[|\]$/g, '')
+    const ips = isIP(host) ? [host] : (await lookup(host, { all: true })).map(a => a.address)
+    if (!ips.length || (ips.some(internalAddress) && !LOCAL_CSS)) throw new Error('That address is on this machine or its network')
+    const r = await fetch(at, { signal: AbortSignal.timeout(8000), redirect: 'manual', headers: { accept: 'text/css,*/*;q=0.1' } })
+    const next = r.status >= 300 && r.status < 400 ? r.headers.get('location') : null
+    if (!next) return r
+    at = new URL(next, at).href
+  }
+  throw new Error('Too many redirects')
+}
 
 /** A stylesheet's text, fetched by the plugin. Remembered a few minutes, so a page's every reload doesn't fetch again. */
 function stylesheet(href: string): Promise<string> {
   const now = Date.now()
   const kept = fetchedCss.get(href)
   if (kept && now - kept.at < CSS_KEEP_MS) return kept.text
-  const text = (async () => {
-    const r = await fetch(href, { signal: AbortSignal.timeout(8000), redirect: 'follow', headers: { accept: 'text/css,*/*;q=0.1' } })
+  const entry = { at: now, size: 0, text: Promise.resolve('') }
+  entry.text = (async () => {
+    const r = await fetchCss(href)
     if (!r.ok) throw new Error(`The stylesheet answered ${r.status}`)
     const type = r.headers.get('content-type') ?? ''
-    if (!/css/i.test(type) && !/\.css(\?|#|$)/i.test(new URL(r.url).pathname)) throw new Error('That address isn\'t a stylesheet')
+    if (!/css/i.test(type) && !/\.css(\?|#|$)/i.test(new URL(href).pathname)) throw new Error('That address isn\'t a stylesheet')
     if (Number(r.headers.get('content-length') ?? 0) > CSS_MAX) throw new Error('The stylesheet is too big')
     const body = await r.text()
     if (body.length > CSS_MAX) throw new Error('The stylesheet is too big')
+    entry.size = body.length
+    /* Oldest out first, until everything kept fits. */
+    let total = 0
+    for (const e of fetchedCss.values()) total += e.size
+    for (const [k, e] of fetchedCss) { if (total <= CSS_KEPT_MAX) break; if (e !== entry) { fetchedCss.delete(k); total -= e.size } }
     return body
   })()
-  fetchedCss.set(href, { at: now, text })
-  text.catch(() => fetchedCss.delete(href))
-  if (fetchedCss.size > 200) fetchedCss.delete(fetchedCss.keys().next().value!)
-  return text
+  fetchedCss.set(href, entry)
+  entry.text.catch(() => fetchedCss.delete(href))
+  return entry.text
 }
 
 /** How often a session sharing the port tries for it again. */
 const RETRY_MS = 5000
 
-/** Whether version a is newer than b ("0.15.0" > "0.14.2"). */
-export function newer(a: string, b: string): boolean {
-  const pa = a.split('.').map(Number), pb = b.split('.').map(Number)
-  if (pa.some(Number.isNaN) || pb.some(Number.isNaN) || !pa.length) return false
-  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
-    const x = pa[i] ?? 0, y = pb[i] ?? 0
-    if (x !== y) return x > y
+/** A secret only this person's Inspecks can read (it's in their own ~/.inspeck): asking for the port takes it,
+    so no other program can make Inspeck let go. Made the first time it's needed. */
+export function handoverKey(): string {
+  const file = join(HOME, 'handover-key')
+  try { const k = readFileSync(file, 'utf8').trim(); if (k) return k } catch { /* not made yet */ }
+  mkdirSync(HOME, { recursive: true })
+  const k = randomBytes(24).toString('base64url')
+  try { writeFileSync(file, k, { flag: 'wx', mode: 0o600 }) } catch { /* another Inspeck made it first */ return readFileSync(file, 'utf8').trim() }
+  return k
+}
+
+const sameKey = (a: string, b: string) => a.length === b.length && timingSafeEqual(Buffer.from(a), Buffer.from(b))
+
+/** What's on the port: an Inspeck (and its version), something else, or nothing that answers. */
+async function onPort(): Promise<{ inspeck: true; version: string } | { inspeck: false } | null> {
+  try {
+    const r = await fetch(`http://127.0.0.1:${PORT}/health`, { signal: AbortSignal.timeout(1500) })
+    const h = await r.json().catch(() => ({})) as { name?: string; version?: string }
+    return h.name === 'inspeck' && h.version ? { inspeck: true, version: h.version } : { inspeck: false }
+  } catch {
+    return null
   }
-  return false
 }
 
 /** Ask the Inspeck on the port to step aside, if it's an older one. True when it agreed. */
-async function handover(mine: string): Promise<boolean> {
+async function handover(mine: string, there: string): Promise<boolean> {
+  if (!newer(mine, there)) return false
   try {
-    const h = await fetch(`http://127.0.0.1:${PORT}/health`, { signal: AbortSignal.timeout(1500) }).then(r => r.json()) as { name?: string; version?: string }
-    if (h.name !== 'inspeck' || !h.version || !newer(mine, h.version)) return false
-    const r = await fetch(`http://127.0.0.1:${PORT}/handover`, { method: 'POST', headers: { 'x-inspeck-version': mine }, signal: AbortSignal.timeout(1500) })
+    const r = await fetch(`http://127.0.0.1:${PORT}/handover`, { method: 'POST', headers: { 'x-inspeck-version': mine, 'x-inspeck-key': handoverKey() }, signal: AbortSignal.timeout(1500) })
     return r.ok
   } catch {
     return false
   }
 }
+
+/** Whether this process answers pages, or why not. Set by listen(); `bind` reads it. */
+export const portState: { owner: 'me' | 'inspeck' | 'other' | 'unknown' } = { owner: 'unknown' }
 
 /**
  * Start listening. Resolves true when this process owns the port, false when
@@ -341,16 +442,18 @@ export function listen(version: string, log: (msg: string) => void, onNew: (c: C
   const server = createServer((req, res) => {
     const origin = req.headers.origin
     if (!hostAllowed(req.headers.host) || !originAllowed(origin)) {
-      return send(res, 403, { error: 'Inspeck only accepts comments from local pages and the Inspeck extension' })
+      return send(res, 403, { error: 'Inspeck only accepts notes from pages on this computer' })
     }
     /* A newer Inspeck has started (an update came while this session was open) and asks for the port:
        this one steps aside and shares its inbox, so pages get the newest widget without anyone closing
        a chat. Only another Inspeck asks this, never a page (a browser always says where it's from). */
     if (req.method === 'POST' && req.url === '/handover') {
       const theirs = String(req.headers['x-inspeck-version'] ?? '')
-      if (origin || !newer(theirs, version)) return send(res, 409, { error: 'Only a newer Inspeck can take over' })
+      const key = String(req.headers['x-inspeck-key'] ?? '')
+      if (origin || !newer(theirs, version) || !sameKey(key, handoverKey())) return send(res, 409, { error: 'Only a newer Inspeck can take over' })
       log(`Inspeck ${theirs} has started: handing it the port and sharing its inbox.`)
       res.on('finish', () => {
+        portState.owner = 'inspeck'
         server.close()
         server.closeIdleConnections()
         /* If that one goes away, take the port back. */
@@ -364,7 +467,7 @@ export function listen(version: string, log: (msg: string) => void, onNew: (c: C
     }
     if (req.method === 'OPTIONS') {
       res.setHeader('access-control-allow-methods', 'GET, POST, PATCH, DELETE, OPTIONS')
-      res.setHeader('access-control-allow-headers', 'content-type')
+      res.setHeader('access-control-allow-headers', `content-type, ${CALL_HEADER}`)
       /* Chrome asks before a public page (say, staging) may call a local
          address. Only reached for origins already allowed above. */
       if (req.headers['access-control-request-private-network']) {
@@ -377,18 +480,29 @@ export function listen(version: string, log: (msg: string) => void, onNew: (c: C
   })
 
   return new Promise(resolve => {
-    let warned = false
+    let warned = ''
     attempt = () => {
       const onError = (err: NodeJS.ErrnoException) => {
-        if (err.code !== 'EADDRINUSE') { log(`Could not listen on ${PORT}: ${err.message}`); resolve(false); return }
-        if (!warned) { log(`Port ${PORT} is taken, probably by another Claude session's Inspeck. Sharing its inbox.`); warned = true }
-        resolve(false)
-        /* An older Inspeck on the port is asked to hand it over; then it's ours in a moment. */
-        void handover(version).then(ok => setTimeout(attempt, ok ? 300 : RETRY_MS).unref())
+        if (err.code !== 'EADDRINUSE') { log(`Could not listen on ${PORT}: ${err.message}`); portState.owner = 'other'; resolve(false); return }
+        void onPort().then(async there => {
+          const owner = there?.inspeck ? 'inspeck' : there ? 'other' : 'unknown'
+          portState.owner = owner
+          if (warned !== owner) {
+            warned = owner
+            log(owner === 'other'
+              ? `Port ${PORT} is used by another program, not Inspeck. Pages can't reach Inspeck until it's free; or set INSPECK_PORT to another port.`
+              : `Port ${PORT} is taken by another Claude session's Inspeck. Sharing its inbox.`)
+          }
+          resolve(false)
+          /* An older Inspeck on the port is asked to hand it over; then it's ours in a moment. */
+          const ok = there?.inspeck ? await handover(version, there.version) : false
+          setTimeout(attempt, ok ? 300 : RETRY_MS).unref()
+        })
       }
       server.once('error', onError)
       server.listen(PORT, '127.0.0.1', () => {
         server.off('error', onError)
+        portState.owner = 'me'
         log(`Listening for comments on http://127.0.0.1:${PORT}`)
         resolve(true)
       })

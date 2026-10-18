@@ -1,4 +1,5 @@
 // packages/inspeck/src/vite.ts
+import { hostname, networkInterfaces } from "os";
 var PREFIX = "/__inspeck";
 var SRC = `${PREFIX}/inspeck.js`;
 var envPort = () => {
@@ -12,6 +13,37 @@ function withTag(html) {
   const i = html.toLowerCase().lastIndexOf("</body>");
   return i < 0 ? html + tag : html.slice(0, i) + tag + html.slice(i);
 }
+function ownAddresses() {
+  const out = /* @__PURE__ */ new Set(["127.0.0.1", "::1", "::ffff:127.0.0.1"]);
+  for (const list of Object.values(networkInterfaces())) for (const a of list ?? []) {
+    out.add(a.address.toLowerCase());
+    if (a.family === "IPv4") out.add(`::ffff:${a.address}`);
+  }
+  return out;
+}
+function fromThisMachine(remote, host) {
+  const own = ownAddresses();
+  if (!remote || !own.has(remote.toLowerCase())) return false;
+  const name = (host ?? "").replace(/:\d+$/, "").replace(/^\[|\]$/g, "").toLowerCase();
+  if (!name) return false;
+  if (name === "localhost" || name.endsWith(".localhost") || name.endsWith(".test") || own.has(name)) return true;
+  const me = hostname().toLowerCase().replace(/\.local$/, "");
+  return name === me || name === `${me}.local`;
+}
+var guard = (req, res, next) => {
+  if (!req.url?.startsWith(`${PREFIX}/`) && req.url !== PREFIX) return next();
+  if (!fromThisMachine(req.socket.remoteAddress, req.headers.host)) {
+    res.statusCode = 403;
+    res.setHeader("content-type", "application/json");
+    res.end(JSON.stringify({ error: "Inspeck answers only on the computer running it" }));
+    return;
+  }
+  if (!req.headers.origin && req.headers.host) {
+    const secure = req.socket.encrypted;
+    req.headers.origin = `${secure ? "https" : "http"}://${req.headers.host}`;
+  }
+  next();
+};
 var isHtml = (res) => /text\/html/i.test(String(res.getHeader("content-type") ?? ""));
 var injectHtml = (req, res, next) => {
   if (req.method !== "GET" || !/text\/html|\*\/\*/.test(req.headers.accept ?? "")) return next();
@@ -67,7 +99,10 @@ function inspeck(options = {}) {
     }),
     /* Before Vite's own middleware, so every page passes through it, server-rendered ones included. */
     configureServer: (server) => {
-      if (enabled) server.middlewares.use(injectHtml);
+      if (enabled) {
+        server.middlewares.use(guard);
+        server.middlewares.use(injectHtml);
+      }
     },
     /* An index.html app gets the tag here too (the middleware then sees it and leaves the page alone). */
     transformIndexHtml: () => enabled ? [{ tag: "script", attrs: { src: SRC, async: true }, injectTo: "body" }] : []
@@ -76,6 +111,7 @@ function inspeck(options = {}) {
 export {
   PREFIX,
   inspeck as default,
+  fromThisMachine,
   inspeck,
   withTag
 };

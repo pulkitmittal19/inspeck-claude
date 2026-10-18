@@ -69,11 +69,11 @@ function readMap(chunk: string): { map: RawMap; file: string } | null {
   return existsSync(file) ? { map: JSON.parse(readFileSync(file, 'utf8')), file } : null
 }
 
-/** One place: mapped to the source if it points into a compiled file on this machine, else as it came. */
-export function resolveSource(at: SourceAt): SourceAt {
+/** One place: mapped to the source if it points into a compiled file on this machine (one `may` allows), else as it came. */
+export function resolveSource(at: SourceAt, may: (file: string) => boolean = () => true): SourceAt {
   try {
     const chunk = at.file.startsWith('file://') ? fileURLToPath(at.file.split('?')[0]) : at.file
-    if (!isAbsolute(chunk) || !/\.(c|m)?js$/.test(chunk) || !existsSync(chunk) || !statSync(chunk).isFile() || !at.line) {
+    if (!isAbsolute(chunk) || !/\.(c|m)?js$/.test(chunk) || !may(chunk) || !existsSync(chunk) || !statSync(chunk).isFile() || !at.line) {
       return at.file.startsWith('file://') ? { ...at, file: chunk } : at
     }
     const read = readMap(chunk)
@@ -142,9 +142,9 @@ function elementLine(src: string, clue: Clue): number {
 }
 
 /** Fill in the lines a page couldn't give: the element in the first file, each component where it's used. */
-export function findLines(sources: SourceAt[], clue: Clue): SourceAt[] {
+export function findLines(sources: SourceAt[], clue: Clue, may: (file: string) => boolean = () => true): SourceAt[] {
   return sources.map((at, i) => {
-    if (at.line || !isAbsolute(at.file) || !/\.(vue|svelte|html?|astro|[jt]sx?)$/.test(at.file)) return at
+    if (at.line || !isAbsolute(at.file) || !/\.(vue|svelte|html?|astro|[jt]sx?)$/.test(at.file) || !may(at.file)) return at
     let src: string
     try { if (!statSync(at.file).isFile() || statSync(at.file).size > 2_000_000) return at; src = readFileSync(at.file, 'utf8') } catch { return at }
     let line = 0

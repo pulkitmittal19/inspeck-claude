@@ -17,10 +17,16 @@
  * With no Claude session running, /__inspeck/ answers nothing and the app is
  * unaffected.
  *
+ * A dev server started with --host is open to the whole network, and so would
+ * /__inspeck/ be: someone else on the Wi-Fi could read your notes. So it
+ * answers only this computer (see `fromThisMachine`), whatever the dev server
+ * listens on; another device still sees the app, just without Inspeck.
+ *
  * No dependency on Vite's types: the plugin is a plain object Vite accepts, so
  * this package installs with nothing else.
  */
 import type { IncomingMessage, ServerResponse } from 'node:http'
+import { hostname, networkInterfaces } from 'node:os'
 
 export interface InspeckOptions {
   /** Where the Inspeck plugin serves the widget. Default 4848, or INSPECK_PORT if set. */
@@ -62,6 +68,47 @@ export function withTag(html: string): string {
   const tag = `<script src="${SRC}" async></script>`
   const i = html.toLowerCase().lastIndexOf('</body>')
   return i < 0 ? html + tag : html.slice(0, i) + tag + html.slice(i)
+}
+
+/** This computer's own addresses (127.0.0.1, and each network address it has), lower case, without brackets. */
+function ownAddresses(): Set<string> {
+  const out = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1'])
+  for (const list of Object.values(networkInterfaces())) for (const a of list ?? []) {
+    out.add(a.address.toLowerCase())
+    if (a.family === 'IPv4') out.add(`::ffff:${a.address}`)
+  }
+  return out
+}
+
+/** Whether a request to /__inspeck/ comes from a browser on this computer, at an address that names it.
+    The connection must come from one of this computer's own addresses (only this computer can do that), and
+    the address in the browser must be this computer too, so a site that points its own name here (DNS
+    rebinding) gets nothing. */
+export function fromThisMachine(remote: string | undefined, host: string | undefined): boolean {
+  const own = ownAddresses()
+  if (!remote || !own.has(remote.toLowerCase())) return false
+  const name = (host ?? '').replace(/:\d+$/, '').replace(/^\[|\]$/g, '').toLowerCase()
+  if (!name) return false
+  if (name === 'localhost' || name.endsWith('.localhost') || name.endsWith('.test') || own.has(name)) return true
+  const me = hostname().toLowerCase().replace(/\.local$/, '')
+  return name === me || name === `${me}.local`
+}
+
+/** Guard /__inspeck/: only this computer, and the page's address goes along as its Origin, so Inspeck can
+    tell which site's notes it may show (a same-site request carries none of its own). */
+const guard: Middleware = (req, res, next) => {
+  if (!req.url?.startsWith(`${PREFIX}/`) && req.url !== PREFIX) return next()
+  if (!fromThisMachine(req.socket.remoteAddress, req.headers.host)) {
+    res.statusCode = 403
+    res.setHeader('content-type', 'application/json')
+    res.end(JSON.stringify({ error: 'Inspeck answers only on the computer running it' }))
+    return
+  }
+  if (!req.headers.origin && req.headers.host) {
+    const secure = (req.socket as { encrypted?: boolean }).encrypted
+    req.headers.origin = `${secure ? 'https' : 'http'}://${req.headers.host}`
+  }
+  next()
 }
 
 const isHtml = (res: ServerResponse) => /text\/html/i.test(String(res.getHeader('content-type') ?? ''))
@@ -128,7 +175,7 @@ export default function inspeck(options: InspeckOptions = {}): InspeckVitePlugin
       },
     }),
     /* Before Vite's own middleware, so every page passes through it, server-rendered ones included. */
-    configureServer: server => { if (enabled) server.middlewares.use(injectHtml) },
+    configureServer: server => { if (enabled) { server.middlewares.use(guard); server.middlewares.use(injectHtml) } },
     /* An index.html app gets the tag here too (the middleware then sees it and leaves the page alone). */
     transformIndexHtml: () => enabled ? [{ tag: 'script', attrs: { src: SRC, async: true }, injectTo: 'body' }] : [],
   }

@@ -1,5 +1,6 @@
 /* Settings, from the sliders button in the pill: how the CSS card writes sizes
- * and colours, whether notes go to Claude as you place them, and the
+ * and colours, whether notes go to Claude as you place them, whether to look
+ * for a newer Inspeck (and, when there is one, how to get it), and the
  * shortcuts. A small panel above the pill (below it when the pill is at the
  * top); a press anywhere else or Escape puts it away.
  *
@@ -9,6 +10,7 @@
  * then the quicker ways to look closer. While it's showing, a key you
  * press lights up its keycap, so the list answers "which one was that?". */
 import { enter, leave } from './anim'
+import { api } from './api'
 import { copyToClipboard, h, svg } from './dom'
 import { ICONS } from './icons'
 import { SHORTCUTS, shortcutRow } from './keys'
@@ -71,9 +73,14 @@ export function createSettings(ui: HTMLElement, onToggle: (open: boolean) => voi
   const listenHint = h('div', { class: 'listen-wrap' }, h('div', { class: 'listen' },
     h('p', { class: 'listen-line' }, 'Now send this in your Claude chat, once per chat, so Claude picks notes up as they come:'),
     h('div', { class: 'listen-msg' }, h('span', {}, listenMessage()), copyBtn)))
+  /* Once a day the plugin looks for a newer Inspeck; when there is one, this says how to get it. */
+  const updates = h('button', { type: 'button', class: 'switch', role: 'switch', 'data-action': 'updates', 'aria-labelledby': 'ix-set-updates' }, h('span', { class: 'knob' }))
+  const newer = h('p', { class: 'set-update', hidden: true })
   main.append(
     h('div', { class: 'set-row set-toggle' }, h('span', { class: 'set-label', id: 'ix-set-live' }, 'Auto-send notes to Claude', more), live),
     listenHint,
+    h('div', { class: 'set-row set-toggle set-updates' }, h('span', { class: 'set-label', id: 'ix-set-updates' }, 'Check for updates'), updates),
+    newer,
     h('button', { type: 'button', class: 'set-nav', 'data-action': 'set-page', 'data-page': 'keys' },
       h('span', {}, 'Keyboard shortcuts'), h('span', { class: 'set-nav-end' }, svg(ICONS.chevron, 11, 2.2))),
   )
@@ -121,6 +128,7 @@ export function createSettings(ui: HTMLElement, onToggle: (open: boolean) => voi
       b.setAttribute('aria-checked', String(now[b.dataset.key as 'sizes' | 'colors'] === b.dataset.value))
     }
     live.setAttribute('aria-checked', String(now.send === 'live'))
+    updates.setAttribute('aria-checked', String(now.updates !== 'off'))
     if (now.send !== 'live') justTurnedOn = false
     listenHint.toggleAttribute('data-open', justTurnedOn)
   }
@@ -142,10 +150,18 @@ export function createSettings(ui: HTMLElement, onToggle: (open: boolean) => voi
   sync()
   prefs.onChange(sync)
 
+  /** Whether a newer Inspeck is out: asked each time the panel opens (the plugin checks GitHub once a day). */
+  const lookForUpdate = () => {
+    void api.update().then(u => {
+      newer.hidden = !u.latest
+      if (u.latest) newer.replaceChildren(`Inspeck ${u.latest} is out (you have ${u.version}). Ask Claude to `, h('b', {}, 'update Inspeck'), '.')
+    }, () => { newer.hidden = true })
+  }
+
   const set = (o: boolean) => {
     if (o === open) return
     open = o
-    if (o) { sync(); enter(el) } else leave(el, 120, () => { show('main', false); lit.clear(); paint(); justTurnedOn = false; sync() })
+    if (o) { sync(); lookForUpdate(); enter(el) } else leave(el, 120, () => { show('main', false); lit.clear(); paint(); justTurnedOn = false; sync() })
     onToggle(o)
   }
 
@@ -177,6 +193,10 @@ export function createSettings(ui: HTMLElement, onToggle: (open: boolean) => voi
           const on = prefs.get().send !== 'live'
           justTurnedOn = on
           prefs.set({ send: on ? 'live' : 'ask' })
+        }
+        if (a?.action === 'updates') {
+          prefs.set({ updates: prefs.get().updates === 'off' ? 'check' : 'off' })
+          window.setTimeout(lookForUpdate, 150)
         }
         if (a?.action === 'set-page') show(a.el.dataset.page === 'keys' ? 'keys' : 'main')
         if (a?.action === 'copy-listen') void copyListen()

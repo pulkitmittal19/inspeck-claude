@@ -11,7 +11,7 @@
  * atomic rename, so a reader never sees half a file and reads need no lock.
  */
 import { randomBytes } from 'node:crypto'
-import { closeSync, existsSync, mkdirSync, openSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { chmodSync, closeSync, existsSync, mkdirSync, openSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { kindFor, pageKey, type Comment, type Message, type NewComment, type Status } from './format.js'
@@ -38,9 +38,16 @@ export function inboxPath(): string {
   return FILE
 }
 
+/* Notes, screenshots and session codes are this person's alone: the folder is closed to other users of the
+   computer (made so, and closed again if it was made open by an older Inspeck). */
+let closed = false
 function ensureDirs(): void {
-  mkdirSync(SHOTS, { recursive: true })
+  mkdirSync(SHOTS, { recursive: true, mode: 0o700 })
+  if (!closed) { try { chmodSync(HOME, 0o700) } catch { /* not ours to change */ } closed = true }
 }
+
+/** Closed notes are kept this long, so the page can still show what was done; then they and their screenshots go. */
+const KEEP_CLOSED_MS = 30 * 24 * 3600 * 1000
 
 export function read(): Inbox {
   if (!existsSync(FILE)) return { version: 1, comments: [] }
@@ -53,7 +60,8 @@ export function read(): Inbox {
     /* Never silently start over on top of someone's comments: keep the
        unreadable file beside the new one, so nothing is lost for good. */
     ensureDirs()
-    renameSync(FILE, join(HOME, `inbox.unreadable-${Date.now()}.json`))
+    /* Two processes may find it at once: whichever moves it, the other just carries on. */
+    try { renameSync(FILE, join(HOME, `inbox.unreadable-${Date.now()}-${process.pid}.json`)) } catch { /* already moved */ }
     return { version: 1, comments: [] }
   }
 }
@@ -92,8 +100,20 @@ export function change<T>(fn: (inbox: Inbox) => T): T {
   return locked(() => {
     const inbox = read()
     const result = fn(inbox)
+    prune(inbox)
     write(inbox)
     return result
+  })
+}
+
+/** Let notes closed long ago go, with their screenshots. */
+function prune(inbox: Inbox): void {
+  const before = Date.now() - KEEP_CLOSED_MS
+  inbox.comments = inbox.comments.filter(c => {
+    const closedAt = c.outcome?.at ? Date.parse(c.outcome.at) : NaN
+    const old = (c.status === 'resolved' || c.status === 'dismissed') && closedAt < before
+    if (old && c.screenshot) rmSync(c.screenshot, { force: true })
+    return !old
   })
 }
 
