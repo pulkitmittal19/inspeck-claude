@@ -106,10 +106,6 @@ export const api = {
   async settings(): Promise<Record<string, unknown>> {
     return call<Record<string, unknown>>('GET', '/settings')
   },
-  /** This Inspeck's version, and a newer one if the daily check found it. */
-  async update(): Promise<{ version: string; latest: string | null; checking: boolean }> {
-    return call('GET', '/update')
-  },
   async saveSettings(settings: Record<string, unknown>): Promise<void> {
     await call('POST', '/settings', settings)
   },

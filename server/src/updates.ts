@@ -1,26 +1,30 @@
-/* Saying when a newer Inspeck is out, and offering to install it.
+/* Keeping Inspeck up to date, without anyone having to think about it.
  *
- * Claude Code updates a plugin by itself only from a marketplace set to
- * auto-update, which a GitHub one like Inspeck's isn't until the person turns
- * it on, and a plugin mustn't change their settings for them. So Inspeck asks
- * instead:
+ * Installed with `npx inspeck init`, Claude Code's own auto-update is on for Inspeck's marketplace: Claude
+ * Code fetches new versions itself, and this does nothing. Installed any other way, it's off, so Inspeck does
+ * the same itself: when a chat starts, at most once a week, it reads the latest version number from GitHub
+ * (one small request, sending nothing about the person) and, when there's a newer one, installs it with
+ * Claude Code's own commands, in the background. The next chat runs it; notes are kept. Offline, or the
+ * install failed: next week.
  *
- *   - Once a day it reads the latest version number from GitHub: one small
- *     request, sending nothing about the person. Offline, it just tries again
- *     the next day.
- *   - When a newer one is out, Inspeck's Settings say so, and Claude offers
- *     once in the chat to install it. A "no" holds for that version.
- *
- * Off with Settings › Check for updates, or INSPECK_LATEST_URL=off.
+ * Only an installed copy from Inspeck's GitHub marketplace updates itself: a marketplace that is a folder (a
+ * checkout someone is working on) is left alone. Off with INSPECK_AUTO_UPDATE=off, for teams that decide
+ * what gets installed.
  */
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { execFile } from 'node:child_process'
+import { mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { homedir } from 'node:os'
 import { join } from 'node:path'
+import { promisify } from 'node:util'
 import { HOME } from './store.js'
 
-const LATEST_URL = process.env.INSPECK_LATEST_URL ?? 'https://raw.githubusercontent.com/pulkitmittal19/inspeck-claude/main/.claude-plugin/plugin.json'
-const DAY_MS = 24 * 3600 * 1000
+const run = promisify(execFile)
+const REPO = 'pulkitmittal19/inspeck-claude'
+const MARKETPLACE = 'inspeck'
+const LATEST_URL = process.env.INSPECK_LATEST_URL ?? `https://raw.githubusercontent.com/${REPO}/main/.claude-plugin/plugin.json`
+const WEEK_MS = 7 * 24 * 3600 * 1000
 const LATEST = () => join(HOME, 'latest.json')
-const OFFERED = () => join(HOME, 'plugin-update-offered.json')
+const LOCK = () => join(HOME, 'updating.lock')
 
 const readJson = (p: string): Record<string, any> | null => { try { return JSON.parse(readFileSync(p, 'utf8')) } catch { return null } }
 const writeJson = (p: string, v: unknown) => { try { mkdirSync(HOME, { recursive: true }); writeFileSync(p, JSON.stringify(v, null, 2)) } catch { /* only a reminder */ } }
@@ -36,41 +40,53 @@ export function newer(a: string, b: string): boolean {
   return false
 }
 
-/** Whether the person has turned the check off. */
-function off(): boolean {
-  return LATEST_URL === 'off' || !LATEST_URL || readJson(join(HOME, 'settings.json'))?.updates === 'off'
+/**
+ * Who keeps this copy current: Claude Code (its auto-update is on for the marketplace), Inspeck (an installed
+ * copy from the GitHub marketplace), or nobody (a folder marketplace, a checkout, or turned off).
+ */
+export function updater(config = process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude')): 'claude' | 'inspeck' | 'none' {
+  if (process.env.INSPECK_AUTO_UPDATE === 'off' || LATEST_URL === 'off') return 'none'
+  if (!(process.env.CLAUDE_PLUGIN_ROOT ?? '').includes(`${join('plugins', 'cache')}`)) return 'none'
+  /* /plugin's switch keeps it in the plugins folder; `npx inspeck init` in the settings. */
+  const known = readJson(join(config, 'plugins', 'known_marketplaces.json'))?.[MARKETPLACE]
+  const extra = readJson(join(config, 'settings.json'))?.extraKnownMarketplaces?.[MARKETPLACE]
+  if (known?.autoUpdate === true || extra?.autoUpdate === true) return 'claude'
+  const source = known?.source ?? extra?.source
+  return source?.source === 'github' && source.repo === REPO ? 'inspeck' : 'none'
 }
 
-/** Look for a newer Inspeck, at most once a day. Never throws, never waits on anything but the request. */
-export async function checkDaily(): Promise<void> {
-  if (off()) return
+/** Another chat is installing it right now (a lock younger than ten minutes). */
+function busy(): boolean {
+  try { return Date.now() - statSync(LOCK()).mtimeMs < 10 * 60_000 } catch { return false }
+}
+
+/**
+ * When a chat starts: if Inspeck keeps itself current and hasn't looked this week, look, and install a newer
+ * version in the background. Never throws; never holds up the chat.
+ */
+export async function keepCurrent(current: string, claude: string): Promise<'skipped' | 'current' | 'updated' | 'failed'> {
+  if (updater() !== 'inspeck') return 'skipped'
   const kept = readJson(LATEST())
-  if (kept?.checkedAt && Date.now() - Date.parse(kept.checkedAt) < DAY_MS) return
-  let version: string | undefined = kept?.version
+  if (kept?.checkedAt && Date.now() - Date.parse(kept.checkedAt) < WEEK_MS) return 'skipped'
+  if (busy()) return 'skipped'
+  let latest: string | undefined
   try {
     const r = await fetch(LATEST_URL, { signal: AbortSignal.timeout(5000), headers: { accept: 'application/json' } })
     const v = r.ok ? (await r.json() as { version?: unknown }).version : undefined
-    if (typeof v === 'string' && /^\d+\.\d+\.\d+$/.test(v)) version = v
-  } catch { /* offline: tomorrow */ }
-  writeJson(LATEST(), { checkedAt: new Date().toISOString(), ...(version ? { version } : {}) })
-}
-
-/** The newest Inspeck known to be out, if it's newer than this one. */
-export function newerOut(current: string): string | null {
-  if (off()) return null
-  const v = readJson(LATEST())?.version
-  return typeof v === 'string' && newer(v, current) ? v : null
-}
-
-/** For Settings: this version, and a newer one if there is. */
-export function updateState(current: string): { version: string; latest: string | null; checking: boolean } {
-  return { version: current, latest: newerOut(current), checking: !off() }
-}
-
-/** A newer Inspeck Claude hasn't offered yet: remembered as offered, so it's offered once per version. */
-export function offerOnce(current: string): string | null {
-  const latest = newerOut(current)
-  if (!latest || readJson(OFFERED())?.version === latest) return null
-  writeJson(OFFERED(), { version: latest, at: new Date().toISOString() })
-  return latest
+    if (typeof v === 'string' && /^\d+\.\d+\.\d+$/.test(v)) latest = v
+  } catch { /* offline: next week */ }
+  if (!latest) { writeJson(LATEST(), { checkedAt: new Date().toISOString() }); return 'failed' }
+  if (!newer(latest, current)) { writeJson(LATEST(), { checkedAt: new Date().toISOString(), version: latest }); return 'current' }
+  writeJson(LOCK(), { pid: process.pid, at: new Date().toISOString() })
+  try {
+    await run(claude, ['plugin', 'marketplace', 'update', MARKETPLACE], { timeout: 120_000 })
+    await run(claude, ['plugin', 'update', `inspeck@${MARKETPLACE}`], { timeout: 120_000 })
+    writeJson(LATEST(), { checkedAt: new Date().toISOString(), version: latest, installed: latest })
+    return 'updated'
+  } catch {
+    writeJson(LATEST(), { checkedAt: new Date().toISOString(), version: latest })
+    return 'failed'
+  } finally {
+    try { rmSync(LOCK(), { force: true }) } catch { /* gone */ }
+  }
 }

@@ -85,7 +85,7 @@ export function claudePid(): number | null {
 
 /** The Claude Code program this session runs, to run its own commands with (the desktop app's isn't on the PATH). */
 export function claudeCommand(): string {
-  return claudeProcess()?.command ?? 'claude'
+  return process.env.INSPECK_CLAUDE_BIN || claudeProcess()?.command || 'claude'
 }
 
 export function alive(pid: number): boolean {

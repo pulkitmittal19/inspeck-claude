@@ -1,10 +1,10 @@
-/* Staying up to date: Inspeck looks for a newer version once a day and offers
- * it once, without touching Claude's settings; and a newer Inspeck takes the
- * port from an older one. Run against the built
+/* Staying up to date: when Claude Code doesn't update Inspeck itself, Inspeck looks for a newer version at
+ * most once a week and installs it, with a stand-in `claude` that only records what it's asked; it never
+ * touches Claude's settings; and a newer Inspeck takes the port from an older one. Run against the built
  * server, started over stdio as Claude Code starts it. */
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -16,7 +16,7 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 const VERSION = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).version
 
 /** Start the built server as Claude would, with these settings folders. */
-async function start({ port, home, config, pluginRoot, latest = 'off' }) {
+async function start({ port, home, config, pluginRoot, latest = 'off', claude = '', env = {} }) {
   const dir = mkdtempSync(join(tmpdir(), 'inspeck-update-'))
   copyFileSync(join(root, 'server/dist/inspeck.mjs'), join(dir, 'inspeck.mjs'))
   const client = new Client({ name: 'test-claude', version: '0' })
@@ -24,7 +24,7 @@ async function start({ port, home, config, pluginRoot, latest = 'off' }) {
     command: process.execPath,
     args: [join(dir, 'inspeck.mjs')],
     cwd: dir,
-    env: { ...process.env, INSPECK_HOME: home, INSPECK_PORT: String(port), CLAUDE_CONFIG_DIR: config, CLAUDE_PLUGIN_ROOT: pluginRoot, INSPECK_LATEST_URL: latest },
+    env: { ...process.env, INSPECK_HOME: home, INSPECK_PORT: String(port), CLAUDE_CONFIG_DIR: config, CLAUDE_PLUGIN_ROOT: pluginRoot, INSPECK_LATEST_URL: latest, INSPECK_CLAUDE_BIN: claude || join(tmpdir(), 'no-claude-here'), ...env },
     stderr: 'ignore',
   }))
   return { client, instructions: client.getInstructions() ?? '', stop: async () => { await client.close(); rmSync(dir, { recursive: true, force: true }) } }
@@ -37,10 +37,10 @@ const health = port => new Promise(resolve => {
     res.on('end', () => { try { resolve(JSON.parse(b)) } catch { resolve(null) } })
   }).on('error', () => resolve(null))
 })
+const readJsonFile = p => { try { return JSON.parse(readFileSync(p, 'utf8')) } catch { return null } }
 const until = async (fn, ms = 8000) => { const t = Date.now(); while (Date.now() - t < ms) { const v = await fn(); if (v) return v; await new Promise(r => setTimeout(r, 100)) } return null }
 
 const INSTALLED = '/x/.claude/plugins/cache/inspeck/inspeck/0.0.0'
-const OFFER = /Inspeck 99\.0\.0 is out \(this is /
 
 /** A stand-in for GitHub: answers the latest plugin.json, and counts how often it was asked. */
 async function github(version) {
@@ -63,40 +63,64 @@ test('Inspeck never changes Claude\'s own settings, installed or not', async () 
   rmSync(tmp, { recursive: true, force: true })
 })
 
-test('a newer Inspeck is looked for once a day, offered once in the chat, and shown in Settings', async () => {
+/** A stand-in `claude` that writes down each command it's given. */
+function fakeClaude(dir) {
+  const log = join(dir, 'claude-calls.log'), bin = join(dir, 'bin', 'claude')
+  mkdirSync(join(dir, 'bin'), { recursive: true })
+  writeFileSync(bin, `#!/bin/sh\necho "$*" >> "${log}"\n`)
+  chmodSync(bin, 0o755)
+  return { bin, calls: () => { try { return readFileSync(log, 'utf8').trim().split('\n') } catch { return [] } } }
+}
+/** Claude's plugins folder, with Inspeck's marketplace as given. */
+function marketplace(config, entry) {
+  mkdirSync(join(config, 'plugins'), { recursive: true })
+  writeFileSync(join(config, 'plugins', 'known_marketplaces.json'), JSON.stringify({ inspeck: entry }))
+}
+const GITHUB = { source: { source: 'github', repo: 'pulkitmittal19/inspeck-claude' } }
+
+test('installed from GitHub without Claude\'s auto-update: a newer Inspeck installs itself, looked for once a week', async () => {
   const tmp = mkdtempSync(join(tmpdir(), 'inspeck-up-'))
   const home = join(tmp, 'home'), config = join(tmp, 'claude')
+  marketplace(config, GITHUB)
+  const claude = fakeClaude(tmp)
   const gh = await github('99.0.0')
   const port = 49900 + Math.floor(Math.random() * 90)
-  /* The first chat looks it up (nothing to offer yet: it didn't know). */
-  const a = await start({ port, home, config, pluginRoot: INSTALLED, latest: gh.url })
-  assert.doesNotMatch(a.instructions, OFFER)
-  assert.ok(await until(async () => existsSync(join(home, 'latest.json'))), 'checked')
-  assert.ok(a.instructions.includes('plugin update inspeck@inspeck'), 'Claude knows how to update when asked')
-  /* Settings in the page says so. */
-  const state = await new Promise(resolve => http.get({ host: '127.0.0.1', port, path: '/update', headers: { origin: 'http://localhost:5173', 'x-inspeck': '1' } }, res => {
-    let b = ''; res.on('data', c => (b += c)); res.on('end', () => resolve(JSON.parse(b)))
-  }))
-  assert.deepEqual(state, { version: VERSION, latest: '99.0.0', checking: true })
+  const a = await start({ port, home, config, pluginRoot: INSTALLED, latest: gh.url, claude: claude.bin })
+  assert.ok(await until(async () => readJsonFile(join(home, 'latest.json'))?.installed === '99.0.0'), 'installed')
+  assert.deepEqual(claude.calls(), ['plugin marketplace update inspeck', 'plugin update inspeck@inspeck'])
+  assert.doesNotMatch(a.instructions, /is out|Update it now/, 'nothing offered: it just installs')
   await a.stop()
-  /* The next chat offers it, once; and doesn't ask GitHub again the same day. */
-  const b = await start({ port, home, config, pluginRoot: INSTALLED, latest: gh.url })
-  assert.match(b.instructions, OFFER)
-  assert.match(b.instructions, /don't ask again/)
+  /* The next chat that week doesn't look again. */
+  const b = await start({ port, home, config, pluginRoot: INSTALLED, latest: gh.url, claude: claude.bin })
+  await new Promise(r => setTimeout(r, 800))
   await b.stop()
-  const c = await start({ port, home, config, pluginRoot: INSTALLED, latest: gh.url })
-  assert.doesNotMatch(c.instructions, OFFER, 'offered once')
-  await c.stop()
-  assert.equal(gh.seen.asks, 1, 'once a day')
-  /* Turned off in Settings: nothing is looked up or offered. */
-  writeFileSync(join(home, 'settings.json'), JSON.stringify({ updates: 'off' }))
-  writeFileSync(join(home, 'latest.json'), JSON.stringify({ checkedAt: '2020-01-01T00:00:00Z', version: '100.0.0' }))
-  const d = await start({ port, home, config, pluginRoot: INSTALLED, latest: gh.url })
-  assert.doesNotMatch(d.instructions, /is out \(this is/)
-  await d.stop()
-  assert.equal(gh.seen.asks, 1)
+  assert.equal(gh.seen.asks, 1, 'once a week')
+  assert.equal(claude.calls().length, 2)
   gh.close()
   rmSync(tmp, { recursive: true, force: true })
+})
+
+test('left alone: when Claude Code updates it, from a folder marketplace, a checkout, or turned off', async () => {
+  const cases = [
+    ['Claude Code\'s auto-update is on', { ...GITHUB, autoUpdate: true }, INSTALLED, {}],
+    ['a folder marketplace (a checkout being worked on)', { source: { source: 'directory', path: '/x/inspeck' } }, INSTALLED, {}],
+    ['not an installed copy', GITHUB, '', {}],
+    ['INSPECK_AUTO_UPDATE=off', GITHUB, INSTALLED, { INSPECK_AUTO_UPDATE: 'off' }],
+  ]
+  for (const [name, entry, pluginRoot, env] of cases) {
+    const tmp = mkdtempSync(join(tmpdir(), 'inspeck-left-'))
+    const config = join(tmp, 'claude')
+    marketplace(config, entry)
+    const claude = fakeClaude(tmp)
+    const gh = await github('99.0.0')
+    const s = await start({ port: 49900 + Math.floor(Math.random() * 90), home: join(tmp, 'home'), config, pluginRoot, latest: gh.url, claude: claude.bin, env })
+    await new Promise(r => setTimeout(r, 800))
+    await s.stop()
+    assert.equal(gh.seen.asks, 0, `${name}: GitHub not asked`)
+    assert.deepEqual(claude.calls(), [], `${name}: nothing installed`)
+    gh.close()
+    rmSync(tmp, { recursive: true, force: true })
+  }
 })
 
 test('a newer Inspeck takes the port from an older one; the older takes it back if the newer goes', async () => {

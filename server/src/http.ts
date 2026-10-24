@@ -32,7 +32,7 @@ import { fileURLToPath } from 'node:url'
 import * as store from './store.js'
 import { HOME } from './store.js'
 import { bindTab, liveSessions, projectOf, real, route as routeNote } from './sessions.js'
-import { newer, updateState } from './updates.js'
+import { newer } from './updates.js'
 
 export { newer }
 import { isThisMachine, NewComment, NOTE_MAX, pageKey, type Comment, type SourceAt } from './format.js'
@@ -45,8 +45,6 @@ const SETTINGS: Record<string, string[]> = {
   colors: ['written', 'hex', 'rgb', 'oklch'],
   /* Auto-send notes to Claude (live), or keep them on the page until you send them (ask). */
   send: ['ask', 'live'],
-  /* Look for a newer Inspeck once a day, and say when there is one (check), or never (off). */
-  updates: ['check', 'off'],
 }
 
 /** The header every call from the widget carries (see the top of this file). */
@@ -240,9 +238,6 @@ async function route(req: IncomingMessage, res: ServerResponse, version: string,
     }
     return send(res, 200, read())
   }
-
-  /* This Inspeck's version and the newest one out, when the daily check found one. */
-  if (url.pathname === '/update' && req.method === 'GET') return send(res, 200, updateState(version))
 
   /* Voice for notes: whether it works here, a listening session streamed as it goes, and stopping it. */
   if (url.pathname === '/voice' && req.method === 'GET') return send(res, 200, voiceAvailable())

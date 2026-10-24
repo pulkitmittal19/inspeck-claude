@@ -27826,7 +27826,7 @@ function visit(schema, fnOrHandlers) {
     return h ? h(node2, rewritten) : node2;
   };
   const cache = /* @__PURE__ */ new Map();
-  function run(s) {
+  function run2(s) {
     const cached2 = cache.get(s);
     if (cached2 === RESOLVING) {
       return new $ZodLazy({
@@ -27852,21 +27852,21 @@ function visit(schema, fnOrHandlers) {
         let changed = false;
         const newShape = {};
         for (const k of keys) {
-          const mapped = run(oldShape[k]);
+          const mapped = run2(oldShape[k]);
           if (mapped !== oldShape[k])
             changed = true;
           newShape[k] = mapped;
         }
         let newCatchall = def.catchall;
         if (def.catchall) {
-          newCatchall = run(def.catchall);
+          newCatchall = run2(def.catchall);
           if (newCatchall !== def.catchall)
             changed = true;
         }
         return changed ? clone(s, { ...def, shape: newShape, catchall: newCatchall }) : s;
       }
       case "array": {
-        const mapped = run(def.element);
+        const mapped = run2(def.element);
         return mapped === def.element ? s : clone(s, { ...def, element: mapped });
       }
       case "tuple": {
@@ -27874,14 +27874,14 @@ function visit(schema, fnOrHandlers) {
         let changed = false;
         const newItems = [];
         for (const item of oldItems) {
-          const mapped = run(item);
+          const mapped = run2(item);
           if (mapped !== item)
             changed = true;
           newItems.push(mapped);
         }
         let newRest = def.rest;
         if (def.rest) {
-          newRest = run(def.rest);
+          newRest = run2(def.rest);
           if (newRest !== def.rest)
             changed = true;
         }
@@ -27889,12 +27889,12 @@ function visit(schema, fnOrHandlers) {
       }
       case "record":
       case "map": {
-        const newKey = run(def.keyType);
-        const newVal = run(def.valueType);
+        const newKey = run2(def.keyType);
+        const newVal = run2(def.valueType);
         return newKey === def.keyType && newVal === def.valueType ? s : clone(s, { ...def, keyType: newKey, valueType: newVal });
       }
       case "set": {
-        const newVal = run(def.valueType);
+        const newVal = run2(def.valueType);
         return newVal === def.valueType ? s : clone(s, { ...def, valueType: newVal });
       }
       case "union": {
@@ -27902,7 +27902,7 @@ function visit(schema, fnOrHandlers) {
         let changed = false;
         const newOptions = [];
         for (const opt of oldOptions) {
-          const mapped = run(opt);
+          const mapped = run2(opt);
           if (mapped !== opt)
             changed = true;
           newOptions.push(mapped);
@@ -27910,8 +27910,8 @@ function visit(schema, fnOrHandlers) {
         return changed ? clone(s, { ...def, options: newOptions }) : s;
       }
       case "intersection": {
-        const newLeft = run(def.left);
-        const newRight = run(def.right);
+        const newLeft = run2(def.left);
+        const newRight = run2(def.right);
         return newLeft === def.left && newRight === def.right ? s : clone(s, { ...def, left: newLeft, right: newRight });
       }
       case "optional":
@@ -27923,23 +27923,23 @@ function visit(schema, fnOrHandlers) {
       case "nonoptional":
       case "promise":
       case "success": {
-        const newInner = run(def.innerType);
+        const newInner = run2(def.innerType);
         return newInner === def.innerType ? s : clone(s, { ...def, innerType: newInner });
       }
       case "pipe": {
-        const newIn = run(def.in);
-        const newOut = run(def.out);
+        const newIn = run2(def.in);
+        const newOut = run2(def.out);
         return newIn === def.in && newOut === def.out ? s : clone(s, { ...def, in: newIn, out: newOut });
       }
       case "function": {
-        const newInput = run(def.input);
-        const newOutput = run(def.output);
+        const newInput = run2(def.input);
+        const newOutput = run2(def.output);
         return newInput === def.input && newOutput === def.output ? s : clone(s, { ...def, input: newInput, output: newOutput });
       }
       case "lazy": {
         const original = def.getter;
         const { _cachedInner, ...rest } = def;
-        return clone(s, { ...rest, getter: () => run(original()) });
+        return clone(s, { ...rest, getter: () => run2(original()) });
       }
       // A leaf by choice: `parts` are regex fragments, not data positions.
       case "template_literal":
@@ -27970,7 +27970,7 @@ function visit(schema, fnOrHandlers) {
       }
     }
   }
-  return run(schema);
+  return run2(schema);
 }
 
 // node_modules/@modelcontextprotocol/sdk/dist/esm/server/zod-compat.js
@@ -36888,7 +36888,7 @@ function closeGap(inbox, gone) {
 }
 
 // server/src/http.ts
-import { existsSync as existsSync5, mkdirSync as mkdirSync4, readFileSync as readFileSync5, statSync as statSync3, writeFileSync as writeFileSync4 } from "fs";
+import { existsSync as existsSync5, mkdirSync as mkdirSync4, readFileSync as readFileSync5, statSync as statSync4, writeFileSync as writeFileSync4 } from "fs";
 import { randomBytes as randomBytes3, timingSafeEqual } from "crypto";
 import { lookup } from "dns/promises";
 import { isIP } from "net";
@@ -36941,7 +36941,7 @@ function claudePid() {
   return claudeProcess()?.pid ?? null;
 }
 function claudeCommand() {
-  return claudeProcess()?.command ?? "claude";
+  return process.env.INSPECK_CLAUDE_BIN || claudeProcess()?.command || "claude";
 }
 function alive(pid) {
   try {
@@ -37084,12 +37084,18 @@ function belongsTo(to, me, myCwd) {
 }
 
 // server/src/updates.ts
-import { mkdirSync as mkdirSync3, readFileSync as readFileSync3, writeFileSync as writeFileSync3 } from "fs";
+import { execFile } from "child_process";
+import { mkdirSync as mkdirSync3, readFileSync as readFileSync3, rmSync as rmSync3, statSync as statSync2, writeFileSync as writeFileSync3 } from "fs";
+import { homedir as homedir2 } from "os";
 import { join as join3 } from "path";
-var LATEST_URL = process.env.INSPECK_LATEST_URL ?? "https://raw.githubusercontent.com/pulkitmittal19/inspeck-claude/main/.claude-plugin/plugin.json";
-var DAY_MS = 24 * 3600 * 1e3;
+import { promisify } from "util";
+var run = promisify(execFile);
+var REPO = "pulkitmittal19/inspeck-claude";
+var MARKETPLACE = "inspeck";
+var LATEST_URL = process.env.INSPECK_LATEST_URL ?? `https://raw.githubusercontent.com/${REPO}/main/.claude-plugin/plugin.json`;
+var WEEK_MS = 7 * 24 * 3600 * 1e3;
 var LATEST = () => join3(HOME, "latest.json");
-var OFFERED = () => join3(HOME, "plugin-update-offered.json");
+var LOCK2 = () => join3(HOME, "updating.lock");
 var readJson2 = (p) => {
   try {
     return JSON.parse(readFileSync3(p, "utf8"));
@@ -37113,39 +37119,61 @@ function newer(a, b) {
   }
   return false;
 }
-function off() {
-  return LATEST_URL === "off" || !LATEST_URL || readJson2(join3(HOME, "settings.json"))?.updates === "off";
+function updater(config2 = process.env.CLAUDE_CONFIG_DIR || join3(homedir2(), ".claude")) {
+  if (process.env.INSPECK_AUTO_UPDATE === "off" || LATEST_URL === "off") return "none";
+  if (!(process.env.CLAUDE_PLUGIN_ROOT ?? "").includes(`${join3("plugins", "cache")}`)) return "none";
+  const known = readJson2(join3(config2, "plugins", "known_marketplaces.json"))?.[MARKETPLACE];
+  const extra = readJson2(join3(config2, "settings.json"))?.extraKnownMarketplaces?.[MARKETPLACE];
+  if (known?.autoUpdate === true || extra?.autoUpdate === true) return "claude";
+  const source = known?.source ?? extra?.source;
+  return source?.source === "github" && source.repo === REPO ? "inspeck" : "none";
 }
-async function checkDaily() {
-  if (off()) return;
+function busy() {
+  try {
+    return Date.now() - statSync2(LOCK2()).mtimeMs < 10 * 6e4;
+  } catch {
+    return false;
+  }
+}
+async function keepCurrent(current2, claude) {
+  if (updater() !== "inspeck") return "skipped";
   const kept = readJson2(LATEST());
-  if (kept?.checkedAt && Date.now() - Date.parse(kept.checkedAt) < DAY_MS) return;
-  let version2 = kept?.version;
+  if (kept?.checkedAt && Date.now() - Date.parse(kept.checkedAt) < WEEK_MS) return "skipped";
+  if (busy()) return "skipped";
+  let latest;
   try {
     const r = await fetch(LATEST_URL, { signal: AbortSignal.timeout(5e3), headers: { accept: "application/json" } });
     const v = r.ok ? (await r.json()).version : void 0;
-    if (typeof v === "string" && /^\d+\.\d+\.\d+$/.test(v)) version2 = v;
+    if (typeof v === "string" && /^\d+\.\d+\.\d+$/.test(v)) latest = v;
   } catch {
   }
-  writeJson2(LATEST(), { checkedAt: (/* @__PURE__ */ new Date()).toISOString(), ...version2 ? { version: version2 } : {} });
-}
-function newerOut(current2) {
-  if (off()) return null;
-  const v = readJson2(LATEST())?.version;
-  return typeof v === "string" && newer(v, current2) ? v : null;
-}
-function updateState(current2) {
-  return { version: current2, latest: newerOut(current2), checking: !off() };
-}
-function offerOnce(current2) {
-  const latest = newerOut(current2);
-  if (!latest || readJson2(OFFERED())?.version === latest) return null;
-  writeJson2(OFFERED(), { version: latest, at: (/* @__PURE__ */ new Date()).toISOString() });
-  return latest;
+  if (!latest) {
+    writeJson2(LATEST(), { checkedAt: (/* @__PURE__ */ new Date()).toISOString() });
+    return "failed";
+  }
+  if (!newer(latest, current2)) {
+    writeJson2(LATEST(), { checkedAt: (/* @__PURE__ */ new Date()).toISOString(), version: latest });
+    return "current";
+  }
+  writeJson2(LOCK2(), { pid: process.pid, at: (/* @__PURE__ */ new Date()).toISOString() });
+  try {
+    await run(claude, ["plugin", "marketplace", "update", MARKETPLACE], { timeout: 12e4 });
+    await run(claude, ["plugin", "update", `inspeck@${MARKETPLACE}`], { timeout: 12e4 });
+    writeJson2(LATEST(), { checkedAt: (/* @__PURE__ */ new Date()).toISOString(), version: latest, installed: latest });
+    return "updated";
+  } catch {
+    writeJson2(LATEST(), { checkedAt: (/* @__PURE__ */ new Date()).toISOString(), version: latest });
+    return "failed";
+  } finally {
+    try {
+      rmSync3(LOCK2(), { force: true });
+    } catch {
+    }
+  }
 }
 
 // server/src/sourcemap.ts
-import { existsSync as existsSync3, readFileSync as readFileSync4, statSync as statSync2 } from "fs";
+import { existsSync as existsSync3, readFileSync as readFileSync4, statSync as statSync3 } from "fs";
 import { dirname, isAbsolute as isAbsolute2, join as join4, resolve as resolvePath } from "path";
 import { fileURLToPath } from "url";
 var B64 = new Map([..."ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"].map((c, i) => [c, i]));
@@ -37202,7 +37230,7 @@ function readMap(chunk) {
 function resolveSource(at, may = () => true) {
   try {
     const chunk = at.file.startsWith("file://") ? fileURLToPath(at.file.split("?")[0]) : at.file;
-    if (!isAbsolute2(chunk) || !/\.(c|m)?js$/.test(chunk) || !may(chunk) || !existsSync3(chunk) || !statSync2(chunk).isFile() || !at.line) {
+    if (!isAbsolute2(chunk) || !/\.(c|m)?js$/.test(chunk) || !may(chunk) || !existsSync3(chunk) || !statSync3(chunk).isFile() || !at.line) {
       return at.file.startsWith("file://") ? { ...at, file: chunk } : at;
     }
     const read2 = readMap(chunk);
@@ -37261,7 +37289,7 @@ function findLines(sources, clue, may = () => true) {
     if (at.line || !isAbsolute2(at.file) || !/\.(vue|svelte|html?|astro|[jt]sx?)$/.test(at.file) || !may(at.file)) return at;
     let src;
     try {
-      if (!statSync2(at.file).isFile() || statSync2(at.file).size > 2e6) return at;
+      if (!statSync3(at.file).isFile() || statSync3(at.file).size > 2e6) return at;
       src = readFileSync4(at.file, "utf8");
     } catch {
       return at;
@@ -37400,9 +37428,7 @@ var SETTINGS = {
   sizes: ["written", "px", "rem"],
   colors: ["written", "hex", "rgb", "oklch"],
   /* Auto-send notes to Claude (live), or keep them on the page until you send them (ask). */
-  send: ["ask", "live"],
-  /* Look for a newer Inspeck once a day, and say when there is one (check), or never (off). */
-  updates: ["check", "off"]
+  send: ["ask", "live"]
 };
 var CALL_HEADER = "x-inspeck";
 var PORT = Number(process.env.INSPECK_PORT) || 4848;
@@ -37487,7 +37513,7 @@ var WIDGET = process.env.INSPECK_WIDGET || join6(HERE, "widget", "inspeck.js");
 function sendFile(req, res, path, type) {
   let stat;
   try {
-    stat = statSync3(path);
+    stat = statSync4(path);
   } catch {
     res.writeHead(404, { "content-type": "text/plain" }).end("Not built. Run npm run build.");
     return;
@@ -37592,7 +37618,6 @@ async function route2(req, res, version2, onNew) {
     }
     return send(res, 200, read2());
   }
-  if (url2.pathname === "/update" && req.method === "GET") return send(res, 200, updateState(version2));
   if (url2.pathname === "/voice" && req.method === "GET") return send(res, 200, voiceAvailable());
   if (url2.pathname === "/voice/listen" && req.method === "POST") return listenStream(req, res);
   if (url2.pathname === "/voice/stop" && req.method === "POST") return send(res, 200, { stopping: stopListening() });
@@ -37852,7 +37877,7 @@ function listen(version2, log2, onNew = () => {
 import { existsSync as existsSync6, mkdirSync as mkdirSync5, readFileSync as readFileSync6, readdirSync as readdirSync2, writeFileSync as writeFileSync5 } from "fs";
 import { dirname as dirname4, join as join7 } from "path";
 var NEEDED = "0.12.0";
-var OFFERED2 = () => join7(HOME, "package-update-offered.json");
+var OFFERED = () => join7(HOME, "package-update-offered.json");
 var offerKey = (dir) => `${dir} ${NEEDED}`;
 var older = (a, b) => {
   const pa = a.split(".").map((n) => parseInt(n, 10) || 0), pb = b.split(".").map((n) => parseInt(n, 10) || 0);
@@ -37901,7 +37926,7 @@ function updateCommand(dir) {
   return `npm install -D inspeck@latest`;
 }
 function outdatedPackage(cwd) {
-  const offered = readJson3(OFFERED2()) ?? {};
+  const offered = readJson3(OFFERED()) ?? {};
   for (const dir of candidates(cwd)) {
     const pkg = readJson3(join7(dir, "package.json"));
     const spec = pkg?.devDependencies?.inspeck ?? pkg?.dependencies?.inspeck;
@@ -37914,10 +37939,10 @@ function outdatedPackage(cwd) {
 }
 function markOffered(dir) {
   try {
-    const offered = readJson3(OFFERED2()) ?? {};
+    const offered = readJson3(OFFERED()) ?? {};
     offered[offerKey(dir)] = (/* @__PURE__ */ new Date()).toISOString();
     mkdirSync5(HOME, { recursive: true });
-    writeFileSync5(OFFERED2(), JSON.stringify(offered, null, 2));
+    writeFileSync5(OFFERED(), JSON.stringify(offered, null, 2));
   } catch {
   }
 }
@@ -37965,9 +37990,8 @@ if (process.argv[2] === "wait") {
   process.exit(0);
 }
 var VERSION = "0.19.0";
-var NEWER = offerOnce(VERSION);
-void checkDaily();
 var CLAUDE = JSON.stringify(claudeCommand());
+void keepCurrent(VERSION, claudeCommand());
 var OUTDATED = outdatedPackage(process.cwd());
 if (OUTDATED) markOffered(OUTDATED.dir);
 var log = (msg) => process.stderr.write(`inspeck: ${msg}
@@ -37997,9 +38021,7 @@ Before you click in the browser pane yourself, close Inspeck there (press Escape
 
 Notes arrive at http://127.0.0.1:${PORT}.
 
-If the person asks to update Inspeck: run ${CLAUDE} plugin marketplace update inspeck, then ${CLAUDE} plugin update inspeck@inspeck. Then tell them the new version starts in their next chat (or after /reload-plugins), reloading the page brings it there, and their notes are kept.${NEWER ? `
-
-Inspeck ${NEWER} is out (this is ${VERSION}). Early on, at a natural moment (not as the first thing you say), ask the person once in one line: "Inspeck ${NEWER} is out. Update it now?" On yes, update it as above. If they say no, don't ask again.` : ""}${OUTDATED ? `
+If the person asks to update Inspeck: run ${CLAUDE} plugin marketplace update inspeck, then ${CLAUDE} plugin update inspeck@inspeck. Then tell them the new version starts in their next chat, reloading the page brings it there, and their notes are kept. (Inspeck also updates itself; this is only for now.)${OUTDATED ? `
 
 This project's Inspeck dev plugin (the inspeck npm package in ${OUTDATED.dir}) is ${OUTDATED.version}, older than ${NEEDED}, which some of Inspeck's fixes need (a security fix: older ones let other devices on the network reach Inspeck when the dev server runs with --host; also server-rendered pages such as SvelteKit and Astro, strict security policies) and which then keeps itself current through this plugin. Early on, at a natural moment, ask the person once in one line: "Update Inspeck's dev plugin in this project? It has a security fix (one command)". On yes, run \`${OUTDATED.command}\` in ${OUTDATED.dir}, then restart their dev server if it's running. If they say no, don't ask again.` : ""}`;
 var MIME = { ".png": "image/png", ".jpg": "image/jpeg", ".webp": "image/webp" };

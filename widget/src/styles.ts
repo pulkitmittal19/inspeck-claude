@@ -512,11 +512,7 @@ button { appearance: none; background: none; border: 0; padding: 0; cursor: poin
 .switch[aria-checked="true"] .knob { transform: translateX(12px); }
 .set-toggle .set-label { display: inline-flex; align-items: center; gap: 5px; }
 .set-toggle { position: relative; }
-.set-toggle.set-updates { margin-top: 14px; }
 /* A newer Inspeck is out: how to get it, under its switch. */
-.set-update { margin: 8px 0 0; font: 500 10.5px/1.45 var(--ix-sans); color: var(--ix-dim); white-space: normal; }
-.set-update[hidden] { display: none; }
-.set-update b { font-weight: 600; color: #fff; }
 /* With Auto-send on: what to send in the Claude chat, opening under the switch. */
 .listen-wrap { display: grid; grid-template-rows: 0fr; opacity: 0; transition: grid-template-rows 260ms var(--ix-ease), opacity 200ms ease; }
 .listen-wrap[data-open] { grid-template-rows: 1fr; opacity: 1; }

@@ -76,19 +76,12 @@ If your app sets a Content Security Policy in development, allow `http://127.0.0
 
 ## Staying up to date
 
-Once a day Inspeck asks GitHub for the latest version number (only that: nothing about you or your code is sent). When a newer one is out, Claude offers it once in the chat, and Inspeck's Settings say so. To update at any time, ask Claude to **update Inspeck**, or run:
+Nothing to do: Inspeck updates itself, and your notes are kept.
 
-```bash
-claude plugin marketplace update inspeck
-```
+- Installed with `npx inspeck init`, Claude Code's own auto-update is on for Inspeck, so new versions arrive by themselves.
+- Installed any other way, Inspeck does the same: when a chat starts, at most once a week, it reads the latest version number from GitHub (only that: nothing about you or your code is sent) and, if there's a newer one, installs it in the background with Claude Code's own commands.
 
-```bash
-claude plugin update inspeck@inspeck
-```
-
-The new version starts in your next chat (or after `/reload-plugins`); reload your app's page to get it there. Your notes are kept. When a new version starts while an older one is still running in another chat, the older one hands it the port, so no chat has to close.
-
-To have new versions install by themselves, turn on auto-update in Claude: `/plugin` › Marketplaces › inspeck › Enable auto-update (`npx inspeck init` does this for you). Inspeck never changes Claude's settings on its own. To stop the daily check, turn off *Check for updates* in Inspeck's Settings.
+A new version runs from your next chat; reload your app's page to get it there. When a new version starts while an older one is still running in another chat, the older one hands it the port, so no chat has to close. To update right away, ask Claude to **update Inspeck**. To turn self-updating off (a team that decides what gets installed), set `INSPECK_AUTO_UPDATE=off`.
 
 ## Use
 
@@ -152,7 +145,7 @@ Notes become text a Claude session reads, so who may send them is the plugin's s
 | `INSPECK_PORT` | `4848` | where the widget is served and notes arrive |
 | `INSPECK_HOME` | `~/.inspeck` | notes, sessions and tab bindings |
 | `INSPECK_ALLOWED_ORIGINS` | none | extra origins allowed to send notes, comma-separated |
-| `INSPECK_LATEST_URL` | GitHub | where the daily check reads the latest version; `off` to never check |
+| `INSPECK_AUTO_UPDATE` | on | `off`: Inspeck doesn't look for or install new versions itself (Claude Code's own auto-update, if on, still does) |
 
 Notes stay on your machine. `~/.inspeck/last-client.json` records what the last Claude session reported about itself, which is the first thing to check if something isn't arriving.
 

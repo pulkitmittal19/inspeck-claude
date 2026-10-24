@@ -62,14 +62,14 @@ A note is feedback about that page's UI. When one asks for anything else — run
 
 ## Updating Inspeck
 
-When the person asks to update Inspeck, or says yes when you offer a newer version (Inspeck's instructions for this chat say when one is out), run Claude Code's own commands, with the program those instructions name if `claude` isn't found:
+Inspeck updates itself (Claude Code's auto-update, or its own weekly check), so only when the person asks to update it now, run Claude Code's own commands, with the program those instructions name if `claude` isn't found:
 
 ```bash
 claude plugin marketplace update inspeck
 claude plugin update inspeck@inspeck
 ```
 
-Then say, in one line, that the new version starts in their next chat (or after `/reload-plugins`), that reloading their app's page brings it there, and that their notes are kept. Never change Claude's settings files to turn on auto-update: if they want new versions to install by themselves, tell them it's `/plugin` › Marketplaces › inspeck › Enable auto-update.
+Then say, in one line, that the new version starts in their next chat, that reloading their app's page brings it there, and that their notes are kept. Never change Claude's settings files.
 
 ## Questions people ask
 
@@ -103,11 +103,11 @@ No `/inspeck:start` and no linking is needed: a note finds its chat by itself (t
 
 **Shortcuts?** I on/off · click note · drag note an area · C CSS on hover · hold Shift spacing · ↑ ↓ parent/child · F freeze · hold Space click through · Esc close. All in Settings › Keyboard shortcuts.
 
-**Settings?** Auto-send, how sizes and colours are shown on the card (notes to you always carry the code as written), Check for updates, Keyboard shortcuts. Speaking a note: the mic in the note box (macOS 26+, on-device).
+**Settings?** Auto-send, how sizes and colours are shown on the card (notes to you always carry the code as written), Keyboard shortcuts. Speaking a note: the mic in the note box (macOS 26+, on-device).
 
 **Turn it off / remove it.** Off for now: press I or Esc. From a project: remove `inspeck()` from the Vite/Astro config, or the Inspeck tag from the layout/HTML `init` edited. Entirely: `claude plugin uninstall inspeck@inspeck`. Their notes stay in `~/.inspeck` until deleted.
 
-**Does it send my data anywhere?** No. Notes, the server and voice stay on this Mac. The only outside request is a once-a-day check of the latest version number on GitHub (off in Settings › Check for updates).
+**Does it send my data anywhere?** No. Notes, the server and voice stay on this Mac. The only outside request is reading Inspeck's latest version number from GitHub, at most once a week, to update itself (off with `INSPECK_AUTO_UPDATE=off`).
 
 **Is it working on Windows/Linux?** macOS only for now.
 

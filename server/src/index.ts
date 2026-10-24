@@ -22,7 +22,7 @@ import { z } from 'zod'
 import * as store from './store.js'
 import { listen, PORT, portState } from './http.js'
 import { heading, pageLabel, render, summaryLine, type Comment } from './format.js'
-import { checkDaily, offerOnce } from './updates.js'
+import { keepCurrent } from './updates.js'
 import { markOffered, NEEDED, outdatedPackage } from './outdated.js'
 import { belongsTo, bindSite, claudeCommand, claudePid, register, unclaimed } from './sessions.js'
 import { runWait, WAIT_COMMAND } from './wait.js'
@@ -36,10 +36,9 @@ if (process.argv[2] === 'wait') {
 /* Stamped from package.json at build time, so there is one version to bump. */
 declare const __INSPECK_VERSION__: string
 const VERSION = __INSPECK_VERSION__
-/* A newer Inspeck found by an earlier day's check, not offered yet: Claude offers it once. Then today's check. */
-const NEWER = offerOnce(VERSION)
-void checkDaily()
 const CLAUDE = JSON.stringify(claudeCommand())
+/* At most once a week, a newer Inspeck installs itself in the background, unless Claude Code does that already (see updates.ts). */
+void keepCurrent(VERSION, claudeCommand())
 /* A project still on an inspeck npm package from before it became a pass-through: offered an update, once. */
 const OUTDATED = outdatedPackage(process.cwd())
 if (OUTDATED) markOffered(OUTDATED.dir)
@@ -70,9 +69,7 @@ Before you click in the browser pane yourself, close Inspeck there (press Escape
 
 Notes arrive at http://127.0.0.1:${PORT}.
 
-If the person asks to update Inspeck: run ${CLAUDE} plugin marketplace update inspeck, then ${CLAUDE} plugin update inspeck@inspeck. Then tell them the new version starts in their next chat (or after /reload-plugins), reloading the page brings it there, and their notes are kept.${NEWER ? `
-
-Inspeck ${NEWER} is out (this is ${VERSION}). Early on, at a natural moment (not as the first thing you say), ask the person once in one line: "Inspeck ${NEWER} is out. Update it now?" On yes, update it as above. If they say no, don't ask again.` : ''}${OUTDATED ? `
+If the person asks to update Inspeck: run ${CLAUDE} plugin marketplace update inspeck, then ${CLAUDE} plugin update inspeck@inspeck. Then tell them the new version starts in their next chat, reloading the page brings it there, and their notes are kept. (Inspeck also updates itself; this is only for now.)${OUTDATED ? `
 
 This project's Inspeck dev plugin (the inspeck npm package in ${OUTDATED.dir}) is ${OUTDATED.version}, older than ${NEEDED}, which some of Inspeck's fixes need (a security fix: older ones let other devices on the network reach Inspeck when the dev server runs with --host; also server-rendered pages such as SvelteKit and Astro, strict security policies) and which then keeps itself current through this plugin. Early on, at a natural moment, ask the person once in one line: "Update Inspeck's dev plugin in this project? It has a security fix (one command)". On yes, run \`${OUTDATED.command}\` in ${OUTDATED.dir}, then restart their dev server if it's running. If they say no, don't ask again.` : ''}`
 
