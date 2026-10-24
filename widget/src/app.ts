@@ -6,8 +6,7 @@ import { warmUp } from './css/cascade'
 import { borrowSheetsWith } from './css/rules'
 import { framedByInspeck, peerIn, reachFrame, reachFrames } from './frames'
 import { h, isEditable, typingOnPage, visibleText } from './dom'
-import { cap, isToggleKey, keyName } from './keys'
-import { createMenuHint, menuButton, type MenuHint } from './menuhint'
+import { isToggleKey, keyName } from './keys'
 import { pageHref, pageUrl, tabStore } from './env'
 import { createFreeze, FROZEN_BLOCK, type Freeze } from './freeze'
 import { createHost, type Host } from './host'
@@ -35,10 +34,6 @@ const PRESS = new Set(['pointerdown', 'pointerup', 'mousedown', 'mouseup', 'clic
 const CSS_KEY = 'inspeck:css-on-hover'
 /** How long the pointer rests before Inspeck looks for a tooltip on top of what it picked. */
 const REST_MS = 90
-/** How long the pointer stays on a menu's button before the hint says how to note inside it: past a glance. */
-const MENU_HINT_MS = 500
-/** How long the pill keeps saying "open the menu, then press I" after Inspeck was put away for one. */
-const MENU_WAIT_MS = 10000
 
 /** After Enter, how long a note waits for its place in the code before going without it. */
 const SOURCE_WAIT_MS = 2500
@@ -104,11 +99,6 @@ export class App {
   /** Where the button went down on the page: a click if it comes up close by, a drag across a section if not. */
   private down: PointerEvent | null = null
   private unroute: () => void
-  /** "Press I to use this menu", beside a closed menu's button the pointer rests on. */
-  private menuHint: MenuHint
-  /** Put away with I to open a menu: the pill says what's next until Inspeck is back. */
-  private menuWait = 0
-  private menuHintTimer = 0
   /** Inside a frame of a page that runs Inspeck: that page's window. This one then runs quietly (see frames.ts). */
   private quietIn: Window | null
   private unreach: () => void = () => {}
@@ -152,12 +142,10 @@ export class App {
       /* A tooltip that faded out from under the pointer: let go of it. */
       if (el === this.overlay && !this.pinned && !paints(el)) { this.overlay = null; this.raw = null; this.schedulePick(); return }
       this.card.place(r)
-      this.menuHint.place(r)
       if (this.shift) this.measure(el)
     })
     /* After the outline, so the numbers sit on top of its line. */
     this.spacing = createSpacing(this.host.ui)
-    this.menuHint = createMenuHint(this.host.ui)
     this.marquee = createMarquee(this.host.ui, this.host.el, b => this.card.place(new DOMRect(b.left, b.top, b.right - b.left, b.bottom - b.top)))
     this.unroute = createRouter(this.host, {
       ui: e => this.onUi(e),
@@ -193,7 +181,6 @@ export class App {
       window.dispatchEvent(new CustomEvent('inspeck:open', { detail: open }))
     }
     if (open) {
-      if (this.menuWait) { clearTimeout(this.menuWait); this.menuWait = 0; this.toolbar.setStatus(null) }
       prefs.sync()
       void checkVoice()
       if (!this.quietIn) this.tour.start()
@@ -208,24 +195,9 @@ export class App {
     }
   }
 
-  /** I pressed: on or off. Put away while pointing at a menu's button, the pill says how to come back to it. */
+  /** I pressed: on or off. */
   private toggleFromKey(): void {
-    const forMenu = this.open && this.menuHint.showing
     this.setOpen(!this.open)
-    if (!forMenu) return
-    this.toolbar.setStatus(['Open the menu, then press ', cap('I', 'i'), ' to note inside'])
-    clearTimeout(this.menuWait)
-    this.menuWait = window.setTimeout(() => { this.menuWait = 0; if (!this.open) this.toolbar.setStatus(null) }, MENU_WAIT_MS)
-  }
-
-  /** The pointer rested on a closed menu's button: say how to note inside it. */
-  private offerMenu(): void {
-    const t = this.target
-    const still = () => this.open && !this.pinned && !this.shift && !this.marquee.dragging && !!t && this.target === t
-    const button = still() ? menuButton(t!) : null
-    if (!button) return
-    clearTimeout(this.menuHintTimer)
-    this.menuHintTimer = window.setTimeout(() => { if (still()) this.menuHint.show(button.getBoundingClientRect()) }, MENU_HINT_MS - REST_MS)
   }
 
   private act(action: string): void {
@@ -301,7 +273,7 @@ export class App {
       if (raw instanceof HTMLIFrameElement) reachFrame(raw)
       /* Once the pointer rests, look again for a click-through layer on top. */
       clearTimeout(this.restTimer)
-      if (!onOverlay) this.restTimer = window.setTimeout(() => { this.lookThrough(); this.offerMenu() }, REST_MS)
+      if (!onOverlay) this.restTimer = window.setTimeout(() => this.lookThrough(), REST_MS)
       /* ↑/↓ choices hold until the pointer moves onto a different element. */
       if (this.stepped && raw === this.raw) return
       if (raw && raw === this.rest) return
@@ -335,7 +307,6 @@ export class App {
   setTarget(el: Element | null, words: Text | null = null): void {
     if (this.pinned) return
     if (!pickable(el, this.host.el)) el = null
-    if (!el || el !== this.target) { clearTimeout(this.menuHintTimer); this.menuHint.hide() }
     this.target = el
     this.textPick = el ? words : null
     this.cover(el)
@@ -399,7 +370,6 @@ export class App {
   pin(el: Element, existing?: Note, words: Text | null = null): void {
     /* Hold the page still while the note is written: an open menu stays open. */
     this.freeze.freeze(false)
-    this.menuHint.hide()
     this.pinned = el
     this.target = el
     this.textPick = words
@@ -731,7 +701,6 @@ export class App {
     if (on === this.shift) return
     this.shift = on
     this.measureFrom = on ? this.target : null
-    if (on) this.menuHint.hide()
     /* The numbers are the point while Shift is down; the hover card steps aside. */
     if (this.card.mode === 'hover') this.card.el.hidden = on
     if (on && this.target) this.measure(this.target)

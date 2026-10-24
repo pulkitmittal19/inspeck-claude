@@ -600,17 +600,8 @@ button { appearance: none; background: none; border: 0; padding: 0; cursor: poin
 /* Done with the pointer: a word, not a keycap. */
 .sc-pointer { font: 500 10.5px/1 var(--ix-sans); color: var(--ix-dim); }
 
-/* "Press I to use this menu": beside a closed menu's button the pointer rests on */
-.menu-hint {
-  position: fixed; z-index: 4; pointer-events: none; padding: 4px 8px 4px 7px; border-radius: 8px;
-  background: var(--ix-bg); color: var(--ix-dim); font: 500 11px/1 var(--ix-sans); white-space: nowrap; box-shadow: var(--ix-shadow);
-  transition: opacity 140ms ease, transform 200ms var(--ix-ease);
-}
-.menu-hint[data-state="enter"] { opacity: 0; transform: translateY(3px); }
-.menu-hint[data-below][data-state="enter"] { transform: translateY(-3px); }
-.menu-hint[data-state="out"] { opacity: 0; transition-duration: 100ms; }
 /* A keycap inside a line of text sits on it, a size down. */
-:is(.menu-hint, .bar-status) .cap { min-width: 16px; height: 16px; padding: 0 4px; margin: 0 2px; font-size: 10px; color: #fff; vertical-align: middle; }
+.bar-status .cap { min-width: 16px; height: 16px; padding: 0 4px; margin: 0 2px; font-size: 10px; color: #fff; vertical-align: middle; }
 
 /* small label that appears above a toolbar button on hover */
 .tip {
@@ -626,6 +617,6 @@ button { appearance: none; background: none; border: 0; padding: 0; cursor: poin
   *, *::before, *::after { animation-duration: 1ms !important; animation-delay: 0ms !important; transition-delay: 0ms !important; }
   .bar, .bar .logo, .bar .btn, .card, .outline, .preview, .marker, .reveal { transition-duration: 120ms !important; }
   .card[data-state], .preview[data-state], .bar .btn { transform: none !important; }
-  .set-view, .menu-hint, .cap { animation: none !important; transform: none !important; }
+  .set-view, .cap { animation: none !important; transform: none !important; }
 }
 `
