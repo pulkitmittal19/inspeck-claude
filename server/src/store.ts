@@ -198,7 +198,10 @@ export function forPage(page: string): Comment[] {
  * Claiming happens in one write, so when two Claude sessions are open the
  * first to look takes the comment and the second never gets a duplicate.
  */
-export function claimNew(page?: string, mine: (c: Comment) => boolean = () => true): Comment[] {
+/** Read by this session: a read note stays with the chat that read it (see `heldBy` in index.ts). */
+const readBy = (c: Comment, by?: number | null) => { if (by) c.to = { how: 'claimed', ...c.to, pid: by } }
+
+export function claimNew(page?: string, mine: (c: Comment) => boolean = () => true, by?: number | null): Comment[] {
   const key = page ? pageKey(page) : undefined
   const wanted = (c: Comment) => c.status === 'new' && !c.held && (!key || c.page === key) && mine(c)
   /* Watch calls this every second. Look first without the lock, so an idle
@@ -206,7 +209,7 @@ export function claimNew(page?: string, mine: (c: Comment) => boolean = () => tr
   if (!read().comments.some(wanted)) return []
   return change(inbox => {
     const claimed = inbox.comments.filter(wanted)
-    for (const c of claimed) c.status = 'seen'
+    for (const c of claimed) { c.status = 'seen'; readBy(c, by) }
     return claimed.map(c => ({ ...c }))
   })
 }
@@ -222,9 +225,9 @@ export function adopt(which: (c: Comment) => boolean, to: NonNullable<Comment['t
 }
 
 /** Mark these as read in one write: their markers leave the page. A held note read this way has been sent. */
-export function markAllSeen(ids: string[]): void {
+export function markAllSeen(ids: string[], by?: number | null): void {
   if (!ids.length) return
-  change(inbox => { for (const c of inbox.comments) if (ids.includes(c.id) && c.status === 'new') { c.status = 'seen'; delete c.held } })
+  change(inbox => { for (const c of inbox.comments) if (ids.includes(c.id) && c.status === 'new') { c.status = 'seen'; delete c.held; readBy(c, by) } })
 }
 
 /** Send held notes: from now on the watcher hands them to Claude. Returns those sent. */
@@ -238,10 +241,10 @@ export function release(which: (c: Comment) => boolean): Comment[] {
   })
 }
 
-export function markSeen(id: string): Comment | undefined {
+export function markSeen(id: string, by?: number | null): Comment | undefined {
   return change(inbox => {
     const c = inbox.comments.find(x => x.id === id)
-    if (c && c.status === 'new') { c.status = 'seen'; delete c.held }
+    if (c && c.status === 'new') { c.status = 'seen'; delete c.held; readBy(c, by) }
     return c ? { ...c } : undefined
   })
 }

@@ -130,6 +130,21 @@ test('bind with a page links that whole site to the session', async () => {
   assert.doesNotMatch(await B.tool('pending'), /Site linked to A/)
 })
 
+test('when a chat closes, the next one gets its unread notes, not the ones it already read', async () => {
+  const C = await session('c')
+  assert.match(await C.tool('bind', { page: 'http://localhost:5197' }), /now come to this session/)
+  await post('/comments', note('Read by C', { page: 'http://localhost:5197/a' }), 'http://localhost:5197')
+  assert.match(await C.tool('pending'), /Read by C/)
+  await post('/comments', note('Never read', { page: 'http://localhost:5197/b' }), 'http://localhost:5197')
+  /* C's chat closes. */
+  process.kill(C.pid)
+  await new Promise(r => setTimeout(r, 200))
+  const next = await A.tool('pending')
+  assert.match(next, /Never read/, 'an unread note is handed over')
+  assert.doesNotMatch(next, /Read by C/, 'a note the closed chat read is not listed again')
+  assert.match(await A.tool('pending'), /Never read/, 'and what this chat read stays listed for it')
+})
+
 test('with one session open, an unbound tab’s note goes to it', async () => {
   const solo = mkdtempSync(join(tmpdir(), 'inspeck-solo-'))
   const S = await (async () => {

@@ -36798,13 +36798,19 @@ function forPage(page) {
   const key = pageKey(page);
   return read().comments.filter((c) => c.page === key).sort((a, b) => a.n - b.n);
 }
-function claimNew(page, mine2 = () => true) {
+var readBy = (c, by) => {
+  if (by) c.to = { how: "claimed", ...c.to, pid: by };
+};
+function claimNew(page, mine2 = () => true, by) {
   const key = page ? pageKey(page) : void 0;
   const wanted = (c) => c.status === "new" && !c.held && (!key || c.page === key) && mine2(c);
   if (!read().comments.some(wanted)) return [];
   return change((inbox) => {
     const claimed = inbox.comments.filter(wanted);
-    for (const c of claimed) c.status = "seen";
+    for (const c of claimed) {
+      c.status = "seen";
+      readBy(c, by);
+    }
     return claimed.map((c) => ({ ...c }));
   });
 }
@@ -36816,12 +36822,13 @@ function adopt(which, to) {
     return moved.map((c) => ({ ...c }));
   });
 }
-function markAllSeen(ids) {
+function markAllSeen(ids, by) {
   if (!ids.length) return;
   change((inbox) => {
     for (const c of inbox.comments) if (ids.includes(c.id) && c.status === "new") {
       c.status = "seen";
       delete c.held;
+      readBy(c, by);
     }
   });
 }
@@ -36834,12 +36841,13 @@ function release(which) {
     return sent.map((c) => ({ ...c }));
   });
 }
-function markSeen(id) {
+function markSeen(id, by) {
   return change((inbox) => {
     const c = inbox.comments.find((x) => x.id === id);
     if (c && c.status === "new") {
       c.status = "seen";
       delete c.held;
+      readBy(c, by);
     }
     return c ? { ...c } : void 0;
   });
@@ -37962,7 +37970,7 @@ async function runWait(args) {
   const mine2 = (c) => belongsTo(c.to, me, cwd);
   const until = Date.now() + minutes * 6e4;
   while (Date.now() < until) {
-    const fresh = claimNew(void 0, mine2);
+    const fresh = claimNew(void 0, mine2, me);
     if (fresh.length) {
       const head = fresh.length === 1 ? "Inspeck: a new note from the page." : `Inspeck: ${fresh.length} new notes from the page.`;
       process.stdout.write([
@@ -38043,7 +38051,7 @@ var notFound = (id) => ({ ...text(`No comment with id ${id}. Use pending to see 
 var SESSION = register(process.cwd());
 var ME = SESSION?.pid ?? claudePid();
 var MY_CWD = SESSION?.cwd ?? process.cwd();
-var mine = (c) => belongsTo(c.to, ME, MY_CWD);
+var mine = (c) => belongsTo(c.to, ME, MY_CWD) && (c.status === "new" || c.to?.pid === ME);
 var server = new McpServer(
   { name: "inspeck", version: VERSION },
   { capabilities: { experimental: { "claude/channel": {} } }, instructions: INSTRUCTIONS }
@@ -38054,7 +38062,7 @@ server.registerTool("pending", {
   inputSchema: { page: external_exports.string().optional().describe("Only this page, as a URL") },
   annotations: { readOnlyHint: true }
 }, async ({ page }) => {
-  const adopted = ME ? adopt((c) => unclaimed(c.to), { pid: ME, cwd: MY_CWD, how: "claimed" }) : [];
+  const adopted = ME ? adopt((c) => c.status === "new" && unclaimed(c.to), { pid: ME, cwd: MY_CWD, how: "claimed" }) : [];
   const sites = [...new Set(adopted.map((c) => {
     try {
       return new URL(c.page).origin;
@@ -38070,7 +38078,7 @@ server.registerTool("pending", {
   if (!list.length) return text(took + (page ? `Nothing open on ${pageLabel(page)}.` : "Nothing open. When the person places a comment, it will show up here."));
   const fresh = list.filter((c) => c.status === "new");
   const earlier = list.filter((c) => c.status !== "new");
-  markAllSeen(fresh.map((c) => c.id));
+  markAllSeen(fresh.map((c) => c.id), ME);
   const pages = [...new Set(fresh.map((c) => pageLabel(c.page)))];
   const head = fresh.length ? `${fresh.length} new note${fresh.length === 1 ? "" : "s"}${pages.length ? ` from ${pages.join(", ")}` : ""}. They're cleared from the page now; resolve or dismiss each when you've dealt with it.` : "No new notes.";
   const tail = earlier.length ? [{ type: "text", text: `Read before, still open:
@@ -38088,7 +38096,7 @@ server.registerTool("get", {
   description: "Open one Inspeck comment in full: the note, the element, what was measured, the thread, and the screenshot. Marks it as read: its marker leaves the page, and it stays open here until you resolve or dismiss it.",
   inputSchema: { id: external_exports.string().describe("The comment id, from pending") }
 }, async ({ id }) => {
-  const c = markSeen(id);
+  const c = markSeen(id, ME);
   return c ? { content: contentFor(c) } : notFound(id);
 });
 server.registerTool("watch", {
@@ -38101,7 +38109,7 @@ server.registerTool("watch", {
 }, async ({ page, seconds = 120 }, extra) => {
   const until = Date.now() + seconds * 1e3;
   while (Date.now() < until && !extra.signal.aborted) {
-    const fresh = claimNew(page, mine);
+    const fresh = claimNew(page, mine, ME);
     if (fresh.length) {
       return { content: fresh.flatMap((c, i) => [
         ...i ? [{ type: "text", text: "\u2014\u2014\u2014" }] : [],

@@ -28,7 +28,7 @@ export async function runWait(args: string[]): Promise<void> {
   const until = Date.now() + minutes * 60_000
 
   while (Date.now() < until) {
-    const fresh = store.claimNew(undefined, mine)
+    const fresh = store.claimNew(undefined, mine, me)
     if (fresh.length) {
       const head = fresh.length === 1 ? 'Inspeck: a new note from the page.' : `Inspeck: ${fresh.length} new notes from the page.`
       process.stdout.write([

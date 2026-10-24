@@ -98,7 +98,9 @@ const notFound = (id: string) => ({ ...text(`No comment with id ${id}. Use pendi
 const SESSION = register(process.cwd())
 const ME = SESSION?.pid ?? claudePid()
 const MY_CWD = SESSION?.cwd ?? process.cwd()
-const mine = (c: Comment) => belongsTo(c.to, ME, MY_CWD)
+/* A note this chat may take: one routed here or nobody's yet. Once read, a note stays with the chat that read
+   it, so a new chat isn't handed notes an earlier one already had (they're kept, and open by id with get). */
+const mine = (c: Comment) => belongsTo(c.to, ME, MY_CWD) && (c.status === 'new' || c.to?.pid === ME)
 
 const server = new McpServer(
   { name: 'inspeck', version: VERSION },
@@ -114,7 +116,7 @@ server.registerTool('pending', {
   /* Notes no open session will pick up (say, from a page in Chrome, with no
      session opened in its project) come to whoever asks first, and so does
      every later note from that site. */
-  const adopted = ME ? store.adopt(c => unclaimed(c.to), { pid: ME, cwd: MY_CWD, how: 'claimed' }) : []
+  const adopted = ME ? store.adopt(c => c.status === 'new' && unclaimed(c.to), { pid: ME, cwd: MY_CWD, how: 'claimed' }) : []
   const sites = [...new Set(adopted.map(c => { try { return new URL(c.page).origin } catch { return c.page } }))]
   for (const c of adopted) bindSite(c.page, ME!)
   const took = adopted.length
@@ -127,7 +129,7 @@ server.registerTool('pending', {
      what they've handed over. Ones read before get a line each. */
   const fresh = list.filter(c => c.status === 'new')
   const earlier = list.filter(c => c.status !== 'new')
-  store.markAllSeen(fresh.map(c => c.id))
+  store.markAllSeen(fresh.map(c => c.id), ME)
   const pages = [...new Set(fresh.map(c => pageLabel(c.page)))]
   const head = fresh.length
     ? `${fresh.length} new note${fresh.length === 1 ? '' : 's'}${pages.length ? ` from ${pages.join(', ')}` : ''}. They're cleared from the page now; resolve or dismiss each when you've dealt with it.`
@@ -147,7 +149,7 @@ server.registerTool('get', {
   description: 'Open one Inspeck comment in full: the note, the element, what was measured, the thread, and the screenshot. Marks it as read: its marker leaves the page, and it stays open here until you resolve or dismiss it.',
   inputSchema: { id: z.string().describe('The comment id, from pending') },
 }, async ({ id }) => {
-  const c = store.markSeen(id)
+  const c = store.markSeen(id, ME)
   return c ? { content: contentFor(c) } : notFound(id)
 })
 
@@ -161,7 +163,7 @@ server.registerTool('watch', {
 }, async ({ page, seconds = 120 }, extra) => {
   const until = Date.now() + seconds * 1000
   while (Date.now() < until && !extra.signal.aborted) {
-    const fresh = store.claimNew(page, mine)
+    const fresh = store.claimNew(page, mine, ME)
     if (fresh.length) {
       return { content: fresh.flatMap((c, i) => [
         ...(i ? [{ type: 'text' as const, text: '———' }] : []),
