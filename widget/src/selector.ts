@@ -3,10 +3,15 @@
  *
  * Preference: a stable id, a test id, then a short path of tag:nth-of-type
  * steps from the nearest ancestor that has one. Generated ids (radix-:r5:,
- * headlessui-menu-3, «r1») change on every render and are never used.
+ * headlessui-menu-3, «r1», mantine-clmm1iw91) change on every render and are never used.
  */
 
-const GENERATED_ID = /^[:«]|^(radix|headlessui|react-aria|mui|chakra|downshift)-|:r[0-9a-z]+:|\d{4,}/
+const GENERATED_ID = /^[:«]|^(radix|headlessui|react-aria|mui|chakra|downshift|mantine)-|:r[0-9a-z]+:|\d{4,}/
+/* Any library's random part (mantine-clmm1iw91, input-x7f3k2): a run of six or more letters and digits with at
+   least two digits in it. Skipping a real id costs nothing (a path is used instead); keeping a random one breaks
+   the address on the next load. */
+const RANDOM_PART = /(?:^|[-_])(?=[a-z0-9]{6,}(?:$|[-_]))(?=(?:[a-z]*\d){2})(?=[0-9]*[a-z])[a-z0-9]+/i
+const generated = (id: string) => GENERATED_ID.test(id) || RANDOM_PART.test(id)
 const TEST_ATTRS = ['data-testid', 'data-test', 'data-cy', 'data-qa']
 
 import { SHADOW_STEP } from './dom'
@@ -21,7 +26,7 @@ function unique(sel: string, el: Element, scope: Document | ShadowRoot = documen
 }
 
 function anchorOf(el: Element): string | null {
-  if (el.id && !GENERATED_ID.test(el.id)) return `#${esc(el.id)}`
+  if (el.id && !generated(el.id)) return `#${esc(el.id)}`
   for (const a of TEST_ATTRS) {
     const v = el.getAttribute(a)
     if (v) return `[${a}="${v.replace(/"/g, '\\"')}"]`

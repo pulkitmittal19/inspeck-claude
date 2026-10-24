@@ -113,6 +113,9 @@ type App =
   | { kind: 'vite'; config: string }
   | { kind: 'next'; layout: string | null }
   | { kind: 'html'; file: string }
+  /* A webpack app whose page is an HTML template: Create React App and Vue CLI (public/index.html), Angular (src/index.html). */
+  | { kind: 'template'; file: string; name: string }
+  | { kind: 'docusaurus'; config: string }
   | { kind: 'other' }
 
 function readJson(path: string): Record<string, any> | null {
@@ -137,6 +140,14 @@ function detect(cwd: string): App {
       'pages/_document.tsx', 'pages/_document.jsx', 'pages/_document.js', 'src/pages/_document.tsx', 'src/pages/_document.jsx', 'src/pages/_document.js',
     ]) }
   }
+  if (deps['@docusaurus/core']) {
+    const config = firstExisting(cwd, ['docusaurus.config.ts', 'docusaurus.config.js', 'docusaurus.config.mjs'])
+    if (config) return { kind: 'docusaurus', config }
+  }
+  const template = (name: string, file: string) => existsSync(join(cwd, file)) ? { kind: 'template' as const, file: join(cwd, file), name } : null
+  if (deps['react-scripts']) return template('Create React App', 'public/index.html') ?? { kind: 'other' }
+  if (deps['@vue/cli-service']) return template('Vue CLI', 'public/index.html') ?? { kind: 'other' }
+  if (deps['@angular/core']) return template('Angular', 'src/index.html') ?? { kind: 'other' }
   const html = firstExisting(cwd, ['index.html'])
   if (html && !pkg) return { kind: 'html', file: html }
   if (html && !deps.react && !deps.vue && !deps.svelte && !deps['@angular/core']) return { kind: 'html', file: html }
@@ -287,9 +298,28 @@ function printTag() {
   say('    Add it in development only; on any address that isn\'t this machine the widget stays silent anyway.')
 }
 
-/* Storybook shows each story in a frame of its own page, which no app config reaches. Its standard place
-   for extra tags is .storybook/preview-head.html: the local-only tag goes there, and Inspeck runs in the
-   story's frame with its own pill. */
+/** What the local-only tag runs, without its <script> wrapper: for configs that take a script's code. */
+const TAG_CODE = HTML_TAG.replace(/^<script>/, '').replace(/<\/script>$/, '')
+
+/** Add the local-only tag to Docusaurus's headTags (it builds every page's <head> from them). */
+export function wireDocusaurus(src: string): { src: string; result: 'added' | 'present' | 'manual' } {
+  if (src.includes('inspeck.js')) return { src, result: 'present' }
+  const item = `{ tagName: 'script', attributes: {}, innerHTML: ${JSON.stringify(TAG_CODE)} }`
+  const list = /\bheadTags\s*:\s*\[/.exec(src)
+  if (list) {
+    const at = list.index + list[0].length
+    return { src: `${src.slice(0, at)}\n    ${item},${src.slice(at)}`, result: 'added' }
+  }
+  const config = /(?:const\s+config(?:\s*:\s*\w+)?\s*=\s*\{|module\.exports\s*=\s*\{|export\s+default\s+\{)[ \t]*\n?/.exec(src)
+  if (!config) return { src, result: 'manual' }
+  const at = config.index + config[0].length
+  return { src: `${src.slice(0, at)}  headTags: [${item}],\n${src.slice(at)}`, result: 'added' }
+}
+
+/* Storybook shows each story in a frame of its own page, which an app's layout or HTML doesn't reach. Its
+   standard place for extra tags is .storybook/preview-head.html: the local-only tag goes there (unless
+   Storybook gets Inspeck from the app's Vite setup, see storybookHasIt), and Inspeck runs in the story's frame
+   with its own pill. */
 
 /** Add the tag to a Storybook preview head (the file's text, or null if it doesn't exist yet). */
 export function wireStorybookHead(src: string | null): { src: string; result: 'added' | 'present' } {
@@ -297,8 +327,25 @@ export function wireStorybookHead(src: string | null): { src: string; result: 'a
   return { src: `${src ? `${src.replace(/\s*$/, '')}\n` : ''}${HTML_TAG}\n`, result: 'added' }
 }
 
+/**
+ * Whether Storybook gets Inspeck from the app's own Vite setup already: Storybook on Vite builds its preview
+ * with the project's vite.config, so inspeck() there runs in every story, and a tag of its own would load it a
+ * second time. Storybook on webpack shares nothing with the app's setup, so it needs the tag.
+ */
+export function storybookHasIt(cwd: string): boolean {
+  const pkg = readJson(join(cwd, 'package.json'))
+  const deps = Object.keys({ ...pkg?.dependencies, ...pkg?.devDependencies })
+  const main = firstExisting(join(cwd, '.storybook'), ['main.ts', 'main.js', 'main.mjs', 'main.cjs', 'main.mts'])
+  const onVite = deps.some(d => /^@storybook\/(.+-vite|builder-vite|sveltekit)$/.test(d)) ||
+    (!!main && /builder-vite|@storybook\/[\w-]+-vite\b|@storybook\/sveltekit/.test(readFileSync(main, 'utf8')))
+  if (!onVite) return false
+  const vite = firstExisting(cwd, ['vite.config.ts', 'vite.config.mts', 'vite.config.js', 'vite.config.mjs', 'vite.config.cjs'])
+  return !!vite && /['"]inspeck\/vite['"]/.test(readFileSync(vite, 'utf8'))
+}
+
 function wireStorybook(cwd: string): void {
   if (!existsSync(join(cwd, '.storybook'))) return
+  if (storybookHasIt(cwd)) { done('Storybook runs on your Vite setup, so Inspeck comes with it in every story'); return }
   const file = join(cwd, '.storybook', 'preview-head.html')
   const { src, result } = wireStorybookHead(existsSync(file) ? readFileSync(file, 'utf8') : null)
   if (result === 'present') { done('Storybook already loads Inspeck'); return }
@@ -407,7 +454,26 @@ async function wireApp(flags: Flags): Promise<void> {
     return
   }
 
-  note('No Vite, Next.js, Astro, Nuxt or plain index.html here. Add this to your page\'s HTML (it loads only on this computer):')
+  if (app.kind === 'template') {
+    const current = readFileSync(app.file, 'utf8')
+    if (current.includes('inspeck.js')) { done(`${rel(app.file)} already loads Inspeck`); return }
+    note(`${app.name}: the tag goes in ${rel(app.file)}. It loads Inspeck only when the page is opened on this computer, never on a deployed site.`)
+    if (!(await confirm(`Add the tag to ${rel(app.file)}?`, flags))) { note('left it alone. To add it yourself:'); printTag(); return }
+    const { src, result } = wireHtml(current)
+    if (result === 'added') { writeFileSync(app.file, src); done(`added the tag to ${rel(app.file)}`) }
+    else { warn(`couldn't find </body> in ${rel(app.file)}. Add this before it:`); printTag() }
+    return
+  }
+
+  if (app.kind === 'docusaurus') {
+    const { src, result } = wireDocusaurus(readFileSync(app.config, 'utf8'))
+    if (result === 'present') done(`${rel(app.config)} already loads Inspeck`)
+    else if (result === 'added') { writeFileSync(app.config, src); done(`added Inspeck to headTags in ${rel(app.config)} (it loads only when the site is opened on this computer)`) }
+    else { warn(`couldn't find where to add it in ${rel(app.config)}. Add this to its headTags:`); say(`      { tagName: 'script', attributes: {}, innerHTML: ${JSON.stringify(TAG_CODE)} }`) }
+    return
+  }
+
+  note('No Vite, Next.js, Astro, Nuxt, Angular, Create React App, Vue CLI, Docusaurus or plain index.html here. Add this to your page\'s HTML (it loads only on this computer):')
   printTag()
 }
 

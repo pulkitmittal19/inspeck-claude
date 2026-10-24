@@ -1,0 +1,84 @@
+#!/bin/sh
+# Runs Inspeck's server with Node.js 20 or later, wherever it's installed.
+#
+# Claude Code starts plugins with the PATH it was given, and a Node set up by a
+# version manager (nvm, fnm, Volta, asdf, mise) is often not on it: nvm loads
+# lazily, and an app opened from the Dock never ran the shell's setup at all.
+# So this looks in the usual places too. Many designers have no Node at all
+# (Claude Code doesn't need it): then `--check`, run when a chat starts, says
+# so in plain words instead of Inspeck silently not starting.
+#
+#   inspeck <file.mjs> [args]   run it with a Node that's new enough
+#   inspeck --check             print nothing if there is one; else a message for the chat (JSON)
+#   inspeck --which             print the Node it would use
+
+MIN=20
+
+# The major version of a node binary, or nothing if it isn't one that runs.
+major() {
+  [ -n "$1" ] && [ -x "$1" ] || return 1
+  "$1" -e 'process.stdout.write(process.versions.node.split(".")[0])' 2>/dev/null
+}
+
+FOUND=""
+OLDEST=""
+try() {
+  [ -n "$FOUND" ] && return 0
+  v=$(major "$1") || return 1
+  [ -n "$v" ] || return 1
+  if [ "$v" -ge "$MIN" ] 2>/dev/null; then FOUND="$1"; return 0; fi
+  [ -z "$OLDEST" ] && OLDEST="$1 (Node $v)"
+  return 1
+}
+
+# The places to look, one per line (INSPECK_NODE_LOOK replaces them, for Inspeck's own tests).
+LOOK=${INSPECK_NODE_LOOK-"$(command -v node 2>/dev/null)
+/opt/homebrew/bin/node
+/usr/local/bin/node
+$HOME/.volta/bin/node
+$HOME/.local/share/mise/shims/node
+$HOME/.asdf/shims/node
+$HOME/.nodenv/shims/node
+$HOME/.local/share/fnm/aliases/default/bin/node
+$HOME/Library/Application Support/fnm/aliases/default/bin/node
+$HOME/n/bin/node"}
+
+try "$INSPECK_NODE"
+OLDIFS=$IFS
+IFS='
+'
+for n in $LOOK; do try "$n" && break; done
+IFS=$OLDIFS
+# nvm: every installed version (any new enough one will do); and Homebrew's versioned formulas (node@22).
+if [ -z "$FOUND" ] && [ -z "${INSPECK_NODE_LOOK+x}" ]; then
+  for n in "${NVM_DIR:-$HOME/.nvm}"/versions/node/*/bin/node /opt/homebrew/opt/node@*/bin/node /usr/local/opt/node@*/bin/node; do try "$n" && break; done
+fi
+
+case "$1" in
+  --which)
+    [ -n "$FOUND" ] && { echo "$FOUND"; exit 0; }
+    exit 1
+    ;;
+  --check)
+    [ -n "$FOUND" ] && exit 0
+    if [ -n "$OLDEST" ]; then
+      SAID="Inspeck needs Node.js $MIN or later, and this Mac has an older one: $OLDEST."
+    else
+      SAID="Inspeck needs Node.js $MIN or later, and it isn't installed on this Mac."
+    fi
+    if command -v brew >/dev/null 2>&1 || [ -x /opt/homebrew/bin/brew ] || [ -x /usr/local/bin/brew ]; then
+      HOW="brew install node"
+    else
+      HOW="the installer from https://nodejs.org (the LTS version)"
+    fi
+    # One line for the person, and the same for Claude, so it can offer to help. JSON-escaped by hand: no quotes or backslashes in these.
+    printf '{"systemMessage":"%s Install it with %s, then start a new chat.","hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"%s Inspeck (the Inspeck plugin) cannot start until it is installed. Early on, tell the person in one short line and offer to install it with %s; ask before running anything. After it is installed they need to start a new chat."}}\n' "$SAID" "$HOW" "$SAID" "$HOW"
+    exit 0
+    ;;
+esac
+
+if [ -z "$FOUND" ]; then
+  echo "inspeck: Node.js $MIN or later is needed and wasn't found${OLDEST:+ (found $OLDEST)}. Install it from https://nodejs.org, or set INSPECK_NODE to its path." >&2
+  exit 1
+fi
+exec "$FOUND" "$@"

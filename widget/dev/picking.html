@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><script src="/__dev/tables/shim.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Inspeck picking cases</title>
+<style>
+  :root { --text: #1a1a1a; --dim: #6b6b6b; --line: #e6e6e6; --accent: #2563eb; --radius: 8px; }
+  body { margin: 0; padding: 32px; font: 14px/1.4 system-ui, sans-serif; color: var(--text); background: #fafafa; }
+  h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--dim); margin: 32px 0 10px; }
+  .row { display: flex; gap: 12px; align-items: center; }
+  /* shadcn-style: icons ignore the pointer */
+  .btn { display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 14px; border-radius: var(--radius); border: 0; background: var(--accent); color: #fff; font: 500 14px system-ui; cursor: pointer; }
+  .btn svg { pointer-events: none; width: 16px; height: 16px; }
+  .btn.ghost { background: transparent; color: var(--text); border: 1px solid var(--line); }
+  .btn.icon { width: 36px; padding: 0; justify-content: center; }
+  .grid { display: grid; border: 1px solid var(--line); border-radius: var(--radius); background: #fff; width: 640px; }
+  .grid [role=row] { display: grid; grid-template-columns: 2fr 1fr 1fr 48px; align-items: center; padding: 10px 14px; border-top: 1px solid var(--line); cursor: pointer; }
+  .grid [role=row]:first-child { border-top: 0; font-weight: 600; color: var(--dim); }
+  .who { display: flex; align-items: center; gap: 8px; }
+  .avatar { width: 24px; height: 24px; border-radius: 50%; background: #c7d2fe; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 99px; background: #dcfce7; color: #166534; font-size: 12px; }
+  table { border-collapse: collapse; background: #fff; width: 640px; border: 1px solid var(--line); }
+  td, th { padding: 10px 14px; border-top: 1px solid var(--line); text-align: left; }
+  tr.click { cursor: pointer; }
+  .card { display: block; width: 280px; padding: 16px; border-radius: 12px; background: #fff; border: 1px solid var(--line); color: inherit; text-decoration: none; }
+  .card img { display: block; width: 100%; height: 120px; border-radius: 8px; background: #e0e7ff; }
+  .card h3 { margin: 12px 0 4px; font-size: 16px; }
+  .card p { margin: 0; color: var(--dim); }
+  .chip { display: inline-block; margin-top: 10px; padding: 2px 8px; border-radius: 6px; background: #fef3c7; font-size: 12px; }
+  .menu { width: 220px; padding: 4px; background: #fff; border: 1px solid var(--line); border-radius: var(--radius); }
+  .menu [role=menuitem] { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 6px; }
+  .menu [role=menuitem] svg { pointer-events: none; width: 14px; height: 14px; }
+  .menu kbd { margin-left: auto; color: var(--dim); font: 12px system-ui; }
+  label.check { display: inline-flex; align-items: center; gap: 8px; }
+  .stretched { position: relative; width: 280px; padding: 16px; background: #fff; border: 1px solid var(--line); border-radius: 12px; }
+  .stretched a::after { content: ""; position: absolute; inset: 0; }
+</style>
+</head>
+<body>
+  <h2>Buttons: icon and text</h2>
+  <div class="row">
+    <button class="btn" id="save"><svg id="save-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 8l3 3 7-7"/></svg>Save changes</button>
+    <button class="btn ghost" id="export"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 2v8M4 6l4 4 4-4M2 14h12"/></svg><span id="export-label">Export</span></button>
+    <button class="btn ghost icon" id="more" aria-label="More"><svg id="more-icon" viewBox="0 0 16 16" fill="currentColor"><circle cx="3" cy="8" r="1.5"/><circle cx="8" cy="8" r="1.5"/><circle cx="13" cy="8" r="1.5"/></svg></button>
+  </div>
+
+  <h2>A table made of roles (React tables)</h2>
+  <div class="grid" role="table">
+    <div role="row"><div role="columnheader">Name</div><div role="columnheader">Status</div><div role="columnheader">Plan</div><div></div></div>
+    <div role="row" id="aria-row"><div role="cell" id="aria-cell"><span class="who"><span class="avatar" id="aria-avatar"></span><span id="aria-name">Aisha Rahman</span></span></div><div role="cell"><span class="badge" id="aria-badge">Active</span></div><div role="cell" id="aria-plan">Pro</div><div role="cell"><button class="btn ghost icon" id="row-more" aria-label="More"><svg viewBox="0 0 16 16" fill="currentColor"><circle cx="3" cy="8" r="1.5"/><circle cx="8" cy="8" r="1.5"/><circle cx="13" cy="8" r="1.5"/></svg></button></div></div>
+  </div>
+
+  <h2>A plain table with clickable rows</h2>
+  <table>
+    <tr><th>Name</th><th>Status</th><th>Plan</th></tr>
+    <tr class="click" onclick="void 0"><td><span class="who"><img class="avatar" id="td-avatar" alt=""><span id="td-name">Ben Ortiz</span></span></td><td><span class="badge" id="td-badge">Active</span></td><td id="td-plan">Team</td></tr>
+  </table>
+
+  <h2>A card that is one big link</h2>
+  <div class="row">
+    <a class="card" id="card" href="#card"><img id="card-img" alt=""><h3 id="card-title">Quarterly report</h3><p id="card-desc">Revenue, churn and the plan for Q4.</p><span class="chip" id="card-chip">New</span></a>
+    <span id="initials" style="display:inline-flex;width:40px;height:40px;border-radius:50%;background:#e2e8f0;align-items:center;justify-content:center">AL</span>
+    <div class="stretched" id="stretched"><h3 id="stretched-title">Stretched link card</h3><p><a href="#s" id="stretched-link">Open</a> the details.</p></div>
+  </div>
+
+  <h2>A tooltip that ignores the pointer, and a spinning logo that does too</h2>
+  <div class="row" style="position:relative; height:80px; align-items:flex-start">
+    <button class="btn ghost" id="copy">Copy link</button>
+    <div id="tip" role="tooltip" style="position:absolute; left:0; top:44px; padding:4px 8px; border-radius:6px; background:#111; color:#fff; font-size:12px; pointer-events:none">Copied!</div>
+    <img id="spin" alt="" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Ccircle cx='60' cy='60' r='50' fill='%2361dafb' fill-opacity='.3'/%3E%3C/svg%3E" style="width:120px; height:120px; pointer-events:none; transform:rotate(30deg); margin-left:40px">
+    <p id="near-spin" style="margin:0 0 0 -110px; align-self:center; position:relative; z-index:0">Text under a decoration</p>
+  </div>
+
+  <h2>Menu items and labels</h2>
+  <div class="row" style="align-items:flex-start">
+    <div class="menu" role="menu">
+      <div role="menuitem" id="mi"><svg id="mi-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 8h12"/></svg><span id="mi-label">Duplicate</span><kbd id="mi-kbd">⌘D</kbd></div>
+    </div>
+    <label class="check" id="label"><input type="checkbox" id="checkbox"><span id="label-text">Email me updates</span></label>
+  </div>
+  <script src="/inspeck.js"></script>
+</body>
+</html>

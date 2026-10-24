@@ -1,0 +1,14 @@
+<!doctype html><html><head><meta charset="utf-8"><script src="/__dev/tables/shim.js"></script><title>DataTables</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/datatables.net-dt@2.0.8/css/dataTables.dataTables.min.css">
+<script src="https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/datatables.net@2.0.8/js/dataTables.min.js"></script>
+<script src="data.js"></script></head><body>
+<table id="t" class="display" style="width:1100px"><thead><tr><th>Name</th><th>Email</th><th>Status</th><th>Plan</th><th>Amount</th><th>Tags</th><th></th></tr></thead></table>
+<script>
+  new DataTable('#t', { data: ROWS, columns: [
+    { data: 'name', render: (d, t, r) => cells.who(r) }, { data: 'email', render: (d, t, r) => cells.email(r) },
+    { data: 'status', render: (d, t, r) => cells.status(r) }, { data: 'plan' }, { data: 'amount', className: 'dt-right' },
+    { data: 'tags', render: (d, t, r) => cells.tags(r) }, { data: null, orderable: false, render: () => cells.actions() },
+  ] })
+</script>
+<script src="/inspeck.js"></script></body></html>

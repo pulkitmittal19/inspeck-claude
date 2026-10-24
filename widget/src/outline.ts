@@ -13,9 +13,11 @@
 import { enter, leave, reducedMotion } from './anim'
 import { h } from './dom'
 import { cancelFrame, nextFrame } from './native'
+import { textRect } from './pick'
 
 export interface Outline {
-  show(el: Element): void
+  /** Outline an element, or with `words`, just those words inside it. */
+  show(el: Element, words?: Text | null): void
   hide(): void
   readonly target: Element | null
 }
@@ -27,10 +29,16 @@ const SETTLED = 0.25
 
 interface Box { x: number; y: number; w: number; h: number }
 
+/** The element's box, or where the words are (a text node is in it only while it's still in the element). */
+function rectOf(el: Element, words: Text | null): DOMRect {
+  return words && words.parentNode === el && words.textContent!.trim() ? textRect(words) : el.getBoundingClientRect()
+}
+
 export function createOutline(ui: HTMLElement, onFrame?: (el: Element, r: DOMRect) => void): Outline {
   const box = h('div', { class: 'outline', hidden: true })
   ui.appendChild(box)
   let target: Element | null = null
+  let words: Text | null = null
   let raf = 0
   let last = 0
   let shown: Box | null = null
@@ -40,7 +48,7 @@ export function createOutline(ui: HTMLElement, onFrame?: (el: Element, r: DOMRec
     raf = 0
     if (!target) return
     if (!target.isConnected) { hide(); return }
-    const r = target.getBoundingClientRect()
+    const r = rectOf(target, words)
     const dt = last ? Math.min(64, now - last) : 16
     last = now
     const k = reducedMotion() ? 0 : Math.exp(-dt / TAU)
@@ -57,6 +65,7 @@ export function createOutline(ui: HTMLElement, onFrame?: (el: Element, r: DOMRec
 
   function hide() {
     target = null
+    words = null
     shown = null
     off = { x: 0, y: 0, w: 0, h: 0 }
     leave(box, 90)
@@ -65,16 +74,17 @@ export function createOutline(ui: HTMLElement, onFrame?: (el: Element, r: DOMRec
   }
 
   return {
-    show(el) {
-      if (el !== target) {
+    show(el, part = null) {
+      if (el !== target || part !== words) {
         const visible = !!shown && !box.hidden && box.dataset.state !== 'out'
-        const r = el.getBoundingClientRect()
+        const r = rectOf(el, part)
         /* From one element to the next: start where the box is now and ease in. From nothing: appear in place. */
         off = visible && shown
           ? { x: shown.x - r.left, y: shown.y - r.top, w: shown.w - r.width, h: shown.h - r.height }
           : { x: 0, y: 0, w: 0, h: 0 }
         target = el
-        const radius = getComputedStyle(el).borderTopLeftRadius
+        words = part
+        const radius = part ? '0px' : getComputedStyle(el).borderTopLeftRadius
         box.style.borderRadius = radius && radius !== '0px' ? `calc(${radius} + 2px)` : '3px'
       }
       if (!raf) { last = 0; raf = nextFrame(frame) }

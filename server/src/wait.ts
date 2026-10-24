@@ -12,7 +12,8 @@ import { belongsTo, claudePid, sessionOf } from './sessions.js'
 import * as store from './store.js'
 
 export const SELF = fileURLToPath(import.meta.url)
-export const WAIT_COMMAND = `node "${SELF}" wait`
+/* With the very Node this server runs on: the one `node` names in a shell may be missing or too old (see bin/inspeck). */
+export const WAIT_COMMAND = `"${process.execPath}" "${SELF}" wait`
 
 const flag = (args: string[], name: string) => {
   const i = args.indexOf(name)

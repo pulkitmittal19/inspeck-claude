@@ -132,6 +132,8 @@ button { appearance: none; background: none; border: 0; padding: 0; cursor: poin
 
 /* ---------- frozen: a clear sheet over the page catches the real pointer ---------- */
 .frost { position: fixed; inset: 0; pointer-events: auto; cursor: crosshair; background: transparent; }
+/* The same, over just one frame from another site (see cover in app.ts). */
+.frost.shield { inset: auto; }
 
 /* ---------- the outline that follows the element under the pointer ---------- */
 .outline {

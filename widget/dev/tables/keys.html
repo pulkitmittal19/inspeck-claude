@@ -1,0 +1,47 @@
+<!doctype html><html><head><meta charset="utf-8"><script src="/__dev/tables/shim.js"></script><title>Keyboard clashes</title>
+<!-- Every kind of place an app types into, and the app's own shortcuts (/ focuses search, j counts, Escape closes):
+     I there must type an I, and typing in Inspeck's note must not set off the app's shortcuts. -->
+<style>body { font: 14px system-ui; margin: 24px; display: grid; gap: 12px; max-width: 640px; } .ed { height: 80px; border: 1px solid #ccc; }</style>
+<script>
+  /* The app's shortcuts, as hotkey libraries add them: on document and window, after the page loads. */
+  window.fired = []
+  const editable = t => t && (/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) || t.isContentEditable)
+  addEventListener('DOMContentLoaded', () => {
+    document.addEventListener('keydown', e => {
+      if (editable(e.target)) return
+      if (e.key === '/') { e.preventDefault(); document.getElementById('search').focus(); fired.push('/') }
+      if (e.key === 'j') fired.push('j')
+      if (e.key === 'Escape') fired.push('Escape')
+    })
+    window.addEventListener('keyup', e => { if (!editable(e.target) && e.key === 'k') fired.push('k up') })
+  })
+  customElements.define('open-field', class extends HTMLElement { constructor() { super(); this.attachShadow({ mode: 'open' }).innerHTML = '<input id="in" placeholder="inside an open shadow root">' } })
+  customElements.define('closed-field', class extends HTMLElement { constructor() { super(); const r = this.attachShadow({ mode: 'closed' }); r.innerHTML = '<input placeholder="inside a closed shadow root">'; this._input = r.firstChild } })
+</script>
+</head><body>
+<input id="search" placeholder="Search (press /)">
+<input id="input" placeholder="input">
+<textarea id="textarea" placeholder="textarea"></textarea>
+<div id="ce" contenteditable="true" style="border:1px solid #ccc; min-height:24px">contenteditable </div>
+<select id="select"><option>Apple</option><option>Ice cream</option><option>Kiwi</option></select>
+<open-field id="open"></open-field>
+<closed-field id="closed"></closed-field>
+<div id="role" role="textbox" tabindex="0" aria-label="custom editor" style="border:1px solid #ccc; min-height:24px"></div>
+<div id="cm" class="ed"></div>
+<div id="monaco" class="ed"></div>
+<p id="target">Something to leave a note on</p>
+<script>
+  /* A custom editor: a focusable textbox that types by itself, as canvas and terminal editors do. */
+  const role = document.getElementById('role')
+  role.addEventListener('keydown', e => { if (e.key.length === 1 && !e.metaKey && !e.ctrlKey) { role.textContent += e.key; e.preventDefault() } })
+</script>
+<script type="module">
+  import { EditorView, basicSetup } from 'https://esm.sh/codemirror@6.0.1'
+  window.cm = new EditorView({ doc: 'code ', extensions: [basicSetup], parent: document.getElementById('cm') })
+</script>
+<script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.50.0/min/vs/loader.js"></script>
+<script>
+  require.config({ paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.50.0/min/vs' } })
+  require(['vs/editor/editor.main'], () => { window.monacoEditor = monaco.editor.create(document.getElementById('monaco'), { value: 'code ', minimap: { enabled: false } }) })
+</script>
+<script src="/inspeck.js"></script></body></html>

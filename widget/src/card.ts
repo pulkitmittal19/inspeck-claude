@@ -47,18 +47,22 @@ export interface PinOptions {
   draft?: string
   /** Open with the CSS spread out (when it was already showing on hover); otherwise folded, behind the head's chevron. */
   cssOpen?: boolean
+  /** Some words inside the element rather than the element itself (see textAt): the card is about their type. */
+  words?: Text | null
   /** A note on a dragged area rather than one element: what the head says. No CSS. */
   group?: { label: string; size: string }
   onSend(note: string): Promise<{ n: number } | void>
   onClose(): void
   onDelete?(): Promise<void>
+  /** Where the element is, for Copy. */
+  place?(): Promise<Place>
 }
 
 export interface Card {
   el: HTMLDivElement
   readonly mode: 'hover' | 'pinned' | null
   readonly description: Description | null
-  showHover(target: Element): void
+  showHover(target: Element, words?: Text | null): void
   /** Pin to an element, or (with `opts.group`) to a dragged area, with `target` null. */
   pin(target: Element | null, opts: PinOptions): void
   hide(): void
@@ -126,11 +130,39 @@ const tool = (action: string, icon: keyof typeof ICONS, label: string) =>
   h('button', { type: 'button', class: 'tool', 'data-action': action, 'aria-label': label, 'data-tip': label }, svg(ICONS[icon], 13))
 
 export const cssText = (d: Description) => d.lines.map(l => `${l.prop}: ${l.value};`).join('\n')
-/** What Copy gives: the note written so far, if any, as a comment on top, then the CSS. A comment keeps it
-    pasteable as CSS and still reads as a note anywhere else. */
-export const copyText = (d: Description, note: string) => {
-  const n = note.trim().replace(/\*\//g, '* /')
-  return n ? `/* Note: ${n} */\n${cssText(d)}` : cssText(d)
+
+/** Where the element is, for Copy: what a sent note tells Claude, so a copy pasted anywhere says the same. */
+export interface Place {
+  page: string
+  element: { selector: string; name?: string; text?: string; trail?: string[]; within?: string; anchor?: string }
+  code: Array<{ file: string; line: number }>
+}
+
+/** A page as people say it: no scheme, no trailing slash; a hash only when it's a route. */
+const pageLabel = (page: string) => {
+  try {
+    const u = new URL(page)
+    return `${u.host}${u.pathname === '/' ? '' : u.pathname.replace(/\/$/, '')}${u.search}${/^#!?\//.test(u.hash) ? u.hash : ''}`
+  } catch { return page }
+}
+
+/** What Copy gives: the note written so far (sent or not), where the element is (the page, the element, the
+    component and the line of code that writes it), then its CSS as a rule. Readable pasted into any chat or
+    ticket, and the rule still pastes as CSS. */
+export const copyText = (d: Description, note: string, place?: Place) => {
+  const lines: string[] = []
+  const n = note.trim()
+  if (n) lines.push(`Note: ${n}`)
+  if (place) {
+    const e = place.element
+    lines.push(`Page: ${pageLabel(place.page)}`)
+    lines.push(`Element: ${[e.name && e.name !== e.selector ? `${e.name} (${e.selector})` : e.selector, ...(e.text ? [`"${e.text}"`] : [])].join(' · ')}`)
+    if (e.within) lines.push(`Inside: ${e.within}${e.anchor ? ` (open it from ${e.anchor})` : ''}`)
+    if (e.trail?.length) lines.push(`Component: ${e.trail.join(' › ')}`)
+    place.code.forEach((c, i) => lines.push(`${i ? 'Used in' : 'Code'}: ${c.line ? `${c.file}:${c.line}` : c.file}`))
+  }
+  const rule = `${place?.element.selector ?? d.label} {\n${d.lines.map(l => `  ${l.prop}: ${l.value};`).join('\n')}\n}`
+  return lines.length ? `${lines.join('\n')}\n\n${rule}` : rule
 }
 
 
@@ -150,6 +182,7 @@ export function createCard(ui: HTMLElement): Card {
   ui.appendChild(el)
   let mode: Card['mode'] = null
   let lastTarget: Element | null = null
+  let lastWords: Text | null = null
   let desc: Description | null = null
   let opts: PinOptions | null = null
   let parts: {
@@ -500,11 +533,12 @@ export function createCard(ui: HTMLElement): Card {
     get draft() { return parts?.note.value ?? '' },
     get editing() { return !!opts?.existing },
 
-    showHover(target) {
+    showHover(target, words = null) {
       if (mode === 'pinned') return
-      if (target !== lastTarget || mode !== 'hover') {
+      if (target !== lastTarget || words !== lastWords || mode !== 'hover') {
         lastTarget = target
-        desc = describe(target)
+        lastWords = words
+        desc = describe(target, words)
         clear(el)
         el.removeAttribute('data-pinned')
         el.removeAttribute('data-sent')
@@ -520,7 +554,8 @@ export function createCard(ui: HTMLElement): Card {
       const wasShowing = !el.hidden && el.dataset.state !== 'out'
       opts = o
       lastTarget = target
-      desc = target && !o.group ? describe(target) : null
+      lastWords = o.words ?? null
+      desc = target && !o.group ? describe(target, o.words) : null
       mode = 'pinned'
       busy = false
       /* Folded (the head's chevron opens it) unless the CSS was already showing on hover. */
@@ -536,7 +571,7 @@ export function createCard(ui: HTMLElement): Card {
       if (desc) {
         /* The whole head is the fold toggle, so it's always in the same place. */
         const chevron = h('span', { class: 'chev', 'aria-hidden': 'true' }, svg(ICONS.chevron, 10, 2.4))
-        head = renderHead(desc, [h('span', { class: 'tools' }, tool('copy', 'copy', 'Copy CSS'), close)], o.existing?.n, chevron)
+        head = renderHead(desc, [h('span', { class: 'tools' }, tool('copy', 'copy', 'Copy note, place and CSS'), close)], o.existing?.n, chevron)
         head.setAttribute('data-action', 'fold')
         head.setAttribute('role', 'button')
         head.setAttribute('aria-label', 'Show or hide the CSS')
@@ -670,10 +705,12 @@ export function createCard(ui: HTMLElement): Card {
           }
           case 'copy':
             if (desc) {
+              const d = desc
               const withNote = !!parts.note.value.trim()
               const note = parts.note
-              void copyToClipboard(copyText(desc, note.value), el).then(ok => {
-                status(ok ? (withNote ? 'CSS and note copied' : 'CSS copied') : 'Couldn’t copy', ok ? 'ok' : 'error')
+              const place = opts.place?.().catch(() => undefined) ?? Promise.resolve(undefined)
+              void place.then(p => copyToClipboard(copyText(d, note.value, p), el)).then(ok => {
+                status(ok ? (withNote ? 'Note, place and CSS copied' : 'Place and CSS copied') : 'Couldn’t copy', ok ? 'ok' : 'error')
                 /* The old way moved the selection: the cursor goes back to the end of the note. */
                 note.focus({ preventScroll: true })
                 note.setSelectionRange(note.value.length, note.value.length)

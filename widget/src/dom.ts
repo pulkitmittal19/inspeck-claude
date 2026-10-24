@@ -89,6 +89,27 @@ export function isEditable(el: Element | null): boolean {
   return el instanceof HTMLElement && el.isContentEditable
 }
 
+/** Takes typed letters: a field, an editor (contenteditable, or one that says it's a text box), a dropdown (letters
+    jump to an option). */
+const takesLetters = (el: Element) =>
+  isEditable(el) || el instanceof HTMLSelectElement || /^(textbox|searchbox|combobox)$/.test(el.getAttribute('role') ?? '')
+
+/**
+ * Whether a key pressed on the page is someone typing there, so it's a letter and not one of Inspeck's keys: in
+ * any of the above, inside web components too. Focus inside a component that hides its inside (a closed shadow
+ * root) counts as typing: when Inspeck can't tell, the key types.
+ */
+export function typingOnPage(e: KeyboardEvent): boolean {
+  const own = e.composedPath()[0]
+  if (own instanceof Element && takesLetters(own)) return true
+  let a = document.activeElement
+  while (a?.shadowRoot?.activeElement) a = a.shadowRoot.activeElement
+  if (!a) return false
+  if (takesLetters(a)) return true
+  /* Focused, yet a component that can't take focus itself: the focus is somewhere inside it we can't see. */
+  return a.localName.includes('-') && !a.shadowRoot && !a.hasAttribute('tabindex')
+}
+
 /** Put text on the clipboard: the page's clipboard, or, where a browser won't allow it (some embedded
     ones), a selection copied the old way. `within` is where the selection briefly lives. True if it went. */
 export async function copyToClipboard(text: string, within: Node): Promise<boolean> {

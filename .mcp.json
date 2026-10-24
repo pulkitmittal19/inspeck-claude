@@ -1,8 +1,9 @@
 {
   "mcpServers": {
     "inspeck": {
-      "command": "node",
+      "command": "sh",
       "args": [
+        "${CLAUDE_PLUGIN_ROOT}/server/bin/inspeck",
         "${CLAUDE_PLUGIN_ROOT}/server/dist/inspeck.mjs"
       ],
       "_meta": {

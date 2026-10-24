@@ -17,13 +17,41 @@ export const SERVER = (() => {
 })()
 
 /**
+ * The address this document stands for. A web page is its own. A frame with no address of its own (an inline
+ * `srcdoc` frame, or a blank one a script wrote into, which takes on the page's address) is part of the page
+ * around it: that page's address, with the frame as a route of its own (`#/frame/preview`), so its notes are
+ * kept apart from the page's: each document puts its markers on its own elements.
+ */
+export function pageHref(): string {
+  return hrefOf(window)
+}
+
+function hrefOf(w: Window): string {
+  const own = w.location.href
+  if (w === w.parent) return own
+  let around: string
+  try { around = w.parent.location.href } catch { return own /* a page around it from another site */ }
+  if (/^https?:$/.test(w.location.protocol) && own !== around) return own
+  /* Named the most lasting way the frame has: its id, name or title, so its notes stay with it when frames are
+     added or moved around it; its place among the page's frames only when it has none. */
+  const f = w.frameElement
+  const label = f && (f.id || f.getAttribute('name') || f.getAttribute('title')?.trim().toLowerCase().replace(/\s+/g, '-').slice(0, 40))
+  const name = encodeURIComponent(label || (f ? String(Array.from(w.parent.document.querySelectorAll('iframe')).indexOf(f as HTMLIFrameElement)) : 'frame'))
+  const outer = hrefOf(w.parent)
+  return /#\/frame\//.test(outer) ? `${outer}/${name}` : `${outer.split('#')[0]}#/frame/${name}`
+}
+
+/** pageHref, as a URL. */
+export const pageUrl = (): URL => new URL(pageHref())
+
+/**
  * The widget is a development tool. If the script tag is left in a production
  * build, it stays quiet on any address that isn't this machine — unless the
  * tag says otherwise with data-inspeck-anywhere.
  */
 export function allowedHere(): boolean {
   if (script?.hasAttribute('data-inspeck-anywhere')) return true
-  const h = location.hostname
+  const h = pageUrl().hostname
   return h === 'localhost' || h === '127.0.0.1' || h === '[::1]' || h.endsWith('.localhost') || h.endsWith('.test') ||
     /* The "Network" address a dev server prints, and Bonjour names: the plugin checks it's really this Mac. */
     h.endsWith('.local') || /^(10|127)\.|^192\.168\.|^172\.(1[6-9]|2\d|3[01])\.|^169\.254\./.test(h)

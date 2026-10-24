@@ -49,7 +49,7 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<T>
       body: body ? JSON.stringify(body) : undefined,
     })
   } catch {
-    throw new ApiError('Can’t reach Inspeck. Is a Claude session open?')
+    throw new ApiError('Can’t reach Inspeck. Open a Claude chat, then try again: your note stays here.')
   }
   const data = await res.json().catch(() => ({})) as { error?: string } & T
   if (!res.ok) throw new ApiError(data.error ?? `Inspeck answered ${res.status}`)

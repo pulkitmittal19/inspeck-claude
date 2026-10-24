@@ -233,6 +233,8 @@ function simple(el: Element, cs: CSSStyleDeclaration, longhand: string, opts: { 
   const w = opts.inherited ? winner(el, longhand) : ownWinner(el, longhand)
   if (!w && QUIET_WHEN_DEFAULT.has(longhand)) return null
   if (!w) return { prop: longhand, value: clean(computed) }
+  /* Inherited in a size relative to where it's written (0.75em, 120%): that's the size there, not here. */
+  if (w.inheritedFrom && /\d(em|ex|ch|lh|%)(?![a-z])/.test(w.value)) return { prop: longhand, value: clean(computed) }
   /* The `font` shorthand won: show just this longhand's part of it. */
   if (w.property === 'font') {
     const part = fontPart(w.value, longhand)
@@ -262,14 +264,36 @@ function backgroundLine(el: Element, cs: CSSStyleDeclaration): Line | null {
   return line('background', w.value, cs.backgroundColor)
 }
 
-function borderLine(el: Element, cs: CSSStyleDeclaration): Line | null {
-  if (cs.borderTopStyle === 'none' || parseFloat(cs.borderTopWidth) === 0) return null
-  const w = ownWinner(el, 'border-top-width')
-  const computed = `${px(cs.borderTopWidth)} ${cs.borderTopStyle} ${cs.borderTopColor}`
-  if (w && (w.property === 'border' || w.property === 'border-top')) return line(w.property, w.value, computed)
-  const c = ownWinner(el, 'border-top-color')
-  const color = c && !/^(border|border-top)$/.test(c.property) ? c.value : clean(cs.borderTopColor)
-  return line('border', `${px(cs.borderTopWidth)} ${cs.borderTopStyle} ${color}`, computed)
+const BORDER_STYLE = /^(none|hidden|dotted|dashed|solid|double|groove|ridge|inset|outset)$/
+const WIDE_KEYWORD = /^(inherit|initial|unset|revert|revert-layer)$/i
+/** A border shorthand's width (the first length or var()), and its colour (what's left after width and style). */
+const widthIn = (v: string) => parts(v).find(p => /^(-?[\d.]+[a-z%]*|thin|medium|thick|(calc|var|min|max|clamp)\()/.test(p)) ?? null
+const colorIn = (v: string) => { const w = widthIn(v); return parts(v).filter(p => p !== w && !BORDER_STYLE.test(p)).pop() ?? null }
+
+/** The border, side by side: one `border` line when all four match, else a line for each side that has one (a
+    row's bottom border, a tab's underline). Each from what sets its width and its colour, as written. */
+function borderLines(el: Element, cs: CSSStyleDeclaration): Line[] {
+  const SIDE_NAMES = ['top', 'right', 'bottom', 'left'] as const
+  const on = SIDE_NAMES.filter(s => cs.getPropertyValue(`border-${s}-style`) !== 'none' && parseFloat(cs.getPropertyValue(`border-${s}-width`)) > 0)
+  if (!on.length) return []
+  const look = (s: string) => ['width', 'style', 'color'].map(k => cs.getPropertyValue(`border-${s}-${k}`)).join('|')
+  if (on.length === 4 && on.every(s => look(s) === look('top'))) return [borderSide(el, cs, 'top', 'border')]
+  return on.map(s => borderSide(el, cs, s, `border-${s}`))
+}
+
+function borderSide(el: Element, cs: CSSStyleDeclaration, side: Side, label: string): Line {
+  const width = cs.getPropertyValue(`border-${side}-width`), style = cs.getPropertyValue(`border-${side}-style`), color = cs.getPropertyValue(`border-${side}-color`)
+  const computed = `${px(width)} ${style} ${color}`
+  const ww = ownWinner(el, `border-${side}-width`), cw = ownWinner(el, `border-${side}-color`)
+  /* One shorthand sets it all: as written. */
+  if (ww && cw && ww.property === cw.property && ww.value === cw.value && /^border(-(top|right|bottom|left))?$/.test(ww.property) && !parts(ww.value).some(p => WIDE_KEYWORD.test(p))) {
+    return line(label, ww.value, computed)
+  }
+  /* Width and colour from different places (a later border-color over a shorthand's): each as written. */
+  const w = !ww ? null : ww.property === `border-${side}-width` ? ww.value : ww.property === 'border-width' ? sideOf(ww.value, side, el) : widthIn(ww.value)
+  const c = !cw ? null : cw.property === `border-${side}-color` ? cw.value : cw.property === 'border-color' ? sideOf(cw.value, side, el) : colorIn(cw.value)
+  const keep = (v: string | null) => !!v && !WIDE_KEYWORD.test(v)
+  return line(label, `${keep(w) ? w : px(width)} ${style} ${keep(c) ? c : clean(color)}`, computed)
 }
 
 function gapLine(el: Element, cs: CSSStyleDeclaration): Line | null {
@@ -363,10 +387,20 @@ function reactComponentOf(el: Element): string | undefined {
 
 /* ---------------- the description ---------------- */
 
-export function describe(el: Element): Description {
+/** Where some words are on screen, without the spaces around them. */
+function textBox(n: Text): DOMRect {
+  const t = n.textContent ?? ''
+  const range = document.createRange()
+  range.setStart(n, t.length - t.trimStart().length)
+  range.setEnd(n, t.trimEnd().length)
+  return range.getBoundingClientRect()
+}
+
+/** The element's CSS, or with `words` (some text inside it, see textAt), the type those words are set in. */
+export function describe(el: Element, words?: Text | null): Description {
   const cs = getComputedStyle(el)
-  const kind = kindOf(el)
-  const r = el.getBoundingClientRect()
+  const kind = words ? 'text' : kindOf(el)
+  const r = words ? textBox(words) : el.getBoundingClientRect()
   const lines: Array<Line | null> = []
   const font = (withLineHeight = true) => [
     simple(el, cs, 'font-size', { inherited: true }),
@@ -375,13 +409,16 @@ export function describe(el: Element): Description {
   ]
   const color = () => simple(el, cs, 'color', { inherited: true })
 
-  switch (kind) {
+  if (words) {
+    lines.push(...font(), color(), simple(el, cs, 'letter-spacing', { inherited: true, skip: v => v === 'normal' || v === '0px' }),
+      simple(el, cs, 'text-transform', { inherited: true, skip: v => v === 'none' }))
+  } else switch (kind) {
     case 'control':
-      lines.push(boxLine(el, cs, 'padding'), radiusLine(el, cs), backgroundLine(el, cs), color(), ...font(false), borderLine(el, cs))
+      lines.push(boxLine(el, cs, 'padding'), radiusLine(el, cs), backgroundLine(el, cs), color(), ...font(false), ...borderLines(el, cs))
       break
     case 'text':
       /* Type first; then the box, for text that is also a pill or a chip. */
-      lines.push(...font(), color(), boxLine(el, cs, 'padding'), backgroundLine(el, cs), radiusLine(el, cs),
+      lines.push(...font(), color(), boxLine(el, cs, 'padding'), backgroundLine(el, cs), radiusLine(el, cs), ...borderLines(el, cs),
         simple(el, cs, 'letter-spacing', { inherited: true, skip: v => v === 'normal' || v === '0px' }), boxLine(el, cs, 'margin'))
       break
     case 'image':
@@ -389,7 +426,7 @@ export function describe(el: Element): Description {
         el instanceof SVGElement ? simple(el, cs, 'color', { inherited: true }) : null, boxLine(el, cs, 'margin'))
       break
     default:
-      lines.push(displayLine(cs), gapLine(el, cs), boxLine(el, cs, 'padding'), backgroundLine(el, cs), radiusLine(el, cs), borderLine(el, cs))
+      lines.push(displayLine(cs), gapLine(el, cs), boxLine(el, cs, 'padding'), backgroundLine(el, cs), radiusLine(el, cs), ...borderLines(el, cs))
   }
 
   /* Merge two lines of one shorthand (`font: …` won for size and weight). */
@@ -405,7 +442,7 @@ export function describe(el: Element): Description {
   if ((root instanceof Document || root instanceof ShadowRoot) && unreadableCss(root)) out = out.map(l => rendersAs(el, cs, l) ? l : rendered(cs, l))
   return {
     kind,
-    label: labelOf(el),
+    label: words ? `Text in ${labelOf(el)}` : labelOf(el),
     component: componentOf(el),
     size: `${Math.round(r.width)} × ${Math.round(r.height)}`,
     lines: out.slice(0, MAX_LINES),

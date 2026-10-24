@@ -1,0 +1,18 @@
+<!doctype html><html><head><meta charset="utf-8"><script src="/__dev/tables/shim.js"></script><title>Element Plus (Vue)</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/element-plus@2.7.3/dist/index.css">
+<script src="https://cdn.jsdelivr.net/npm/vue@3.4.27/dist/vue.global.prod.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/element-plus@2.7.3/dist/index.full.min.js"></script>
+<script src="data.js"></script></head><body>
+<div id="app" style="width:1100px">
+  <el-table :data="rows" border @selection-change="() => {}">
+    <el-table-column type="selection" width="44"></el-table-column>
+    <el-table-column label="Name" width="260"><template #default="s"><span class="who"><el-avatar :size="24">{{ s.row.name[0] }}</el-avatar><span class="nm">{{ s.row.name }}</span></span></template></el-table-column>
+    <el-table-column prop="email" label="Email" show-overflow-tooltip></el-table-column>
+    <el-table-column label="Status"><template #default="s"><el-tag :type="s.row.status === 'Active' ? 'success' : 'info'" size="small">{{ s.row.status }}</el-tag></template></el-table-column>
+    <el-table-column prop="plan" label="Plan"></el-table-column>
+    <el-table-column prop="amount" label="Amount" align="right"></el-table-column>
+    <el-table-column label=""><template #default><el-button size="small" circle><svg class="ico" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/></svg></el-button><el-button size="small" type="danger" link>Delete</el-button></template></el-table-column>
+  </el-table>
+</div>
+<script>Vue.createApp({ data: () => ({ rows: ROWS }) }).use(ElementPlus).mount('#app')</script>
+<script src="/inspeck.js"></script></body></html>

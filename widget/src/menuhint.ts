@@ -10,12 +10,13 @@ import { cap } from './keys'
 /** Something you'd click to use, not a whole region. */
 const CLICKABLE = 'button, a, summary, input, [role="button"], [role="combobox"], [role="menuitem"], [role="tab"], [tabindex]'
 
-/** Whether the element (or the button it's part of) opens a menu, popover or disclosure that's closed now. */
-export function opensMenu(el: Element): boolean {
+/** The button the element is (or is part of: its icon, its label) that opens a menu, popover or disclosure
+    that's closed now; else null. */
+export function menuButton(el: Element): Element | null {
   const t = el.closest('[aria-haspopup]:not([aria-haspopup="false"]), [aria-expanded], summary')
-  if (!t || !t.matches(CLICKABLE)) return false
-  if (t.matches('summary')) return !(t.parentElement instanceof HTMLDetailsElement && t.parentElement.open)
-  return t.getAttribute('aria-expanded') !== 'true'
+  if (!t || !t.matches(CLICKABLE)) return null
+  if (t.matches('summary')) return t.parentElement instanceof HTMLDetailsElement && t.parentElement.open ? null : t
+  return t.getAttribute('aria-expanded') !== 'true' ? t : null
 }
 
 export interface MenuHint {

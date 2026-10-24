@@ -1,5 +1,5 @@
 /* A CSS value as the card shows it, in the units and colour format you chose
- * in Settings. Only what the card shows: notes to Claude and Copy CSS keep the
+ * in Settings. Only what the card shows: notes to Claude and Copy keep the
  * code exactly as written, so Claude finds `14px` in the file, not `0.875rem`.
  *
  * Tokens (`var(--x)`) and urls are left whole: a token's name is the point,

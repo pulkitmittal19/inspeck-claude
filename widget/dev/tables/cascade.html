@@ -1,0 +1,66 @@
+<!doctype html><html><head><meta charset="utf-8"><script src="/__dev/tables/shim.js"></script><title>Cascade</title>
+<!-- The cascade's harder corners, each element with what a note should say it is (data-want: "property: value"). -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/modern-normalize@2.0.0/modern-normalize.css">
+<style>
+  @layer base, components;
+  :root { --space-2: 8px; --space-4: 16px; --radius: 10px; --brand: #4f46e5; --line: #e5e7eb; }
+  body { font: 14px system-ui; margin: 24px; display: grid; gap: 14px; max-width: 520px; container-type: inline-size; }
+  div[data-want] { min-height: 20px; }
+
+  @layer components { #layer-later { padding: var(--space-4); } }
+  @layer base { #layer-later { padding: 2px; } }
+  #layer-unlayered { padding: var(--space-2); }
+  @layer components { #layer-unlayered { padding: 30px; } }
+  @layer base { #layer-important { padding: var(--space-4) !important; } }
+  #layer-important { padding: 4px !important; }
+
+  #inline-vs-important { padding: var(--space-2) !important; }
+  .where-low:where(.x) { padding: 40px; }
+  .where-low { padding: var(--space-4); }
+  :is(#is-high, .nothing) { border-radius: var(--radius); }
+  .is-high-loses { border-radius: 2px; }
+  div:not(#nope).not-spec { background-color: var(--brand); }
+  .not-spec { background-color: red; }
+  @media (min-width: 1px) { #media { padding: var(--space-4); } }
+  @media (max-width: 1px) { #media { padding: 50px; } }
+  @supports (display: grid) { #supports { border-radius: var(--radius); } }
+  @supports (display: nonsense) { #supports { border-radius: 50px; } }
+  @container (min-width: 1px) { #container { padding: var(--space-2); } }
+  .nest { color: black; &#nested { color: var(--brand); } }
+  .logical { padding-inline-start: var(--space-4); }
+  .logical.physical { padding-left: 3px; }
+  .logical-after.physical-first { padding-left: 3px; padding-inline-start: var(--space-2); }
+  .bottom-only { border-bottom: 1px solid var(--line); }
+  .shorthand-recolored { border: 2px solid transparent; border-color: var(--brand); }
+  .padding-then-inline { padding: 0; padding-inline: var(--space-4); }
+</style>
+</head><body>
+<div id="layer-later" data-want="padding: var(--space-4)">a later layer beats an earlier one</div>
+<div id="layer-unlayered" data-want="padding: var(--space-2)">unlayered beats layered</div>
+<div id="layer-important" data-want="padding: var(--space-4)">!important: an earlier layer beats unlayered</div>
+<div id="inline-vs-important" style="padding: 2px" data-want="padding: var(--space-2)">!important beats inline</div>
+<div class="where-low x" data-want="padding: var(--space-4)">:where() adds nothing</div>
+<div id="is-high" class="is-high-loses" data-want="border-radius: var(--radius)">:is() takes its strongest</div>
+<div class="not-spec" data-want="background: var(--brand)">:not() counts its argument</div>
+<div id="media" data-want="padding: var(--space-4)">only the media query that holds</div>
+<div id="supports" data-want="border-radius: var(--radius)">only the @supports that holds</div>
+<div id="container" data-want="padding: var(--space-2)">a container query</div>
+<p class="nest" id="nested" data-want="color: var(--brand)">native nesting</p>
+<div class="logical physical" data-want="padding: 0px 0px 0px 3px">a later physical side over a logical one</div>
+<div class="logical-after physical-first" data-want="padding: 0px 0px 0px var(--space-2)">later in the same block wins</div>
+<div class="padding-then-inline" data-want="padding: 0px var(--space-4)">padding, then padding-inline</div>
+<div class="bottom-only" data-want="border-bottom: 1px solid var(--line)">a bottom border only</div>
+<div class="shorthand-recolored" data-want="border: 2px solid var(--brand)">a shorthand, recoloured</div>
+<web-card id="shadow-card"></web-card>
+<script>
+  customElements.define('web-card', class extends HTMLElement {
+    constructor() {
+      super()
+      const r = this.attachShadow({ mode: 'open' })
+      const s = new CSSStyleSheet(); s.replaceSync(':host { display: block; } .inner { padding: var(--space-4); border-radius: var(--radius); background: #f3f4f6; }')
+      r.adoptedStyleSheets = [s]
+      r.innerHTML = '<div class="inner" data-want="padding: var(--space-4)">inside a web component</div>'
+    }
+  })
+</script>
+<script src="/inspeck.js"></script></body></html>

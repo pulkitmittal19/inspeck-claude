@@ -1,3 +1,10 @@
 node_modules/
 *.tmp
 .DS_Store
+
+# Built locally for widget/dev/tables/react.html (React table libraries, 1.4 MB)
+widget/dev/tables/react-bundle.js
+widget/dev/tables/overlays-bundle.js
+widget/dev/tables/systems/
+test-results/
+review/

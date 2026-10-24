@@ -1,0 +1,10 @@
+<!doctype html><html><head><meta charset="utf-8"><script src="/__dev/tables/shim.js"></script><title>A heavy page</title>
+<!-- 3,000 rows, all in the page at once (no reuse): how fast hovering picks on a big page. -->
+<style>body { font: 14px system-ui; margin: 24px; } td { padding: 6px 10px; border-bottom: 1px solid #eee; } .b { padding: 2px 8px; border-radius: 10px; background: #eef; font-size: 12px; }</style>
+</head><body><table id="t"><tbody></tbody></table>
+<script>
+  const rows = []
+  for (let i = 1; i <= 3000; i++) rows.push(`<tr><td><input type="checkbox"></td><td><b>Customer ${i}</b></td><td>customer${i}@acme.io</td><td><span class="b">${['Active', 'Invited', 'Paused'][i % 3]}</span></td><td>$${(i * 3.17).toFixed(2)}</td><td><button>Edit</button></td><td><a href="#">Open</a></td></tr>`)
+  document.querySelector('#t tbody').innerHTML = rows.join('')
+</script>
+<script src="/inspeck.js"></script></body></html>

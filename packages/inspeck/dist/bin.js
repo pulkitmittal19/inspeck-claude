@@ -120,6 +120,14 @@ function detect(cwd) {
       "src/pages/_document.js"
     ]) };
   }
+  if (deps["@docusaurus/core"]) {
+    const config = firstExisting(cwd, ["docusaurus.config.ts", "docusaurus.config.js", "docusaurus.config.mjs"]);
+    if (config) return { kind: "docusaurus", config };
+  }
+  const template = (name, file) => existsSync(join(cwd, file)) ? { kind: "template", file: join(cwd, file), name } : null;
+  if (deps["react-scripts"]) return template("Create React App", "public/index.html") ?? { kind: "other" };
+  if (deps["@vue/cli-service"]) return template("Vue CLI", "public/index.html") ?? { kind: "other" };
+  if (deps["@angular/core"]) return template("Angular", "src/index.html") ?? { kind: "other" };
   const html = firstExisting(cwd, ["index.html"]);
   if (html && !pkg) return { kind: "html", file: html };
   if (html && !deps.react && !deps.vue && !deps.svelte && !deps["@angular/core"]) return { kind: "html", file: html };
@@ -258,14 +266,43 @@ function printTag() {
   say(`      ${HTML_TAG}`);
   say("    Add it in development only; on any address that isn't this machine the widget stays silent anyway.");
 }
+var TAG_CODE = HTML_TAG.replace(/^<script>/, "").replace(/<\/script>$/, "");
+function wireDocusaurus(src) {
+  if (src.includes("inspeck.js")) return { src, result: "present" };
+  const item = `{ tagName: 'script', attributes: {}, innerHTML: ${JSON.stringify(TAG_CODE)} }`;
+  const list = /\bheadTags\s*:\s*\[/.exec(src);
+  if (list) {
+    const at2 = list.index + list[0].length;
+    return { src: `${src.slice(0, at2)}
+    ${item},${src.slice(at2)}`, result: "added" };
+  }
+  const config = /(?:const\s+config(?:\s*:\s*\w+)?\s*=\s*\{|module\.exports\s*=\s*\{|export\s+default\s+\{)[ \t]*\n?/.exec(src);
+  if (!config) return { src, result: "manual" };
+  const at = config.index + config[0].length;
+  return { src: `${src.slice(0, at)}  headTags: [${item}],
+${src.slice(at)}`, result: "added" };
+}
 function wireStorybookHead(src) {
   if (src?.includes("inspeck.js")) return { src, result: "present" };
   return { src: `${src ? `${src.replace(/\s*$/, "")}
 ` : ""}${HTML_TAG}
 `, result: "added" };
 }
+function storybookHasIt(cwd) {
+  const pkg = readJson(join(cwd, "package.json"));
+  const deps = Object.keys({ ...pkg?.dependencies, ...pkg?.devDependencies });
+  const main2 = firstExisting(join(cwd, ".storybook"), ["main.ts", "main.js", "main.mjs", "main.cjs", "main.mts"]);
+  const onVite = deps.some((d) => /^@storybook\/(.+-vite|builder-vite|sveltekit)$/.test(d)) || !!main2 && /builder-vite|@storybook\/[\w-]+-vite\b|@storybook\/sveltekit/.test(readFileSync(main2, "utf8"));
+  if (!onVite) return false;
+  const vite = firstExisting(cwd, ["vite.config.ts", "vite.config.mts", "vite.config.js", "vite.config.mjs", "vite.config.cjs"]);
+  return !!vite && /['"]inspeck\/vite['"]/.test(readFileSync(vite, "utf8"));
+}
 function wireStorybook(cwd) {
   if (!existsSync(join(cwd, ".storybook"))) return;
+  if (storybookHasIt(cwd)) {
+    done("Storybook runs on your Vite setup, so Inspeck comes with it in every story");
+    return;
+  }
   const file = join(cwd, ".storybook", "preview-head.html");
   const { src, result } = wireStorybookHead(existsSync(file) ? readFileSync(file, "utf8") : null);
   if (result === "present") {
@@ -415,7 +452,41 @@ ${r.out.trim()}`);
     }
     return;
   }
-  note("No Vite, Next.js, Astro, Nuxt or plain index.html here. Add this to your page's HTML (it loads only on this computer):");
+  if (app.kind === "template") {
+    const current = readFileSync(app.file, "utf8");
+    if (current.includes("inspeck.js")) {
+      done(`${rel(app.file)} already loads Inspeck`);
+      return;
+    }
+    note(`${app.name}: the tag goes in ${rel(app.file)}. It loads Inspeck only when the page is opened on this computer, never on a deployed site.`);
+    if (!await confirm(`Add the tag to ${rel(app.file)}?`, flags)) {
+      note("left it alone. To add it yourself:");
+      printTag();
+      return;
+    }
+    const { src, result } = wireHtml(current);
+    if (result === "added") {
+      writeFileSync(app.file, src);
+      done(`added the tag to ${rel(app.file)}`);
+    } else {
+      warn(`couldn't find </body> in ${rel(app.file)}. Add this before it:`);
+      printTag();
+    }
+    return;
+  }
+  if (app.kind === "docusaurus") {
+    const { src, result } = wireDocusaurus(readFileSync(app.config, "utf8"));
+    if (result === "present") done(`${rel(app.config)} already loads Inspeck`);
+    else if (result === "added") {
+      writeFileSync(app.config, src);
+      done(`added Inspeck to headTags in ${rel(app.config)} (it loads only when the site is opened on this computer)`);
+    } else {
+      warn(`couldn't find where to add it in ${rel(app.config)}. Add this to its headTags:`);
+      say(`      { tagName: 'script', attributes: {}, innerHTML: ${JSON.stringify(TAG_CODE)} }`);
+    }
+    return;
+  }
+  note("No Vite, Next.js, Astro, Nuxt, Angular, Create React App, Vue CLI, Docusaurus or plain index.html here. Add this to your page's HTML (it loads only on this computer):");
   printTag();
 }
 async function main(argv) {

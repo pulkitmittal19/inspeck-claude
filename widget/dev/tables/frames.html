@@ -1,0 +1,13 @@
+<!doctype html><html><head><meta charset="utf-8"><script src="/__dev/tables/shim.js"></script><title>Tables in iframes</title>
+<style> body { font: 13px system-ui; margin: 16px; } iframe { display: block; width: 1180px; border: 1px solid #ccc; margin: 8px 0 20px; } </style>
+</head><body>
+<p>Same-site frame (native tables)</p><iframe id="f-native" src="native.html" style="height:520px"></iframe>
+<p>Same-site frame (React tables)</p><iframe id="f-react" src="react.html" style="height:600px"></iframe>
+<p>A frame inside a frame</p><iframe id="f-nested" srcdoc='<!doctype html><script src="/__dev/tables/shim.js"></script><body style="margin:0"><iframe id="inner" src="/__dev/tables/tabulator.html" style="width:1150px;height:330px;border:0"></iframe></body>' style="height:340px"></iframe>
+<p>Inline frame (srcdoc), and one scaled down with CSS</p>
+<iframe id="f-srcdoc" style="height:220px" srcdoc='<!doctype html><script src="/__dev/tables/shim.js"></script><script src="/__dev/tables/data.js"></script><table id="t" style="border-collapse:collapse"></table><script>document.getElementById("t").innerHTML = ROWS.map(r => `<tr><td style="padding:8px">${cells.who(r)}</td><td style="padding:8px">${cells.status(r)}</td><td style="padding:8px">${cells.actions()}</td></tr>`).join("")</script>'></iframe>
+<iframe id="f-scaled" src="gridjs.html" style="height:700px;transform:scale(0.6);transform-origin:0 0;margin-bottom:-260px"></iframe>
+<p>Added after the page loaded</p><div id="late"></div>
+<p>Another website (no script can reach inside: noted as a whole)</p><iframe id="f-cross" src="https://example.com" style="height:120px"></iframe>
+<script>setTimeout(() => { const f = document.createElement('iframe'); f.id = 'f-late'; f.src = 'datatables.html'; f.style.height = '420px'; document.getElementById('late').appendChild(f) }, 1500)</script>
+<script src="/inspeck.js"></script></body></html>

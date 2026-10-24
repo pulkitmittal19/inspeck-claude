@@ -59,7 +59,7 @@ export function listen(on: (e: VoiceEvent) => void): Listening {
       }
       if (!over && !ctrl.signal.aborted) finish({ type: 'error', code: 'failed', message: 'Listening stopped unexpectedly.' })
     } catch {
-      if (!ctrl.signal.aborted) finish({ type: 'error', code: 'offline', message: 'Can’t reach Inspeck to listen. Is a Claude session open?' })
+      if (!ctrl.signal.aborted) finish({ type: 'error', code: 'offline', message: 'Can’t reach Inspeck to listen. Open a Claude chat, then try again.' })
     }
   })()
   return {

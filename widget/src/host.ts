@@ -4,8 +4,10 @@
  *  - It is a manual popover, shown at mount, so it paints in the top layer —
  *    above the app's portals, popovers and z-index wars. When something else
  *    enters the top layer, we re-show it so it stays last (and so on top).
- *  - A modal <dialog> makes everything outside it inert, including us. While
- *    one is open the host moves inside it, and moves back when it closes.
+ *  - A modal <dialog> makes everything outside it inert, including us, and the
+ *    browser closes an open popover="auto" on any click outside it, including
+ *    on us (it can't be stopped). While one is open the host moves inside it, so
+ *    clicks on Inspeck count as inside, and moves back when it closes.
  *  - Libraries that hide "everything else" for a modal set inert/aria-hidden
  *    on our host; those are removed as soon as they appear.
  *  - If a framework re-render removes the host, it is put back.
@@ -42,7 +44,18 @@ export function createHost(): Host {
     } catch { /* not in a document that allows it; z-index still applies */ }
   }
 
-  const home = () => document.querySelector<HTMLDialogElement>('dialog:modal') ?? document.documentElement
+  /* Open auto popovers, the last opened last. */
+  const autos: Element[] = []
+  const isAuto = (t: Element) => ['', 'auto', 'hint'].includes(t.getAttribute('popover')?.toLowerCase() ?? 'manual')
+  if (canPopover) try { autos.push(...[...document.querySelectorAll(':popover-open')].filter(isAuto)) } catch { /* no :popover-open */ }
+  const home = (): Element => {
+    const dialog = document.querySelector('dialog:modal')
+    for (let i = autos.length - 1; i >= 0; i--) {
+      const p = autos[i]
+      if (p.isConnected && p.matches(':popover-open') && (!dialog || dialog.contains(p))) return p
+    }
+    return dialog ?? document.documentElement
+  }
   const place = () => {
     const parent = home()
     if (el.parentNode !== parent) {
@@ -61,6 +74,11 @@ export function createHost(): Host {
   const onToggle = (e: Event) => {
     const t = e.target as Element
     if (t === el) return
+    if (t.hasAttribute?.('popover') && isAuto(t)) {
+      const i = autos.indexOf(t)
+      if (i >= 0) autos.splice(i, 1)
+      if ((e as ToggleEvent).newState === 'open') autos.push(t)
+    }
     if ((e as ToggleEvent).newState === 'open') queueMicrotask(() => { place(); raise() })
     else queueMicrotask(place)
   }

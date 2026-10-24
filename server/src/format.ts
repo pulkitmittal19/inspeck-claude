@@ -260,6 +260,10 @@ export function render(c: Comment): string {
   if (c.source?.length) {
     lines.push(row('code', sourceText(c.source[0])))
     for (const s of c.source.slice(1)) lines.push(row('used in', sourceText(s)))
+  } else if (!c.group) {
+    /* The page couldn't say (Angular, a page Django or Rails rendered, plain HTML): how to find it instead. */
+    const by = [c.element.trail?.length ? `where ${c.element.trail[c.element.trail.length - 1]} is declared` : null, 'the classes in the selector', c.element.text ? 'the words shown' : null].filter(Boolean)
+    lines.push(row('code', `not given by the page: search the project for ${by.join(', then ')}`))
   }
   for (const l of c.css ?? []) {
     lines.push(row('css', `${l.property}: ${l.value};${l.resolved ? `   ${l.resolved}` : ''}`))

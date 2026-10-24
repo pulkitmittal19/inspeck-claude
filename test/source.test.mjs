@@ -9,7 +9,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import { build } from 'esbuild'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
-let sourceOf, componentOf, shortName, lineIn
+let sourceOf, componentOf, shortName, lineIn, tidy, openPathOf
 
 before(async () => {
   globalThis.location = new URL('http://localhost:5173/app')
@@ -24,6 +24,8 @@ before(async () => {
   ;({ componentOf } = await bundle('widget/src/css/describe.ts'))
   ;({ shortName } = await bundle('widget/src/css/highlight.ts'))
   ;({ lineIn } = await bundle('widget/src/defs.ts'))
+  ;({ tidy } = await bundle('widget/src/sourcemap.ts'))
+  ;({ openPathOf } = await bundle('widget/src/transient.ts'))
 })
 
 /* A stand-in element: attributes, a parent, and whatever else a framework hangs on it. */
@@ -118,4 +120,46 @@ test('React 19 server components: React\'s own frames are skipped, and the chunk
   const out = await sourceOf(node)
   assert.deepEqual(out[0], { file: 'file:///Users/me/app/.next/dev/server/chunks/ssr/%5Broot%5D__x._.js?13', line: 128, column: 276 })
   assert.equal(componentOf(node), 'Home', 'named after the server component that rendered it')
+})
+
+test('Astro in development: the file and line it stamps on each element', async () => {
+  const main = el({ 'data-astro-source-file': '/Users/me/site/src/pages/index.astro', 'data-astro-source-loc': '13:3' })
+  const h1 = el({ 'data-astro-source-file': '/Users/me/site/src/pages/index.astro', 'data-astro-source-loc': '14:7' }, main)
+  assert.deepEqual(await sourceOf(h1), [
+    { file: '/Users/me/site/src/pages/index.astro', line: 14, column: 7 },
+    { file: '/Users/me/site/src/pages/index.astro', line: 13, column: 3 },
+  ])
+})
+
+test('webpack’s names for a file read as the path in the project', () => {
+  assert.equal(tidy('webpack-internal:///(pages-dir-browser)/./pages/index.tsx'), 'pages/index.tsx', 'Next.js Pages Router')
+  assert.equal(tidy('webpack-internal:///(app-pages-browser)/./app/page.tsx'), 'app/page.tsx', 'Next.js App Router on webpack')
+  assert.equal(tidy('webpack://_N_E/./components/Nav.tsx?3a1f'), 'components/Nav.tsx')
+  assert.equal(tidy('webpack-internal:///./src/App.js'), 'src/App.js', 'Create React App')
+  assert.equal(tidy('http://localhost:5173/src/App.tsx?t=17'), '/src/App.tsx', 'Vite, as before')
+})
+
+test('a dialog labelled by its own title (Radix, and any accessible dialog) is no menu path, and never loops', () => {
+  /* Stand-ins: body > dialog[role=dialog][aria-labelledby=t] > h2#t + p. */
+  const byId = {}
+  const node = (tag, attrs = {}, parent = null) => {
+    const n = {
+      tagName: tag.toUpperCase(), id: attrs.id ?? '', parentElement: parent, kids: [],
+      getAttribute: k => attrs[k] ?? null,
+      contains: o => { for (let x = o; x; x = x.parentElement) if (x === n) return true; return false },
+      querySelector: () => null,
+      closest: sel => { for (let x = n; x; x = x.parentElement) if (x.layer && sel.includes('[role=dialog]')) return x; return null },
+      innerText: attrs.text ?? '',
+    }
+    if (attrs.id) byId[attrs.id] = n
+    parent?.kids.push(n)
+    return n
+  }
+  const body = node('body')
+  const dialog = Object.assign(node('div', { role: 'dialog', 'aria-labelledby': 'title' }, body), { layer: true })
+  node('h2', { id: 'title', text: 'Edit profile' }, dialog)
+  const field = node('p', {}, dialog)
+  globalThis.document = { querySelector: () => null, getElementById: id => byId[id] ?? null }
+  globalThis.CSS = { escape: s => s }
+  assert.equal(openPathOf(field), null, 'the dialog’s own title doesn’t open it')
 })

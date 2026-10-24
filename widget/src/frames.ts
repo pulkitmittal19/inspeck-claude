@@ -4,8 +4,12 @@
  * move and click goes to the frame's own document. So Inspeck can't reach in
  * from outside; it runs inside each frame instead.
  *
- *  - The top page's Inspeck puts itself into every frame it can (same-origin,
- *    a real page, not about:blank), and into frames added later.
+ *  - The top page's Inspeck puts itself into every frame it can (same-origin:
+ *    a page of this site, or an inline frame once there's something in it),
+ *    into frames added later, and into one the pointer comes over that a
+ *    script filled in since.
+ *  - A frame with no address of its own keeps its notes under the page's
+ *    address, as a route of its own (see pageHref).
  *  - Inside a frame whose top page runs Inspeck, it runs quietly: no pill, no
  *    tour, open when the top one is. It does the hovering, the CSS card and
  *    the notes for its own frame; the top page leaves that frame to it.
@@ -48,11 +52,14 @@ export function framedByInspeck(el: Element): boolean {
   try { return !!(el.contentWindow as (Window & { __INSPECK__?: unknown }) | null)?.__INSPECK__ } catch { return false }
 }
 
-/** Put Inspeck into a frame that doesn't have it yet. */
-function reach(frame: HTMLIFrameElement): void {
+/** Put Inspeck into a frame that doesn't have it yet: a page of this site, or an inline one (`srcdoc`, or a
+    blank frame a script wrote into), once it has something in it. */
+export function reachFrame(frame: HTMLIFrameElement): void {
   try {
     const win = frame.contentWindow, doc = frame.contentDocument
-    if (!win || !doc || !/^https?:$/.test(doc.location.protocol)) return
+    if (!win || !doc) return
+    const inline = doc.location.protocol === 'about:' && !!doc.body?.firstElementChild
+    if (!/^https?:$/.test(doc.location.protocol) && !inline) return
     if ((win as Window & { __INSPECK__?: unknown }).__INSPECK__ || doc.querySelector('script[src*="inspeck.js"]')) return
     const s = doc.createElement('script')
     s.src = `${SERVER}/inspeck.js`
@@ -65,8 +72,8 @@ function reach(frame: HTMLIFrameElement): void {
 /** Reach every frame on the page now, each again when it loads a new page, and frames added later. */
 export function reachFrames(): () => void {
   const watch = (frame: HTMLIFrameElement) => {
-    reach(frame)
-    frame.addEventListener('load', () => reach(frame))
+    reachFrame(frame)
+    frame.addEventListener('load', () => reachFrame(frame))
   }
   document.querySelectorAll('iframe').forEach(watch)
   const seen = new MutationObserver(records => {

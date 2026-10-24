@@ -4,16 +4,16 @@ import { api, type GroupMember, type Note } from './api'
 import { createCard, type Card } from './card'
 import { warmUp } from './css/cascade'
 import { borrowSheetsWith } from './css/rules'
-import { peerIn, reachFrames } from './frames'
-import { h, isEditable } from './dom'
+import { framedByInspeck, peerIn, reachFrame, reachFrames } from './frames'
+import { h, isEditable, typingOnPage } from './dom'
 import { cap, isToggleKey, keyName } from './keys'
-import { createMenuHint, opensMenu, type MenuHint } from './menuhint'
-import { tabStore } from './env'
+import { createMenuHint, menuButton, type MenuHint } from './menuhint'
+import { pageHref, pageUrl, tabStore } from './env'
 import { createFreeze, FROZEN_BLOCK, type Freeze } from './freeze'
 import { createHost, type Host } from './host'
 import { anchorOf, createNotes, pageNow, type Notes } from './notes'
 import { createOutline, type Outline } from './outline'
-import { childToward, elementAt, parentOf, pickable, snap, clickThroughAt, paints } from './pick'
+import { childToward, elementAt, parentOf, pickable, snap, clickThroughAt, paints, textAt, textRect } from './pick'
 import { actionOf, createRouter } from './router'
 import { selectorFor } from './selector'
 import { createSpacing, type Spacing } from './spacing'
@@ -42,6 +42,8 @@ const MENU_WAIT_MS = 10000
 
 /** After Enter, how long a note waits for its place in the code before going without it. */
 const SOURCE_WAIT_MS = 2500
+/** Elements past which a resting pointer no longer looks for tooltips (a click still does). */
+const BIG_PAGE = 10_000
 const wait = <T>(ms: number, value: T) => new Promise<T>(r => setTimeout(() => r(value), ms))
 
 /** How far the pointer moves with the button down before a click becomes a drag. */
@@ -67,6 +69,8 @@ export class App {
   readonly settings: Settings
   readonly freeze: Freeze
   private frost: HTMLDivElement
+  /** Over a frame from another site, which takes the pointer from the page: catches it for Inspeck instead. */
+  private shield: HTMLDivElement
   /** Shift is held: show the hovered element's spacing. */
   private shift = false
   /** Where Shift went down: measured on its own, and the far end of every distance after. */
@@ -76,6 +80,8 @@ export class App {
   through = false
   /** The element the person is pointing at (after snapping and ↑/↓). */
   target: Element | null = null
+  /** The words in it the pointer is on, when they're a thing of their own (see textAt): the pick is them. */
+  textPick: Text | null = null
   /** The element whose card is pinned, while a note is being written. */
   pinned: Element | null = null
   private pointer = { x: -1, y: -1 }
@@ -116,6 +122,8 @@ export class App {
     /* First in the layer, so the card, markers and pill all sit above it. */
     this.frost = h('div', { class: 'frost', hidden: true })
     this.host.ui.appendChild(this.frost)
+    this.shield = h('div', { class: 'frost shield', hidden: true })
+    this.host.ui.appendChild(this.shield)
     this.toolbar = createToolbar(this.host.ui)
     this.toolbar.setPressed('css', this.cssOnHover)
     this.tour = createTour(this.host.ui)
@@ -137,7 +145,7 @@ export class App {
     prefs.onChange(() => {
       this.card.refresh()
       const now = prefs.get().send
-      if (now === 'live' && sending === 'ask') void api.sendHeld({ site: location.origin }).then(() => this.notes.refresh(), () => {})
+      if (now === 'live' && sending === 'ask') void api.sendHeld({ site: pageUrl().origin }).then(() => this.notes.refresh(), () => {})
       sending = now
     })
     this.outline = createOutline(this.host.ui, (el, r) => {
@@ -214,9 +222,10 @@ export class App {
   private offerMenu(): void {
     const t = this.target
     const still = () => this.open && !this.pinned && !this.shift && !this.marquee.dragging && !!t && this.target === t
-    if (!still() || !opensMenu(t!)) return
+    const button = still() ? menuButton(t!) : null
+    if (!button) return
     clearTimeout(this.menuHintTimer)
-    this.menuHintTimer = window.setTimeout(() => { if (still()) this.menuHint.show(t!.getBoundingClientRect()) }, MENU_HINT_MS - REST_MS)
+    this.menuHintTimer = window.setTimeout(() => { if (still()) this.menuHint.show(button.getBoundingClientRect()) }, MENU_HINT_MS - REST_MS)
   }
 
   private act(action: string): void {
@@ -288,6 +297,8 @@ export class App {
       const onOverlay = !!o && o.isConnected && paints(o) && (r => x >= r.left && x <= r.right && y >= r.top && y <= r.bottom)(o.getBoundingClientRect())
       if (!onOverlay) this.overlay = null
       const raw = onOverlay ? o : elementAt(x, y, this.host.el)
+      /* A frame a script filled in after it loaded: Inspeck goes in now, and answers for it from inside. */
+      if (raw instanceof HTMLIFrameElement) reachFrame(raw)
       /* Once the pointer rests, look again for a click-through layer on top. */
       clearTimeout(this.restTimer)
       if (!onOverlay) this.restTimer = window.setTimeout(() => { this.lookThrough(); this.offerMenu() }, REST_MS)
@@ -297,13 +308,22 @@ export class App {
       this.rest = null
       this.raw = raw
       this.stepped = false
-      this.setTarget(raw ? snap(raw) : null)
+      this.pickAt(raw, x, y)
     })
   }
 
-  /** The pointer rested: is a tooltip or another click-through layer showing on top of what it picked? */
+  /** Pick what the pointer means from the raw element under it: the element, or the words in it it's on. */
+  private pickAt(raw: Element | null, x: number, y: number): void {
+    const el = raw ? snap(raw) : null
+    this.setTarget(el, el ? textAt(el, x, y) : null)
+  }
+
+  /** The pointer rested: is a tooltip or another click-through layer showing on top of what it picked? Looking
+      restyles the whole page for a moment (3–5 ms per thousand elements), so on a very big page it waits for a
+      click instead, which still finds one: hovering stays smooth. */
   private lookThrough(): void {
     if (!this.open || this.pinned || this.marquee.dragging || this.stepped) return
+    if (document.getElementsByTagName('*').length > BIG_PAGE) return
     const found = clickThroughAt(this.pointer.x, this.pointer.y, this.host.el)
     if (!found || found === this.raw) return
     this.overlay = found
@@ -312,18 +332,20 @@ export class App {
     this.setTarget(found)
   }
 
-  setTarget(el: Element | null): void {
+  setTarget(el: Element | null, words: Text | null = null): void {
     if (this.pinned) return
     if (!pickable(el, this.host.el)) el = null
     if (!el || el !== this.target) { clearTimeout(this.menuHintTimer); this.menuHint.hide() }
     this.target = el
+    this.textPick = el ? words : null
+    this.cover(el)
     if (el) {
       /* Notes mode: just the outline. The CSS comes with the note, folded. */
       if (this.cssOnHover) {
-        this.card.showHover(el)
+        this.card.showHover(el, this.textPick)
         if (this.shift) this.card.el.hidden = true
       } else if (this.card.mode === 'hover') this.card.hide()
-      this.outline.show(el)
+      this.outline.show(el, this.textPick)
     } else {
       this.outline.hide()
       this.card.hide()
@@ -331,8 +353,28 @@ export class App {
     }
   }
 
+  /**
+   * A frame from another site (an embedded video, a map, a payment form) takes every move and click from the
+   * page, so Inspeck would never hear the pointer over it again, and couldn't place a note on it. While it's the
+   * pick, an invisible shield lies over it: the pointer and the next click come to Inspeck, and moving off it
+   * picks what's there as usual. A frame that runs Inspeck itself answers for its inside instead (frames.ts).
+   */
+  private cover(el: Element | null): void {
+    const over = el instanceof HTMLIFrameElement && !this.pinned && !framedByInspeck(el)
+    this.shield.hidden = !over
+    if (!over) return
+    const r = el.getBoundingClientRect()
+    Object.assign(this.shield.style, { left: `${r.left}px`, top: `${r.top}px`, width: `${r.width}px`, height: `${r.height}px` })
+  }
+
   private step(dir: 'up' | 'down'): void {
     if (!this.target) return
+    /* From some words, up is the element they're in. */
+    if (dir === 'up' && this.textPick) {
+      this.stepped = true
+      this.setTarget(this.target)
+      return
+    }
     const next = dir === 'up' ? parentOf(this.target) : childToward(this.target, this.pointer.x, this.pointer.y)
     if (next && pickable(next, this.host.el)) {
       this.stepped = true
@@ -351,16 +393,18 @@ export class App {
       if (el !== this.pinned) this.unpin()
       return
     }
-    if (el) this.pin(el)
+    if (el) this.pin(el, undefined, this.textPick)
   }
 
-  pin(el: Element, existing?: Note): void {
+  pin(el: Element, existing?: Note, words: Text | null = null): void {
     /* Hold the page still while the note is written: an open menu stays open. */
     this.freeze.freeze(false)
     this.menuHint.hide()
     this.pinned = el
     this.target = el
-    this.outline.show(el)
+    this.textPick = words
+    this.shield.hidden = true
+    this.outline.show(el, words)
     this.sent = false
     /* Start looking for where it's written now; it's usually found before Enter. */
     const where = sourceOf(el)
@@ -368,6 +412,7 @@ export class App {
       existing: existing ? { n: existing.n, note: existing.note } : undefined,
       draft: existing ? undefined : this.drafts.get(el),
       cssOpen: this.cssOnHover,
+      words,
       onSend: async text => {
         if (existing) {
           await api.edit(existing.id, text)
@@ -375,7 +420,9 @@ export class App {
           return
         }
         const source = await Promise.race([where, wait(SOURCE_WAIT_MS, [] as SourceAt[])])
-        const note = await api.add({ ...this.noteFor(el, text), ...(source.length ? { source } : {}), held: this.holding })
+        /* Gone while the note was written (a toast that closed itself): as it was when the note was opened. */
+        const about = el.isConnected ? this.noteFor(el, text, words) : { ...opened, note: text }
+        const note = await api.add({ ...about, ...(source.length ? { source } : {}), held: this.holding })
         this.sent = true
         this.drafts.delete(el)
         this.notes.added(note, el)
@@ -383,7 +430,12 @@ export class App {
       },
       onClose: () => this.unpin(),
       onDelete: existing ? async () => { await api.remove(existing.id); await this.notes.refresh() } : undefined,
+      place: async () => {
+        const { page, element } = el.isConnected ? this.noteFor(el, '', words) : opened
+        return { page, element, code: await Promise.race([where, wait(SOURCE_WAIT_MS, [] as SourceAt[])]) }
+      },
     })
+    const opened = this.noteFor(el, '', words)
   }
 
   /* ---------- a note on a section ---------- */
@@ -431,6 +483,7 @@ export class App {
     const holder = commonAncestor(members) ?? document.body
     this.pinned = holder
     this.target = holder
+    this.textPick = null
     this.outline.hide()
     this.marquee.hold(members, members.length ? null : { left: box.left + scrollX, top: box.top + scrollY, right: box.right + scrollX, bottom: box.bottom + scrollY })
     const around = unionOf(members) ?? box
@@ -463,7 +516,7 @@ export class App {
     const area = unionOf(members) ?? box
     return {
       note: text,
-      page: location.href,
+      page: pageHref(),
       element: { selector: holder === document.body ? 'body' : selectorFor(holder), tag: holder.tagName.toLowerCase(), name: members.length ? `${members.length} elements` : 'Area' },
       group: members.map(m => {
         const t = ((m as HTMLElement).innerText ?? m.textContent ?? '').replace(/\s+/g, ' ').trim()
@@ -482,6 +535,7 @@ export class App {
     else if (!draft) this.drafts.delete(this.pinned)
     this.sent = false
     this.pinned = null
+    this.textPick = null
     this.freeze.unfreeze(false)
     this.card.hide()
     this.outline.hide()
@@ -493,13 +547,13 @@ export class App {
     if (this.open) this.schedulePick()
   }
 
-  private noteFor(el: Element, text: string) {
-    const r = el.getBoundingClientRect()
+  private noteFor(el: Element, text: string, words: Text | null = null) {
+    const r = words ? textRect(words) : el.getBoundingClientRect()
     const d = this.card.description
-    const visible = ((el as HTMLElement).innerText ?? el.textContent ?? '').replace(/\s+/g, ' ').trim()
+    const visible = ((words ? words.textContent : (el as HTMLElement).innerText ?? el.textContent) ?? '').replace(/\s+/g, ' ').trim()
     return {
       note: text,
-      page: location.href,
+      page: pageHref(),
       element: {
         selector: selectorFor(el),
         tag: el.tagName.toLowerCase(),
@@ -519,8 +573,8 @@ export class App {
 
   /** Events inside Inspeck's own UI. */
   private onUi(e: Event): void {
-    /* While frozen the frost catches the pointer; treat it as the page. */
-    if (e.composedPath()[0] === this.frost) {
+    /* While frozen the frost catches the pointer, and over another site's frame the shield does; treat it as the page. */
+    if (e.composedPath()[0] === this.frost || e.composedPath()[0] === this.shield) {
       if (e.type === 'pointermove') {
         const p = e as PointerEvent
         this.pointer = { x: p.clientX, y: p.clientY }
@@ -563,6 +617,12 @@ export class App {
     }
     if (!this.open) return
 
+    /* Entering a frame: the page hears this and then nothing more while the pointer is in it, so pick now. */
+    if (e.type === 'pointerover' && e.target instanceof HTMLIFrameElement && !this.pinned) {
+      const p = e as PointerEvent
+      this.pointer = { x: p.clientX, y: p.clientY }
+      this.schedulePick()
+    }
     if (e.type === 'pointermove') {
       const p = e as PointerEvent
       this.pointer = { x: p.clientX, y: p.clientY }
@@ -599,7 +659,7 @@ export class App {
     const raw = clickThroughAt(p.clientX, p.clientY, this.host.el) ?? elementAt(p.clientX, p.clientY, this.host.el)
     this.rest = null
     if (!this.pinned) {
-      if (!this.stepped || raw !== this.raw) { this.raw = raw; this.stepped = false; this.setTarget(raw ? snap(raw) : null) }
+      if (!this.stepped || raw !== this.raw) { this.raw = raw; this.stepped = false; this.pickAt(raw, p.clientX, p.clientY) }
     } else {
       this.target = raw ? snap(raw) : null
     }
@@ -612,7 +672,7 @@ export class App {
        open it's a letter too: it goes into the note (below). Pressed while a menu is open, the menu
        stays open (a key doesn't close it the way a click would), which is how you note inside one. */
     /* A focused dropdown takes letters too: I jumps to its "I…" option. */
-    const typing = isEditable(e.composedPath()[0] as Element) || isEditable(document.activeElement) || document.activeElement instanceof HTMLSelectElement
+    const typing = typingOnPage(e)
     if (isToggleKey(e) && !typing && !(this.open && this.pinned)) {
       if (!e.repeat) this.toggleFromKey()
       e.preventDefault()
@@ -626,7 +686,7 @@ export class App {
        app's fields has the focus (an auto-focused search or message box). */
     if (e.key === 'Shift') { if (!this.pinned) this.setShift(true); return }
     /* Typing in the app's own fields stays the app's business. */
-    if (isEditable(document.activeElement)) return
+    if (typingOnPage(e)) return
     /* A note is open but the cursor isn't in it: no key is a shortcut now.
        Escape still closes; anything else puts the cursor back in the note. */
     if (this.pinned && e.key !== 'Escape') {

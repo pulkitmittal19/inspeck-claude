@@ -4,11 +4,14 @@
  * Markers stay glued to their element through scrolling, resizing and layout
  * shifts. After a reload or a re-render the element is found again by its
  * selector, and checked against a fingerprint (its tag and the start of its
- * text) so a marker never jumps onto the wrong thing. If it can't be found,
+ * text) so a marker never jumps onto the wrong thing, rechecked whenever the
+ * element's words change (a long list reusing its rows as you scroll). Failing
+ * that, the one element with the same tag and words. If it can't be found,
  * the marker waits, dimmed, where the element was.
  *
  * A note disappears once Claude has dealt with it (resolved or declined).
  */
+import { pageHref } from './env'
 import { api, type Note } from './api'
 import { enter, leave } from './anim'
 import { clear, h, queryDeep } from './dom'
@@ -52,7 +55,7 @@ export function anchorOf(el: Element): { x: number; y: number; visible: boolean 
 const open = (n: Note) => n.status === 'new'
 /* The page as the server keys it: a hash route (`#/settings`) is its own page,
    a plain anchor (`#pricing`) is the same page scrolled. */
-export const pageNow = () => /^#!?\//.test(location.hash) ? location.href : location.href.split('#')[0]
+export const pageNow = () => { const u = pageHref(); return /^#!?\//.test(new URL(u).hash) ? u : u.split('#')[0] }
 
 export interface Notes {
   /** A note was just sent: show its marker straight away. */
@@ -90,18 +93,56 @@ export function createNotes(ui: HTMLElement, onOpen: (note: Note, el: Element | 
 
   /* ---------- finding the element again ---------- */
 
+  /** Whether an element is still the one a note is on: its tag, and its words starting the same, as whole words:
+      "Pro plan" is still "Pro plan (most popular)" after an edit, but a row "Order #30" is never "Order #3". */
+  function same(n: Note, el: Element): boolean {
+    if (n.element.tag && el.tagName.toLowerCase() !== n.element.tag) return false
+    if (!n.element.text) return true
+    const now = ((el as HTMLElement).innerText ?? el.textContent ?? '').replace(/\s+/g, ' ').trim()
+    const start = n.element.text.slice(0, 20)
+    if (!now.startsWith(start)) return false
+    /* Cut short here, not by the element: the words carried on. */
+    if (n.element.text.length > start.length) return true
+    const next = now.charAt(start.length)
+    return !next || /[\s\p{P}]/u.test(next)
+  }
+
+  /* What each found element's words were when last checked: a list that reuses its rows as you scroll keeps the
+     element on the page but writes another row into it, and a marker must not ride along. */
+  const seen = new Map<string, string | null>()
+  const searched = new Map<string, number>()
+
   function find(n: Note): Element | null {
     const cached = els.get(n.id)?.deref()
-    if (cached?.isConnected) return cached
-    let el: Element | null = null
-    el = queryDeep(n.element.selector)
-    if (el && n.element.tag && el.tagName.toLowerCase() !== n.element.tag) el = null
-    if (el && n.element.text) {
-      const now = ((el as HTMLElement).innerText ?? el.textContent ?? '').replace(/\s+/g, ' ').trim()
-      if (!now.startsWith(n.element.text.slice(0, 20))) el = null
+    if (cached?.isConnected) {
+      const words = cached.textContent
+      if (words === seen.get(n.id) || same(n, cached)) { seen.set(n.id, words); return cached }
     }
-    if (el) els.set(n.id, new WeakRef(el))
+    els.delete(n.id)
+    let el = queryDeep(n.element.selector)
+    if (el && !same(n, el)) el = null
+    el ??= byWords(n)
+    if (el) { els.set(n.id, new WeakRef(el)); seen.set(n.id, el.textContent) }
     return el
+  }
+
+  /** When the address finds something else (that list again, drawing its rows anew in another order): the one
+      element with the same tag and words, if there's exactly one. A row starting with a cell's words holds that
+      cell: the innermost is the one the words are. Looked for a few times a second at most. */
+  function byWords(n: Note): Element | null {
+    if (!n.element.text || !n.element.tag) return null
+    const now = performance.now()
+    if (now - (searched.get(n.id) ?? 0) < 300) return null
+    searched.set(n.id, now)
+    const hits: Element[] = []
+    for (const e of Array.from(document.getElementsByTagName(n.element.tag))) {
+      const t = e.textContent
+      /* A container around half the page isn't a thing someone noted by its words. */
+      if (!t || t.length > 1000 || !same(n, e)) continue
+      hits.push(e)
+    }
+    const innermost = hits.filter(e => !hits.some(o => o !== e && e.contains(o)))
+    return innermost.length === 1 ? innermost[0] : null
   }
 
   /** A note on a dragged area: the elements still on the page. */

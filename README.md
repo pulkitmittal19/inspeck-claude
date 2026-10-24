@@ -7,7 +7,7 @@ Inspeck is two pieces in one plugin:
 - **The widget**, in your page: a small dark circle in the corner. It runs in the Claude desktop app's browser pane, or any browser on your machine.
 - **The plugin**, in Claude Code: it serves the widget, keeps your notes, and hands them to the right Claude session.
 
-Inspeck runs on **macOS**, with Claude Code (the desktop app or the terminal) and Node.js 20 or later. Voice notes need macOS 26.
+Inspeck runs on **macOS**, with Claude Code (the desktop app or the terminal) and Node.js 20 or later, wherever it's installed (Homebrew, nvm, fnm, Volta, asdf, mise or the nodejs.org installer; `INSPECK_NODE` names one by hand). Without it, Inspeck says so when a chat starts, and Claude offers to install it. Voice notes need macOS 26.
 
 ## Install
 
@@ -19,7 +19,7 @@ npx inspeck init
 
 That's all. It installs the Inspeck plugin into Claude Code (every session starts it from then on), turns on Claude Code's auto-update for it and tells you so (`--no-auto-update` to skip), and adds the widget to your app the way it's built: `inspeck()` in a Vite config (React, Vue, Svelte, SvelteKit and other Vite apps) or in Astro's config, a development-only tag in a Next.js layout or in Nuxt's page head, or a tag that loads only on your computer in a plain `index.html` (it asks first). With Vite and Astro the widget comes through your dev server itself (`/__inspeck/`), so it works on any page the server renders and on the "Network" address too (`http://192.168.x.x:5173`). Running it again changes nothing.
 
-Then, in Claude: **`/inspeck:start`**. It opens your app in the browser pane, turns Inspeck on and links it to the chat. The first time Inspeck opens, a four-step tour shows the basics.
+Then, in Claude: **`/inspeck:start`**. It opens your app in the browser pane, turns Inspeck on and links it to the chat. If your project runs more than one (an app and Storybook, a site and an admin panel), it asks once and turns Inspeck on for each, and any local app Claude opens later in the chat is linked the same way. Set up once per project, Inspeck is in every run of it, on any port, in every tab and browser. The first time Inspeck opens, a four-step tour shows the basics.
 
 **Inside the Claude app you don't even need the second part.** When Claude opens your app in its browser pane, it adds Inspeck to the page itself, so with just the plugin installed your code stays untouched. The app step is for using Inspeck in your own browser (Chrome, Safari, Arc).
 
@@ -89,11 +89,11 @@ Open your app and click the circle in the corner, or press **I** (anywhere but a
 
 | | |
 |---|---|
-| **Hover** | an outline on the element, nothing else: Inspeck stays out of the way while you look for what to note |
+| **Hover** | an outline on the smallest thing under the pointer, the way a design tool selects: the icon in a button, the badge in a table row, the title on a card, or just the words of a label (the card then shows their type). The button, row or card itself is picked on its own padding, or one **↑** away. Icons that ignore the pointer and cards that are one big link are seen through |
 | **C** or `</>` | CSS on hover: the element's key CSS follows the pointer (5–6 declarations for its kind; a value from a token shows the token's name in a chip, with the real value beside it). Remembered across reloads |
 | **Drag** | across a section, as in Figma: every element the box covers is outlined, and one note goes on all of them. Over empty space, the note is on that area |
 | **Click** | pin a card to it and write a note. Its CSS is there, folded: click the card's top line (the › chevron) to open it. With CSS on hover on, it opens spread out. **Enter** sends it to Claude, **Shift+Enter** adds a line, **Esc** or a click anywhere else closes it (an unsent note is kept: click the same element again to carry on) |
-| **↑ / ↓** | the element's parent or child |
+| **↑ / ↓** | the element's parent or child (from some words, ↑ is the element they're in) |
 | **Hold Shift** | padding, margin and the gaps between children, with numbers. Keep holding and move to another element: the distance between the two |
 | **Menus** | to note something inside a menu, press **I** to put Inspeck away, open the menu, and press **I** again: a key doesn't close a menu the way a click would. Rest the pointer on a menu's button and Inspeck says so. (Or hold **Space**: clicks go to your app while it's held) |
 | **F** | freeze the page, with the pointer where it is: tooltips, hover cards, menus and what shows on hover (a row's buttons) stay as they are, so you can point at them and note them. Animations, spinners and loading states hold still too: the page's network answers wait until you release, so a loader you caught stays on screen. **F** again or **Esc** releases it. Writing a note freezes the page too, so an open menu stays open while you type |
@@ -155,6 +155,7 @@ Notes stay on your machine. `~/.inspeck/last-client.json` records what the last 
 - **Pages on your computer only.** Inspeck doesn't run on a deployed site (it says so in the browser console), and Claude edits your local code anyway: run the app locally.
 - **Voice** needs macOS 26 or later; the first time, macOS asks to use the microphone and speech recognition.
 - **Content Security Policy:** an app with a strict policy must allow `http://127.0.0.1:4848` in development (Vite apps don't need to: Inspeck comes through the dev server).
+- **Safari with an https dev server:** Safari won't load Inspeck from `http://127.0.0.1` on an `https://` page. Use Claude's browser pane or Chrome, or the Vite plugin (it comes through the dev server).
 - **Pages opened from a file** (`file://`) can't use Inspeck: serve them, for example with `npx serve`.
 - **Port 4848** must be free. If another program uses it, Inspeck says so; set `INSPECK_PORT` to use another.
 

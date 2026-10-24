@@ -13,16 +13,19 @@ const LAYER = [
   '[popover]', 'dialog', '[data-radix-popper-content-wrapper]', '[data-floating-ui-portal]', '[data-headlessui-portal]',
 ].join(',')
 
+/** The button that opens a layer: outside it. (A dialog is often labelled by its own title, inside it: that
+    names the dialog, it doesn't open it.) */
 function triggerOf(layer: Element): Element | null {
+  const outside = (t: Element | null) => (t && !layer.contains(t) ? t : null)
   const id = layer.id
   if (id) {
     const esc = CSS.escape(id)
-    const t = document.querySelector(`[aria-controls~="${esc}"], [popovertarget="${esc}"], [commandfor="${esc}"]`)
+    const t = outside(document.querySelector(`[aria-controls~="${esc}"], [popovertarget="${esc}"], [commandfor="${esc}"]`))
     if (t) return t
   }
   const labelled = layer.getAttribute('aria-labelledby')
   if (labelled) {
-    const t = document.getElementById(labelled.split(/\s+/)[0])
+    const t = outside(document.getElementById(labelled.split(/\s+/)[0]))
     if (t) return t
   }
   /* A portal wrapper around the real layer (Radix): ask its first child. */
@@ -46,7 +49,10 @@ export interface OpenPath {
 
 export function openPathOf(el: Element): OpenPath | null {
   const triggers: Element[] = []
-  for (let cur: Element | null = el.parentElement?.closest(LAYER) ?? null; cur; cur = cur.parentElement?.closest(LAYER) ?? null) {
+  /* Each layer once: links between them can go round in a circle (a button inside the menu it opens). */
+  const seen = new Set<Element>()
+  for (let cur: Element | null = el.parentElement?.closest(LAYER) ?? null; cur && !seen.has(cur) && seen.size < 12; cur = cur.parentElement?.closest(LAYER) ?? null) {
+    seen.add(cur)
     const t = triggerOf(cur)
     if (!t) continue
     triggers.unshift(t)

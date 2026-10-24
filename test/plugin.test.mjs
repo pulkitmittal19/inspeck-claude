@@ -116,11 +116,11 @@ test('the widget is served to a plain script tag, and an unchanged reload is a 3
   assert.equal(again.status, 304)
 })
 
-test('the widget stays small: under 52 KB gzipped (40 before Settings and voice, 45 before Shortcuts, 48 before the robustness round)', async () => {
+test('the widget stays small: under 54 KB gzipped (40 before Settings and voice, 45 before Shortcuts, 48 before the robustness round, 52 before finer picking, frames and the phase 3–4 fixes)', async () => {
   const { gzipSync } = await import('node:zlib')
   const { readFileSync } = await import('node:fs')
   const size = gzipSync(readFileSync(join(root, 'server/dist/widget/inspeck.js')), { level: 9 }).length
-  assert.ok(size < 52 * 1024, `widget is ${Math.round(size / 1024)} KB gzipped`)
+  assert.ok(size < 54 * 1024, `widget is ${Math.round(size / 1024)} KB gzipped`)
 })
 
 test('the dev test page only exists with INSPECK_DEV=1', async () => {
@@ -604,4 +604,12 @@ test('two sessions writing at once never lose each other\'s changes', async () =
     await first.stop()
     rmSync(shared, { recursive: true, force: true })
   }
+})
+
+test('a note with no place in the code tells Claude how to find it, without guessing', async () => {
+  const { json } = await page(s.port, 'POST', '/comments', { body: { ...fix, page: 'http://localhost:5173/server', note: 'Total looks off', screenshot: undefined,
+    element: { selector: 'div.card > h2.card-heading', tag: 'h2', text: 'Invoice #42', trail: ['InvoiceComponent'] } } })
+  assert.equal(json.comment.source, undefined, 'no place made up')
+  const read = await s.client.callTool({ name: 'get', arguments: { id: json.comment.id } })
+  assert.match(allText(read), /code\s+not given by the page: search the project for where InvoiceComponent is declared, then the classes in the selector, then the words shown/)
 })

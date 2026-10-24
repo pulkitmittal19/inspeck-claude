@@ -1,0 +1,13 @@
+<!doctype html><html><head><meta charset="utf-8"><script src="/__dev/tables/shim.js"></script><title>Grid.js</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/gridjs@6.2.0/dist/theme/mermaid.min.css">
+<script src="https://cdn.jsdelivr.net/npm/gridjs@6.2.0/dist/gridjs.umd.js"></script>
+<script src="data.js"></script></head><body>
+<div id="t" style="width:1100px"></div>
+<script>
+  const h = f => (_, row) => gridjs.html(f(ROWS[row.cells[0].data - 1]))
+  new gridjs.Grid({ sort: true, search: true, columns: [
+    { name: 'id', hidden: true }, { name: 'Name', formatter: h(cells.who) }, { name: 'Email', formatter: h(cells.email) },
+    { name: 'Status', formatter: h(cells.status) }, 'Plan', 'Amount', { name: 'Tags', formatter: h(cells.tags) }, { id: 'actions', name: 'Actions', formatter: h(cells.actions) },
+  ], data: ROWS.map(r => [r.id, r.name, r.email, r.status, r.plan, r.amount, '', '']) }).render(document.getElementById('t'))
+</script>
+<script src="/inspeck.js"></script></body></html>

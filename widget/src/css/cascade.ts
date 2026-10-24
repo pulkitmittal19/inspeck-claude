@@ -44,9 +44,42 @@ export const SETTERS: Record<string, string[]> = {
   'font-family': ['font-family', 'font'],
   'row-gap': ['row-gap', 'gap'],
   'column-gap': ['column-gap', 'gap'],
-  'border-top-width': ['border-top-width', 'border-top', 'border-width', 'border'],
-  'border-top-color': ['border-top-color', 'border-top', 'border-color', 'border'],
-  'border-top-style': ['border-top-style', 'border-top', 'border-style', 'border'],
+}
+for (const side of ['top', 'right', 'bottom', 'left']) {
+  for (const k of ['width', 'color', 'style']) SETTERS[`border-${side}-${k}`] = [`border-${side}-${k}`, `border-${side}`, `border-${k}`, 'border']
+}
+
+/** The logical twin of a physical side (left-to-right, top-to-bottom): both name the same thing. */
+const TWIN: Record<string, string> = {}
+for (const box of ['padding', 'margin']) {
+  for (const [phys, log] of [['top', 'block-start'], ['bottom', 'block-end'], ['left', 'inline-start'], ['right', 'inline-end']]) {
+    TWIN[`${box}-${phys}`] = `${box}-${log}`; TWIN[`${box}-${log}`] = `${box}-${phys}`
+  }
+}
+for (const [phys, log] of [['top-left', 'start-start'], ['top-right', 'start-end'], ['bottom-right', 'end-end'], ['bottom-left', 'end-start']]) {
+  TWIN[`border-${phys}-radius`] = `border-${log}-radius`; TWIN[`border-${log}-radius`] = `border-${phys}-radius`
+}
+
+/** The longhands a property sets, as this browser expands it (`padding-inline` → its start and end). */
+const expansions = new Map<string, string[]>()
+function longhandsOf(p: string): string[] {
+  let l = expansions.get(p)
+  if (!l) {
+    const probe = document.createElement('div').style
+    probe.setProperty(p, 'inherit')
+    expansions.set(p, l = probe.length ? Array.from(probe) : [p])
+  }
+  return l
+}
+
+/** Where in its own block a declaration sets this longhand: `padding: 0; padding-inline: 7px` sets the left
+    side twice, and the later one wins. -1 when it can't be told. */
+function positionIn(style: CSSStyleDeclaration, setter: string, longhand: string): number {
+  const same = new Set([longhand, TWIN[longhand]])
+  const items = Array.from(style)
+  let at = -1
+  for (const l of longhandsOf(setter)) if (same.has(l)) at = Math.max(at, items.indexOf(l))
+  return at
 }
 
 const INHERITED = new Set(['color', 'font-size', 'font-weight', 'line-height', 'font-family', 'letter-spacing', 'fill', 'stroke'])
@@ -76,15 +109,18 @@ export function warmUp(): void {
 
 /* ---------------- winning declaration ---------------- */
 
-interface Candidate { property: string; value: string; important: boolean; inline: boolean; layer: number; spec: number; order: number; source: Written['source'] }
+interface Candidate { property: string; value: string; important: boolean; inline: boolean; layer: number; spec: number; order: number; pos: number; source: Written['source'] }
 
 function beats(a: Candidate, b: Candidate): boolean {
   if (a.important !== b.important) return a.important
   if (a.inline !== b.inline) return a.inline
   if (a.layer !== b.layer) return a.important ? a.layer < b.layer : a.layer > b.layer
   if (a.spec !== b.spec) return a.spec > b.spec
-  return a.order > b.order
+  if (a.order !== b.order) return a.order > b.order
+  return a.pos > b.pos
 }
+
+const PENDING = '\u0000pending'
 
 /** The declaration that sets `longhand` on `el` itself (not inherited), or null for the browser default. */
 export function ownWinner(el: Element, longhand: string): Written | null {
@@ -93,17 +129,24 @@ export function ownWinner(el: Element, longhand: string): Written | null {
   const consider = (c: Candidate) => { if (!best || beats(c, best)) best = c }
 
   for (const { entry, spec } of matchingRules(indexFor(el), el)) {
+    let read = false
     for (const p of setters) {
       const v = entry.style.getPropertyValue(p)
       if (!v) continue
-      consider({ property: p, value: v.trim(), important: entry.style.getPropertyPriority(p) === 'important', inline: false, layer: entry.layer, spec, order: entry.order, source: 'rule' })
+      read = true
+      consider({ property: p, value: v.trim(), important: entry.style.getPropertyPriority(p) === 'important', inline: false, layer: entry.layer, spec, order: entry.order, pos: positionIn(entry.style, p, longhand), source: 'rule' })
+    }
+    /* Set by a shorthand made of one token (`border-bottom: var(--border)`) that won't read back: the browser
+       keeps the longhand but not its text. It still wins or loses like any other; its value shows as it renders. */
+    if (!read && Array.from(entry.style).includes(longhand)) {
+      consider({ property: longhand, value: PENDING, important: entry.style.getPropertyPriority(longhand) === 'important', inline: false, layer: entry.layer, spec, order: entry.order, pos: positionIn(entry.style, longhand, longhand), source: 'rule' })
     }
   }
   const inline = (el as HTMLElement).style
   if (inline) {
     for (const p of setters) {
       const v = inline.getPropertyValue(p)
-      if (v) consider({ property: p, value: v.trim(), important: inline.getPropertyPriority(p) === 'important', inline: true, layer: UNLAYERED, spec: 0, order: Infinity, source: 'inline' })
+      if (v) consider({ property: p, value: v.trim(), important: inline.getPropertyPriority(p) === 'important', inline: true, layer: UNLAYERED, spec: 0, order: Infinity, pos: positionIn(inline, p, longhand), source: 'inline' })
     }
   }
   /* SVG presentation attributes: the weakest author style of all. */
@@ -113,6 +156,7 @@ export function ownWinner(el: Element, longhand: string): Written | null {
   }
   if (!best) return null
   const b = best as Candidate
+  if (b.value === PENDING) return { property: longhand, value: getComputedStyle(el).getPropertyValue(longhand).trim(), important: b.important, source: b.source }
   return { property: b.property, value: b.value, important: b.important, source: b.source }
 }
 

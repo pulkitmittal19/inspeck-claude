@@ -5,7 +5,8 @@
  *  - Dev plugins that stamp it on every element, for any framework:
  *    code-inspector-plugin (`data-insp-path="file:line:col:tag"`),
  *    react-dev-inspector (`data-inspector-relative-path` + `-line`),
- *    vite-plugin-vue-inspector (`data-v-inspector="file:line:col"`).
+ *    vite-plugin-vue-inspector (`data-v-inspector="file:line:col"`),
+ *    and Astro's own dev mode (`data-astro-source-file` + `-loc`).
  *  - Svelte in development: `__svelte_meta.loc` on the element.
  *  - Vue in development: the component's file (`__file`), without a line.
  *  - React, below.
@@ -64,7 +65,8 @@ function appFrame(stack: string): { url: string; line: number; column: number } 
   for (const raw of stack.split('\n').slice(1)) {
     if (REACT_FRAME.test(raw)) continue
     /* A server component's frame reads `about://React/Server/file:///…`: the file is the part that matters. */
-    const m = /\(?((?:https?|webpack-internal|file):\/\/[^\s)]+?):(\d+):(\d+)\)?\s*$/.exec(raw)
+    /* The address may itself hold brackets (webpack's `webpack-internal:///(pages-dir-browser)/./pages/x.tsx`). */
+    const m = /((?:https?|webpack-internal|file):\/\/\S+?):(\d+):(\d+)\)?\s*$/.exec(raw)
     if (!m || LIBRARY.test(m[1])) continue
     return { url: m[1], line: +m[2], column: +m[3] }
   }
@@ -111,6 +113,9 @@ function stamped(el: Element): SourceAt[] {
     if (insp) add(parseAt(insp))
     const rel = n.getAttribute('data-inspector-relative-path')
     if (rel) add({ file: rel, line: Number(n.getAttribute('data-inspector-line')) || 0, ...(n.getAttribute('data-inspector-column') ? { column: Number(n.getAttribute('data-inspector-column')) } : {}) })
+    /* Astro in development: the file, and `line:col`. */
+    const astro = n.getAttribute('data-astro-source-file')
+    if (astro) { const [line, column] = (n.getAttribute('data-astro-source-loc') ?? '').split(':').map(Number); add({ file: tidy(astro), line: line || 0, ...(column ? { column } : {}) }) }
   }
   /* The element's own line first, then where the elements around it are
      written: usually the component it sits in, which is what "used in" means. */

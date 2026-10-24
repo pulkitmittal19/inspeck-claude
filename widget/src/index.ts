@@ -6,7 +6,7 @@
  */
 import { App } from './app'
 import { api } from './api'
-import { allowedHere, SERVER, TAB_ID, VERSION } from './env'
+import { allowedHere, pageUrl, SERVER, TAB_ID, VERSION } from './env'
 import { installNetworkHold } from './hold'
 import { fileNotice } from './notice'
 import { sameOriginTop, topRunsInspeck } from './frames'
@@ -43,7 +43,7 @@ if (location.protocol === 'file:') {
      what to do instead of staying silent. */
   fileNotice()
 } else if (!allowedHere()) {
-  console.info(`Inspeck: not starting on ${location.hostname}, which isn't this machine.`)
+  console.info(`Inspeck: not starting on ${pageUrl().hostname || location.href}, which isn't this machine.`)
 } else {
   /* Now, not at boot: a request already on its way when you freeze is held too. */
   installNetworkHold()

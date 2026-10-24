@@ -10,7 +10,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 
 const pkg = join(dirname(fileURLToPath(import.meta.url)), '..', 'packages', 'inspeck')
 const BIN = join(pkg, 'dist/bin.js')
-const { wireVite, wireNext, wireHtml, wireAstro, wireNuxt, cspFileIn, wireStorybookHead, withAutoUpdate } = await import(pathToFileURL(join(pkg, 'dist/cli.js')).href)
+const { wireVite, wireNext, wireHtml, wireAstro, wireNuxt, cspFileIn, wireStorybookHead, withAutoUpdate, wireDocusaurus } = await import(pathToFileURL(join(pkg, 'dist/cli.js')).href)
 const vitePlugin = await import(pathToFileURL(join(pkg, 'dist/vite.js')).href)
 
 test('Vite: inspeck() goes first in the plugins list, the import after the others; twice changes nothing', () => {
@@ -261,4 +261,48 @@ test('Storybook: the local-only tag in .storybook/preview-head.html, kept with w
   const kept = wireStorybookHead('<link rel="preconnect" href="https://fonts.gstatic.com">\n')
   assert.match(kept.src, /^<link rel="preconnect"[^\n]*\n<script>/)
   assert.equal(wireStorybookHead(kept.src).result, 'present')
+})
+
+test('Docusaurus: the local-only tag goes in headTags, its code runs as written; twice changes nothing', () => {
+  const src = `import type { Config } from '@docusaurus/types'\n\nconst config: Config = {\n  title: 'Docs',\n}\n\nexport default config\n`
+  const { src: out, result } = wireDocusaurus(src)
+  assert.equal(result, 'added')
+  const code = JSON.parse(/innerHTML: ("(?:[^"\\]|\\.)*")/.exec(out)[1])
+  assert.doesNotThrow(() => new Function(code), 'the code it adds is valid JavaScript')
+  assert.match(code, /location\.hostname/, 'loads only on this computer')
+  assert.equal(wireDocusaurus(out).result, 'present')
+  const withTags = wireDocusaurus(`module.exports = {\n  headTags: [{ tagName: 'meta', attributes: {} }],\n}\n`)
+  assert.match(withTags.src, /headTags: \[\n    \{ tagName: 'script'[\s\S]*\{ tagName: 'meta'/, 'into the list that is there')
+  assert.equal(wireDocusaurus('export default makeConfig()').result, 'manual')
+})
+
+test('Create React App, Vue CLI and Angular: the tag goes in their HTML template', () => {
+  for (const [deps, file, name] of [
+    [{ 'react-scripts': '5.0.1', react: '18' }, 'public/index.html', 'Create React App'],
+    [{ '@vue/cli-service': '5.0.8', vue: '3' }, 'public/index.html', 'Vue CLI'],
+    [{ '@angular/core': '18.0.0' }, 'src/index.html', 'Angular'],
+  ]) {
+    const p = project({ 'package.json': JSON.stringify({ dependencies: deps }), [file]: '<!doctype html>\n<html>\n  <body>\n    <div id="root"></div>\n  </body>\n</html>\n' })
+    const out = p.run('--skip-plugin', '--skip-install', '--yes')
+    assert.match(out, new RegExp(`${name}: the tag goes in ${file.replace('.', '\\.')}`), name)
+    assert.match(p.read(file), /location\.hostname[\s\S]*inspeck\.js[\s\S]*<\/body>/, name)
+    assert.match(p.run('--skip-plugin', '--skip-install', '--yes'), /already loads Inspeck/, `${name}, twice`)
+  }
+})
+
+test('Storybook on Vite gets Inspeck from the app’s Vite setup, so no second tag; on webpack it gets the tag', () => {
+  const vite = project({
+    'package.json': JSON.stringify({ devDependencies: { vite: '^6', '@storybook/react-vite': '^8' } }),
+    'vite.config.ts': `import { defineConfig } from 'vite'\nexport default defineConfig({\n  plugins: [],\n})\n`,
+    '.storybook/main.ts': `export default { framework: '@storybook/react-vite' }\n`,
+  })
+  assert.match(vite.run('--skip-plugin', '--skip-install', '--yes'), /Storybook runs on your Vite setup, so Inspeck comes with it/)
+  assert.throws(() => vite.read('.storybook/preview-head.html'), 'no second tag')
+  const webpack = project({
+    'package.json': JSON.stringify({ dependencies: { next: '15' }, devDependencies: { '@storybook/nextjs': '^8' } }),
+    'app/layout.tsx': 'export default function L({ children }) {\n  return (\n    <html>\n      <body>{children}</body>\n    </html>\n  )\n}\n',
+    '.storybook/main.ts': `export default { framework: '@storybook/nextjs' }\n`,
+  })
+  assert.match(webpack.run('--skip-plugin', '--skip-install', '--yes'), /added Inspeck to Storybook \(\.storybook\/preview-head\.html\)/)
+  assert.match(webpack.read('.storybook/preview-head.html'), /inspeck\.js/)
 })

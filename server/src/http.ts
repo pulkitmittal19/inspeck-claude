@@ -35,7 +35,7 @@ import { bindTab, liveSessions, projectOf, real, route as routeNote } from './se
 import { newer, updateState } from './updates.js'
 
 export { newer }
-import { isThisMachine, NewComment, NOTE_MAX, pageKey, type Comment } from './format.js'
+import { isThisMachine, NewComment, NOTE_MAX, pageKey, type Comment, type SourceAt } from './format.js'
 import { findLines, resolveSource } from './sourcemap.js'
 import { listenStream, stopListening, voiceAvailable, warmVoice } from './voice.js'
 
@@ -176,6 +176,18 @@ function inProject(file: string, page: string): boolean {
   return [process.cwd(), ...liveSessions().map(s => s.cwd), ...(served ? [served] : [])].some(dir => inside(f, real(dir)))
 }
 
+/** Places given as paths in the project (`pages/index.tsx`, all a page knows without a full path) are read
+    there, to find their lines (see findLines); they're kept as the page wrote them. */
+function inProjectFiles(page: string, list: SourceAt[], fn: (list: SourceAt[]) => SourceAt[]): SourceAt[] {
+  const root = projectOf(page) ?? process.cwd()
+  const full = list.map(at => {
+    if (isAbsolute(at.file) || /^[a-z]+:/i.test(at.file)) return at
+    const f = join(root, at.file)
+    return existsSync(f) ? { ...at, file: f } : at
+  })
+  return fn(full).map((at, i) => (full[i] !== list[i] && at.file === full[i].file ? { ...at, file: list[i].file } : at))
+}
+
 /* What a page gets back about a comment: everything it needs to draw the badge
    and show Claude's replies, minus the file path on this machine. */
 function forPage(c: Comment) {
@@ -293,7 +305,8 @@ async function route(req: IncomingMessage, res: ServerResponse, version: string,
     const note = parsed.data
     if (!ownSite(origin, note.page)) return send(res, 403, { error: 'A page can only leave notes on its own site' })
     const may = (file: string) => inProject(file, note.page)
-    if (note.source) note.source = findLines(note.source.map(at => resolveSource(at, may)), { text: note.element.text, tag: note.element.tag, selector: note.element.selector }, may)
+    const clue = { text: note.element.text, tag: note.element.tag, selector: note.element.selector }
+    if (note.source) note.source = inProjectFiles(note.page, note.source.map(at => resolveSource(at, may)), list => findLines(list, clue, may))
     for (const m of note.group ?? []) if (m.source) m.source = resolveSource(m.source, may)
     const created = store.add(note, routeNote(note.page, note.tabId))
     onNew(created)

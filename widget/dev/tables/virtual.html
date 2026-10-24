@@ -1,0 +1,58 @@
+<!doctype html><html><head><meta charset="utf-8"><script src="/__dev/tables/shim.js"></script><title>Long lists that reuse their rows</title>
+<!-- 1,000 rows in a list that only keeps the visible ones and reuses them as you scroll: ?lib=recycle (hand-written,
+     as many apps do), vaadin (Vaadin Grid), aggrid (AG Grid). Rows are "Order #1" to "Order #1000", so #3 and #30 both exist. -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ag-grid-community@31.3.2/styles/ag-grid.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ag-grid-community@31.3.2/styles/ag-theme-quartz.css">
+<style>
+  body { font: 14px system-ui; margin: 24px; }
+  #list { height: 360px; width: 600px; overflow: auto; position: relative; border: 1px solid #ddd; }
+  #list .spacer { position: relative; }
+  #list .row { position: absolute; left: 0; right: 0; height: 36px; display: flex; align-items: center; gap: 16px; padding: 0 12px; border-bottom: 1px solid #eee; box-sizing: border-box; }
+  #list .name { font-weight: 600; width: 140px; }
+  #list .status { padding: 2px 8px; border-radius: 10px; background: #eef; font-size: 12px; }
+</style>
+</head><body>
+<div id="host"></div>
+<script>
+  window.ORDERS = Array.from({ length: 1000 }, (_, i) => ({ id: i + 1, name: `Order #${i + 1}`, status: ['Paid', 'Pending', 'Refunded'][i % 3], amount: `$${(i * 7.31 % 900).toFixed(2)}` }))
+  const lib = new URLSearchParams(location.search).get('lib') ?? 'recycle'
+  const host = document.getElementById('host')
+  /** Scroll the list so a row (0-based) is at the top. */
+  let grid = null
+  window.scrollToRow = i => {
+    if (lib === 'recycle') document.getElementById('list').scrollTop = i * 36
+    else if (lib === 'vaadin') document.getElementById('g').scrollToIndex(i)
+    else grid.ensureIndexVisible(i, 'top')
+  }
+  window.listReady = new Promise(done => {
+    if (lib === 'recycle') {
+      /* A pool of row elements, rewritten in place as the list scrolls. */
+      host.innerHTML = '<div id="list"><div class="spacer"></div></div>'
+      const list = host.firstChild, spacer = list.firstChild, H = 36, POOL = 14
+      spacer.style.height = `${ORDERS.length * H}px`
+      const pool = Array.from({ length: POOL }, () => { const r = document.createElement('div'); r.className = 'row'; r.innerHTML = '<span class="name"></span><span class="status"></span><span class="amount"></span>'; spacer.appendChild(r); return r })
+      const draw = () => {
+        const first = Math.floor(list.scrollTop / H)
+        pool.forEach((r, k) => {
+          const i = first + k, o = ORDERS[i]
+          if (!o) { r.hidden = true; return }
+          r.hidden = false
+          r.style.top = `${i * H}px`
+          r.children[0].textContent = o.name; r.children[1].textContent = o.status; r.children[2].textContent = o.amount
+        })
+      }
+      list.addEventListener('scroll', draw)
+      draw(); done()
+    } else if (lib === 'vaadin') {
+      host.innerHTML = '<vaadin-grid id="g" style="width:600px;height:360px"><vaadin-grid-column path="name" header="Order"></vaadin-grid-column><vaadin-grid-column path="status" header="Status"></vaadin-grid-column><vaadin-grid-column path="amount" header="Amount"></vaadin-grid-column></vaadin-grid>'
+      import('https://esm.sh/@vaadin/grid@24.4.0?bundle').then(async () => { const g = document.getElementById('g'); g.items = ORDERS; await customElements.whenDefined('vaadin-grid'); setTimeout(done, 500) })
+    } else {
+      host.innerHTML = '<div id="grid" class="ag-theme-quartz" style="height:360px;width:600px"></div>'
+      const s = document.createElement('script')
+      s.src = 'https://cdn.jsdelivr.net/npm/ag-grid-community@31.3.2/dist/ag-grid-community.min.js'
+      s.onload = () => { grid = agGrid.createGrid(document.getElementById('grid'), { rowData: ORDERS, columnDefs: [{ field: 'name' }, { field: 'status' }, { field: 'amount' }] }); setTimeout(done, 500) }
+      document.head.appendChild(s)
+    }
+  }).then(() => { window.listIsReady = true })
+</script>
+<script src="/inspeck.js"></script></body></html>

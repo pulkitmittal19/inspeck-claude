@@ -1,0 +1,19 @@
+<!doctype html><html><head><meta charset="utf-8"><script src="/__dev/tables/shim.js"></script><title>Vaadin Grid (web component)</title>
+<script src="data.js"></script></head><body>
+<vaadin-grid id="g" style="width:1100px;height:320px" theme="row-stripes">
+  <vaadin-grid-column header="Name" id="c-name" width="260px"></vaadin-grid-column>
+  <vaadin-grid-column header="Status" id="c-status"></vaadin-grid-column>
+  <vaadin-grid-column path="plan" header="Plan"></vaadin-grid-column>
+  <vaadin-grid-column path="amount" header="Amount" text-align="end"></vaadin-grid-column>
+  <vaadin-grid-column header="" id="c-act"></vaadin-grid-column>
+</vaadin-grid>
+<script type="module">
+  import 'https://esm.sh/@vaadin/grid@24.4.0?bundle'
+  const g = document.getElementById('g')
+  const r = f => (root, col, m) => { root.innerHTML = f(m.item) }
+  document.getElementById('c-name').renderer = r(cells.who)
+  document.getElementById('c-status').renderer = r(cells.status)
+  document.getElementById('c-act').renderer = r(cells.actions)
+  g.items = ROWS
+</script>
+<script src="/inspeck.js"></script></body></html>

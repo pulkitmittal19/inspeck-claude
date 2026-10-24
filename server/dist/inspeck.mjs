@@ -36628,6 +36628,9 @@ function render(c) {
   if (c.source?.length) {
     lines.push(row("code", sourceText(c.source[0])));
     for (const s of c.source.slice(1)) lines.push(row("used in", sourceText(s)));
+  } else if (!c.group) {
+    const by = [c.element.trail?.length ? `where ${c.element.trail[c.element.trail.length - 1]} is declared` : null, "the classes in the selector", c.element.text ? "the words shown" : null].filter(Boolean);
+    lines.push(row("code", `not given by the page: search the project for ${by.join(", then ")}`));
   }
   for (const l of c.css ?? []) {
     lines.push(row("css", `${l.property}: ${l.value};${l.resolved ? `   ${l.resolved}` : ""}`));
@@ -37532,6 +37535,15 @@ function inProject(file2, page) {
   const served = projectOf(page);
   return [process.cwd(), ...liveSessions().map((s) => s.cwd), ...served ? [served] : []].some((dir) => inside(f, real(dir)));
 }
+function inProjectFiles(page, list, fn) {
+  const root = projectOf(page) ?? process.cwd();
+  const full = list.map((at) => {
+    if (isAbsolute3(at.file) || /^[a-z]+:/i.test(at.file)) return at;
+    const f = join6(root, at.file);
+    return existsSync5(f) ? { ...at, file: f } : at;
+  });
+  return fn(full).map((at, i) => full[i] !== list[i] && at.file === full[i].file ? { ...at, file: list[i].file } : at);
+}
 function forPage2(c) {
   const { screenshot, ...rest } = c;
   return { ...rest, hasScreenshot: Boolean(screenshot) };
@@ -37643,7 +37655,8 @@ async function route2(req, res, version2, onNew) {
     const note = parsed.data;
     if (!ownSite(origin, note.page)) return send(res, 403, { error: "A page can only leave notes on its own site" });
     const may = (file2) => inProject(file2, note.page);
-    if (note.source) note.source = findLines(note.source.map((at) => resolveSource(at, may)), { text: note.element.text, tag: note.element.tag, selector: note.element.selector }, may);
+    const clue = { text: note.element.text, tag: note.element.tag, selector: note.element.selector };
+    if (note.source) note.source = inProjectFiles(note.page, note.source.map((at) => resolveSource(at, may)), (list) => findLines(list, clue, may));
     for (const m of note.group ?? []) if (m.source) m.source = resolveSource(m.source, may);
     const created = add(note, route(note.page, note.tabId));
     onNew(created);
@@ -37912,7 +37925,7 @@ function markOffered(dir) {
 // server/src/wait.ts
 import { fileURLToPath as fileURLToPath4 } from "url";
 var SELF = fileURLToPath4(import.meta.url);
-var WAIT_COMMAND = `node "${SELF}" wait`;
+var WAIT_COMMAND = `"${process.execPath}" "${SELF}" wait`;
 var flag = (args, name) => {
   const i = args.indexOf(name);
   return i >= 0 ? args[i + 1] : void 0;
@@ -37951,7 +37964,7 @@ if (process.argv[2] === "wait") {
   await runWait(process.argv.slice(3));
   process.exit(0);
 }
-var VERSION = "0.18.0";
+var VERSION = "0.19.0";
 var NEWER = offerOnce(VERSION);
 void checkDaily();
 var CLAUDE = JSON.stringify(claudeCommand());
@@ -37969,6 +37982,7 @@ Setting up, once per session, when you open the person's app in your browser pan
    It finishes, printing the notes, the moment they're sent. Handle them, then start it again.
 Notes wait on the page until the person asks you for them ("check my Inspeck notes"), unless they've turned on Auto-send notes to Claude in Inspeck's settings; then each comes as it's placed. The watcher wakes you only for notes that have come; pending reads waiting ones too, so asking for the notes is how they're sent.
 When the person says "Listen for my Inspeck notes on <address>" (Inspeck's settings give them that line to send once per chat when they turn Auto-send on), call bind with page set to that address, so every note from that site comes to this chat; call pending once to take any already waiting and handle them; then start the watcher as a background task and confirm in one short line that you're listening. Keep starting it again after each batch.
+Any local app you open in your browser pane later in this chat (another port, Storybook, a new project's dev server), you link the same way: run bind's line in its tab. If that app's project doesn't load Inspeck itself, offer once per project to add it (as above), so it stays after reloads.
 If the person uses their own browser (Chrome, Safari) instead of your pane, call bind with page set to the app's address instead of running a line: every note from that site, in any browser, then comes here. Saying "check my Inspeck notes" (pending) also takes notes no other session could have picked up, and links their site to you.
 
 Working through notes: pending gives every new note in full (and lists ones read before), get opens one again, watch waits for new ones in the foreground. Reading a note (pending, get, watch or the watcher) clears its marker from the page, so the person never clears notes by hand. resolve closes a note with one line saying what changed, dismiss declines with a reason.

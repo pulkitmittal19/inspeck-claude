@@ -11,6 +11,7 @@
  * press lights up its keycap, so the list answers "which one was that?". */
 import { enter, leave } from './anim'
 import { api } from './api'
+import { pageUrl } from './env'
 import { copyToClipboard, h, svg } from './dom'
 import { ICONS } from './icons'
 import { SHORTCUTS, shortcutRow } from './keys'
@@ -19,7 +20,7 @@ import { actionOf } from './router'
 
 /** What the person sends in their Claude chat so it listens for notes: Claude links this site to the chat
     and starts its watcher. The address says which app, so the notes go to that chat with others open. */
-export const listenMessage = () => `Listen for my Inspeck notes on ${location.origin}`
+export const listenMessage = () => `Listen for my Inspeck notes on ${pageUrl().origin}`
 
 const ROWS: Array<{ key: 'sizes' | 'colors'; label: string; options: Array<[string, string]> }> = [
   { key: 'sizes', label: 'Show sizes in', options: [['written', 'Default'], ['px', 'px'], ['rem', 'rem']] },
