@@ -7,6 +7,8 @@
  *   background: #17171C;
  */
 import { splitList, unreadableCss } from './rules'
+import { isGeneratedId } from '../selector'
+import { visibleText } from '../dom'
 import { logicalPart, ownWinner, parts, sideOf, winner, type Written } from './cascade'
 
 export type Kind = 'control' | 'text' | 'image' | 'box'
@@ -195,7 +197,7 @@ function radiusLine(el: Element, cs: CSSStyleDeclaration): Line | null {
   if (w0 && w0.property === 'border-radius' && winners.every(w => w && w.property === 'border-radius' && w.value === w0.value)) {
     return line('border-radius', w0.value, compress(computed))
   }
-  const written = corners.map((c, i) => {
+  const written = corners.map((_, i) => {
     const w = winners[i]
     if (!w) return computed[i]
     if (w.property === 'border-radius') return sideOf(w.value, (['top', 'right', 'bottom', 'left'] as Side[])[i], el) ?? computed[i]
@@ -321,13 +323,13 @@ const TAILWIND = /^-?(p[xytrbse]?|m[xytrbse]?|w|h|size|min-[wh]|max-[wh]|text|bg
 
 export function labelOf(el: Element): string {
   const tag = el.tagName.toLowerCase()
-  if (el.id && !/^[:]|^radix-|^headlessui-|\d{3,}/.test(el.id)) return `${tag}#${el.id}`
+  if (el.id && !isGeneratedId(el.id)) return `${tag}#${el.id}`
   const cls = Array.from(el.classList).find(c => !UTILITY.test(c) && !TAILWIND.test(c) && c.length <= 28)
   if (cls) return `${tag}.${cls}`
   /* No class worth showing: a role and its words say more, e.g. menuitem “Copy link”. */
   const role = el.getAttribute('role')
   if (role) {
-    const words = ((el as HTMLElement).innerText ?? el.textContent ?? '').split('\n')[0].replace(/\s+/g, ' ').trim()
+    const words = visibleText(el, true)
     return words ? `${role} “${words.length > 24 ? words.slice(0, 23) + '…' : words}”` : `${tag}[role=${role}]`
   }
   return tag

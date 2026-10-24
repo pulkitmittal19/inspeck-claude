@@ -2,7 +2,7 @@
  * on top and usable, and a note placed inside it is typed and sent with the real mouse and keyboard, while the
  * overlay stays open. widget/dev/tables/overlays.html. */
 import { test, expect } from '@playwright/test'
-import { inspeckOn } from './helpers.mjs'
+import { inspeckOn, notesWith } from './helpers.mjs'
 
 const OVERLAYS = [
   'native-dialog', 'native-popover', 'radix-dialog', 'radix-sheet', 'radix-popover', 'radix-menu', 'radix-tooltip',
@@ -22,7 +22,7 @@ for (const k of OVERLAYS) {
 
     /* Inspeck's pill: on top, and a click on Settings opens it. */
     const settings = await page.evaluate(() => {
-      const root = [...document.querySelectorAll('*')].find(e => e.shadowRoot?.querySelector('.outline')).shadowRoot
+      const root = document.querySelector('inspeck-root').shadowRoot
       const b = root.querySelector('.bar [data-action="settings"]').getBoundingClientRect()
       return { x: b.left + b.width / 2, y: b.top + b.height / 2 }
     })
@@ -43,7 +43,7 @@ for (const k of OVERLAYS) {
     await page.mouse.click(p.x, p.y)
     /* The note box grows open: click it once it's there to click (as a person would), not mid-reveal. */
     const where = () => page.evaluate(() => {
-      const root = [...document.querySelectorAll('*')].find(e => e.shadowRoot?.querySelector('.outline')).shadowRoot
+      const root = document.querySelector('inspeck-root').shadowRoot
       const t = root.querySelector('textarea')
       if (!t) return null
       const b = t.getBoundingClientRect()
@@ -56,15 +56,12 @@ for (const k of OVERLAYS) {
     await page.mouse.click(box.x, box.y)
     await page.keyboard.type(text, { delay: 15 })
     expect(await page.evaluate(() => {
-      const host = [...document.querySelectorAll('*')].find(e => e.shadowRoot?.querySelector('.outline'))
+      const host = document.querySelector('inspeck-root')
       return document.activeElement === host && host.shadowRoot.activeElement?.tagName === 'TEXTAREA' && host.shadowRoot.activeElement.value
     }), 'typing went into the note').toBe(text)
     expect(await page.evaluate(k => window.overlay.isOpen(k), k), 'still open while typing').toBe(true)
     await page.keyboard.press('Enter')
-    await expect.poll(async () => page.evaluate(async text => {
-      const list = await (await fetch(`/comments?page=${encodeURIComponent(location.href)}`, { headers: { 'x-inspeck': '1' } })).json()
-      return list.comments.filter(c => c.note === text).length
-    }, text), { timeout: 10_000, message: 'the note is saved, once' }).toBe(1)
+    await expect.poll(async () => (await notesWith(page, text)).length, { timeout: 10_000, message: 'the note is saved, once' }).toBe(1)
     if (!TOAST[k]) expect(await page.evaluate(k => window.overlay.isOpen(k), k), 'still open after sending').toBe(true)
   })
 }

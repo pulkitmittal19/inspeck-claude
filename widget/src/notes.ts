@@ -11,10 +11,10 @@
  *
  * A note disappears once Claude has dealt with it (resolved or declined).
  */
-import { pageHref } from './env'
+import { isHashRoute, pageHref } from './env'
 import { api, type Note } from './api'
 import { enter, leave } from './anim'
-import { clear, h, queryDeep } from './dom'
+import { clear, h, queryDeep, visibleText } from './dom'
 import { unionOf, type Box } from './marquee'
 import { actionOf } from './router'
 import { cancelFrame, nextFrame } from './native'
@@ -55,7 +55,7 @@ export function anchorOf(el: Element): { x: number; y: number; visible: boolean 
 const open = (n: Note) => n.status === 'new'
 /* The page as the server keys it: a hash route (`#/settings`) is its own page,
    a plain anchor (`#pricing`) is the same page scrolled. */
-export const pageNow = () => { const u = pageHref(); return /^#!?\//.test(new URL(u).hash) ? u : u.split('#')[0] }
+export const pageNow = () => { const u = pageHref(); return isHashRoute(new URL(u).hash) ? u : u.split('#')[0] }
 
 export interface Notes {
   /** A note was just sent: show its marker straight away. */
@@ -98,7 +98,7 @@ export function createNotes(ui: HTMLElement, onOpen: (note: Note, el: Element | 
   function same(n: Note, el: Element): boolean {
     if (n.element.tag && el.tagName.toLowerCase() !== n.element.tag) return false
     if (!n.element.text) return true
-    const now = ((el as HTMLElement).innerText ?? el.textContent ?? '').replace(/\s+/g, ' ').trim()
+    const now = visibleText(el)
     const start = n.element.text.slice(0, 20)
     if (!now.startsWith(start)) return false
     /* Cut short here, not by the element: the words carried on. */

@@ -11,7 +11,7 @@ const GENERATED_ID = /^[:«]|^(radix|headlessui|react-aria|mui|chakra|downshift|
    least two digits in it. Skipping a real id costs nothing (a path is used instead); keeping a random one breaks
    the address on the next load. */
 const RANDOM_PART = /(?:^|[-_])(?=[a-z0-9]{6,}(?:$|[-_]))(?=(?:[a-z]*\d){2})(?=[0-9]*[a-z])[a-z0-9]+/i
-const generated = (id: string) => GENERATED_ID.test(id) || RANDOM_PART.test(id)
+export const isGeneratedId = (id: string) => GENERATED_ID.test(id) || RANDOM_PART.test(id)
 const TEST_ATTRS = ['data-testid', 'data-test', 'data-cy', 'data-qa']
 
 import { SHADOW_STEP } from './dom'
@@ -26,7 +26,7 @@ function unique(sel: string, el: Element, scope: Document | ShadowRoot = documen
 }
 
 function anchorOf(el: Element): string | null {
-  if (el.id && !generated(el.id)) return `#${esc(el.id)}`
+  if (el.id && !isGeneratedId(el.id)) return `#${esc(el.id)}`
   for (const a of TEST_ATTRS) {
     const v = el.getAttribute(a)
     if (v) return `[${a}="${v.replace(/"/g, '\\"')}"]`
@@ -67,10 +67,4 @@ function selectorWithin(el: Element, scope: Document | ShadowRoot): string {
   }
   /* Short of three steps at the top of a shadow root, the path can still be unique there. */
   return path.join(' > ')
-}
-
-/** A short fingerprint to check that a re-found element is still the same one. */
-export function fingerprintOf(el: Element): string {
-  const text = (el.textContent ?? '').replace(/\s+/g, ' ').trim().slice(0, 40)
-  return `${el.tagName.toLowerCase()}|${text}`
 }

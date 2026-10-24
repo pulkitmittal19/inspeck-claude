@@ -1,6 +1,6 @@
 /* Tables inside iframes: same-site, nested, inline (srcdoc), scaled, added later; and another site's frame. */
 import { test, expect } from '@playwright/test'
-import { hover, inspeckOn, probe, picked } from './helpers.mjs'
+import { hover, inspeckOn, notesWith, probe, picked } from './helpers.mjs'
 
 test('every frame Inspeck can reach runs it, and picks inside it', async ({ page }) => {
   await page.goto('tables/frames.html')
@@ -37,10 +37,7 @@ test('a frame from another site is noted as a whole', async ({ page }, info) => 
   await page.mouse.click(box.x + 30, box.y + 10)
   await page.keyboard.type(text, { delay: 10 })
   await page.keyboard.press('Enter')
-  await expect.poll(async () => page.evaluate(async text => {
-    const list = await (await fetch(`/comments?page=${encodeURIComponent(location.href)}`, { headers: { 'x-inspeck': '1' } })).json()
-    return list.comments.filter(c => c.note === text).map(c => c.element.selector)
-  }, text), { timeout: 10_000 }).toEqual(['#f-cross'])
+  await expect.poll(async () => (await notesWith(page, text)).map(c => c.element.selector), { timeout: 10_000 }).toEqual(['#f-cross'])
   /* And off it, the page is picked as usual. */
   await page.waitForTimeout(1500)
   await hover(page, page.mainFrame(), box.x - 60, box.y - 60)

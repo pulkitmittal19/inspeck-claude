@@ -7,7 +7,7 @@
    its distance from the nearest side and the nearest top or bottom, so a
    resized window doesn't lose it, and the pill, its tips, the Frozen line and
    the tour open toward the middle of the screen. */
-import { enter, leave, play } from './anim'
+import { enter, leave } from './anim'
 import { h, svg } from './dom'
 import { ICONS, type IconName } from './icons'
 import { actionOf } from './router'

@@ -13,6 +13,7 @@ import { ICONS } from './icons'
 import { actionOf } from './router'
 import { cancelFrame, nextFrame } from './native'
 import { listen, voiceReady, warmVoice, type Listening, type VoiceEvent } from './voice'
+import { isHashRoute } from './env'
 
 const GAP = 8
 /** A value longer than this that is a comma list shows its first item and a count. */
@@ -142,7 +143,7 @@ export interface Place {
 const pageLabel = (page: string) => {
   try {
     const u = new URL(page)
-    return `${u.host}${u.pathname === '/' ? '' : u.pathname.replace(/\/$/, '')}${u.search}${/^#!?\//.test(u.hash) ? u.hash : ''}`
+    return `${u.host}${u.pathname === '/' ? '' : u.pathname.replace(/\/$/, '')}${u.search}${isHashRoute(u.hash) ? u.hash : ''}`
   } catch { return page }
 }
 

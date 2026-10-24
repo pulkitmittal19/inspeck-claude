@@ -89,6 +89,13 @@ export function isEditable(el: Element | null): boolean {
   return el instanceof HTMLElement && el.isContentEditable
 }
 
+/** The words an element shows, on one line. A note stores them and its marker finds the element again by them,
+    so both must read them the same way. `firstLine` for a label. */
+export function visibleText(el: Element, firstLine = false): string {
+  const t = (el as HTMLElement).innerText ?? el.textContent ?? ''
+  return (firstLine ? t.split('\n')[0] : t).replace(/\s+/g, ' ').trim()
+}
+
 /** Takes typed letters: a field, an editor (contenteditable, or one that says it's a text box), a dropdown (letters
     jump to an option). */
 const takesLetters = (el: Element) =>

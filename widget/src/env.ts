@@ -16,6 +16,9 @@ export const SERVER = (() => {
   return 'http://127.0.0.1:4848'
 })()
 
+/** A hash that's a route (`#/settings`, `#!/settings`) is a page of its own; a plain anchor (`#pricing`) isn't. */
+export const isHashRoute = (hash: string) => /^#!?\//.test(hash)
+
 /**
  * The address this document stands for. A web page is its own. A frame with no address of its own (an inline
  * `srcdoc` frame, or a blank one a script wrote into, which takes on the page's address) is part of the page

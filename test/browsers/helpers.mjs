@@ -41,7 +41,7 @@ export async function hover(page, frame, x, y, settle = 120) {
  */
 export async function probe(page, frame, { limit = 120 } = {}) {
   const points = await frame.evaluate(limit => {
-    const host = [...document.querySelectorAll('*')].find(e => e.shadowRoot?.querySelector('.outline'))
+    const host = document.querySelector('inspeck-root')
     const all = []
     const walk = root => { for (const e of root.querySelectorAll('*')) { if (e === host) continue; all.push(e); if (e.shadowRoot) walk(e.shadowRoot) } }
     walk(document)
@@ -117,5 +117,11 @@ export async function probe(page, frame, { limit = 120 } = {}) {
   }
   return { tested: good + bad.length, good, covered, bad }
 }
+
+/** The notes on the page with these words, as the server keeps them. */
+export const notesWith = (page, text) => page.evaluate(async text => {
+  const list = await (await fetch(`/comments?page=${encodeURIComponent(location.href)}`, { headers: { 'x-inspeck': '1' } })).json()
+  return list.comments.filter(c => c.note === text)
+}, text)
 
 export { expect }

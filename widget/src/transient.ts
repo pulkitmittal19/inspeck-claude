@@ -7,6 +7,7 @@
  * the outermost of those buttons, and Claude is told how to open it again.
  */
 import { selectorFor } from './selector'
+import { visibleText } from './dom'
 
 const LAYER = [
   '[role=menu]', '[role=listbox]', '[role=dialog]', '[role=alertdialog]', '[role=tooltip]', '[role=tree]', '[role=grid]',
@@ -36,7 +37,7 @@ function triggerOf(layer: Element): Element | null {
 export function nameOf(el: Element): string {
   const label = el.getAttribute('aria-label')
   if (label) return label.trim()
-  const text = ((el as HTMLElement).innerText ?? el.textContent ?? '').split('\n')[0].replace(/\s+/g, ' ').trim()
+  const text = visibleText(el, true)
   return (text || el.tagName.toLowerCase()).slice(0, 40)
 }
 

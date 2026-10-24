@@ -1,7 +1,7 @@
 /* Long lists that keep only the visible rows and reuse them as you scroll (widget/dev/tables/virtual.html): a note's
  * marker stays on its row, or waits hidden while the row is scrolled away; never on another row. */
 import { test, expect } from '@playwright/test'
-import { inspeckOn } from './helpers.mjs'
+import { inspeckOn, notesWith } from './helpers.mjs'
 
 const ROW = 'Order #3'
 
@@ -22,19 +22,14 @@ for (const lib of ['recycle', 'vaadin', 'aggrid']) {
     await page.mouse.click(p.x, p.y)
     await page.keyboard.type(text, { delay: 10 })
     await page.keyboard.press('Enter')
-    await expect.poll(() => page.evaluate(async text => {
-      const list = await (await fetch(`/comments?page=${encodeURIComponent(location.href)}`, { headers: { 'x-inspeck': '1' } })).json()
-      return list.comments.filter(c => c.note === text).length
-    }, text), { timeout: 10_000 }).toBe(1)
+    await expect.poll(async () => (await notesWith(page, text)).length, { timeout: 10_000 }).toBe(1)
     await page.keyboard.press('Escape')
 
     /** The row the marker is on now: its words, or null when it waits hidden. */
-    const markedRow = () => page.evaluate(async text => {
-      const list = await (await fetch(`/comments?page=${encodeURIComponent(location.href)}`, { headers: { 'x-inspeck': '1' } })).json()
-      const note = list.comments.find(c => c.note === text)
+    const markedRow = async () => page.evaluate(note => {
       const el = window.__INSPECK__.app.notes.find(note)
       return el ? (el.innerText ?? el.textContent).trim() : null
-    }, text)
+    }, (await notesWith(page, text))[0])
     expect(await markedRow(), 'on its row').toBe(ROW)
     for (const [to, label] of [[500, 'scrolled far away'], [25, 'beside Order #30'], [0, 'back at the top']]) {
       await page.evaluate(i => window.scrollToRow(i), to)

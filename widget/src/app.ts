@@ -5,13 +5,13 @@ import { createCard, type Card } from './card'
 import { warmUp } from './css/cascade'
 import { borrowSheetsWith } from './css/rules'
 import { framedByInspeck, peerIn, reachFrame, reachFrames } from './frames'
-import { h, isEditable, typingOnPage } from './dom'
+import { h, isEditable, typingOnPage, visibleText } from './dom'
 import { cap, isToggleKey, keyName } from './keys'
 import { createMenuHint, menuButton, type MenuHint } from './menuhint'
 import { pageHref, pageUrl, tabStore } from './env'
 import { createFreeze, FROZEN_BLOCK, type Freeze } from './freeze'
 import { createHost, type Host } from './host'
-import { anchorOf, createNotes, pageNow, type Notes } from './notes'
+import { anchorOf, createNotes, type Notes } from './notes'
 import { createOutline, type Outline } from './outline'
 import { childToward, elementAt, parentOf, pickable, snap, clickThroughAt, paints, textAt, textRect } from './pick'
 import { actionOf, createRouter } from './router'
@@ -519,7 +519,7 @@ export class App {
       page: pageHref(),
       element: { selector: holder === document.body ? 'body' : selectorFor(holder), tag: holder.tagName.toLowerCase(), name: members.length ? `${members.length} elements` : 'Area' },
       group: members.map(m => {
-        const t = ((m as HTMLElement).innerText ?? m.textContent ?? '').replace(/\s+/g, ' ').trim()
+        const t = visibleText(m)
         return { selector: selectorFor(m), name: labelOf(m), ...(t ? { text: t.slice(0, 120) } : {}) }
       }),
       at: { x: Math.round(area.right + scrollX), y: Math.round(area.top + scrollY) },
@@ -550,7 +550,7 @@ export class App {
   private noteFor(el: Element, text: string, words: Text | null = null) {
     const r = words ? textRect(words) : el.getBoundingClientRect()
     const d = this.card.description
-    const visible = ((words ? words.textContent : (el as HTMLElement).innerText ?? el.textContent) ?? '').replace(/\s+/g, ' ').trim()
+    const visible = words ? (words.textContent ?? '').replace(/\s+/g, ' ').trim() : visibleText(el)
     return {
       note: text,
       page: pageHref(),

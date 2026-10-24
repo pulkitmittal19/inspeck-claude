@@ -48,7 +48,7 @@ for (const [how, path] of [['a tag loading it from http://127.0.0.1', 'tag.html'
     await page.keyboard.type('secure note', { delay: 10 })
     await page.keyboard.press('Enter')
     await expect.poll(async () => page.evaluate(() => {
-      const host = [...document.querySelectorAll('*')].find(e => e.shadowRoot?.querySelector('.outline'))
+      const host = document.querySelector('inspeck-root')
       return host?.shadowRoot.querySelector('.card')?.innerText ?? ''
     }), { timeout: 8000, message: 'the note is added' }).toMatch(/Added|Sent to Claude/)
   })
