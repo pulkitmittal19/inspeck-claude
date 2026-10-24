@@ -28,6 +28,9 @@ const TAG_SRC = 'http://127.0.0.1:4848/inspeck.js'
 interface Flags { yes: boolean; skipPlugin: boolean; skipInstall: boolean; autoUpdate: boolean; cwd: string }
 
 const say = (s = '') => process.stdout.write(s + '\n')
+const styled = !!process.stdout.isTTY && !process.env.NO_COLOR
+const bold = (s: string) => (styled ? `\x1b[1m${s}\x1b[22m` : s)
+const dim = (s: string) => (styled ? `\x1b[2m${s}\x1b[22m` : s)
 const done = (s: string) => say(`  ✓ ${s}`)
 const note = (s: string) => say(`  · ${s}`)
 const warn = (s: string) => say(`  ! ${s}`)
@@ -39,28 +42,29 @@ function run(cmd: string, args: string[], cwd?: string) {
 
 /* ---------- 1. the Claude Code plugin ---------- */
 
-function installPlugin(): boolean {
+/** 'new' when installed just now (open chats don't have it until a new one starts), 'present', or null. */
+function installPlugin(): 'new' | 'present' | null {
   say('Claude Code plugin')
   const version = run('claude', ['--version'])
   if (version.missing) {
     warn('Claude Code isn\'t installed (no `claude` command). Install it from https://claude.com/claude-code, then run:')
     say(`      claude plugin marketplace add ${MARKETPLACE}`)
     say(`      claude plugin install ${PLUGIN}`)
-    return false
+    return null
   }
   if (/\binspeck@/.test(run('claude', ['plugin', 'list']).out)) {
     done('already installed')
-    return true
+    return 'present'
   }
   if (!/\binspeck\b/.test(run('claude', ['plugin', 'marketplace', 'list']).out)) {
     const added = run('claude', ['plugin', 'marketplace', 'add', MARKETPLACE])
-    if (!added.ok) { warn(`couldn't add the marketplace:\n${added.out.trim()}`); return false }
+    if (!added.ok) { warn(`couldn't add the marketplace:\n${added.out.trim()}`); return null }
     done(`added the marketplace ${MARKETPLACE}`)
   }
   const installed = run('claude', ['plugin', 'install', PLUGIN])
-  if (!installed.ok) { warn(`couldn't install the plugin:\n${installed.out.trim()}`); return false }
-  done('installed; new Claude sessions start with it')
-  return true
+  if (!installed.ok) { warn(`couldn't install the plugin:\n${installed.out.trim()}`); return null }
+  done('installed: it connects Inspeck to Claude')
+  return 'new'
 }
 
 /* Auto-update. A marketplace can't turn it on for itself; the user's settings
@@ -498,17 +502,29 @@ export async function main(argv: string[]): Promise<number> {
     say('  --no-auto-update  don\'t turn on auto-update for the plugin')
     return command === undefined || command === '--help' || command === '-h' ? 0 : 1
   }
-  say('Inspeck')
+  say(bold('Inspeck'))
   say('')
-  const plugin = flags.skipPlugin ? true : installPlugin()
+  const plugin = flags.skipPlugin ? 'present' : installPlugin()
   if (!flags.skipPlugin && plugin && flags.autoUpdate) turnOnAutoUpdate()
-  say('')
+  if (!flags.skipPlugin) say('')
   await wireApp(flags)
   wireStorybook(flags.cwd)
   cspHint(flags.cwd)
   say('')
-  say('Next, in Claude: /inspeck:start')
-  say('It opens your app, turns Inspeck on and links it to the chat. Or open the app in your own browser and press I.')
-  if (!plugin) say('(Install the Claude Code plugin first: the widget is served by it.)')
+  if (!plugin) {
+    say('Install Claude Code\'s plugin first (above): Inspeck runs inside it.')
+    return 0
+  }
+  /* What to do now, and nothing else: asking for the notes is all it takes. */
+  const steps = [
+    ...(plugin === 'new' ? ['Start a new Claude chat ' + dim('(Claude loads Inspeck when a chat starts)')] : []),
+    'Run your app and press ' + bold('I'),
+    'Click anything, write a note, press Enter',
+    'In Claude, say: ' + bold('check my Inspeck notes'),
+  ]
+  say(bold('How to use'))
+  steps.forEach((t, i) => say(`  ${i + 1}  ${t}`))
+  say('')
+  say(dim('Notes sent to Claude as you place them: turn on Auto-send in Inspeck\'s settings.'))
   return 0
 }

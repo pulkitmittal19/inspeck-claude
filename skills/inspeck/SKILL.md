@@ -1,9 +1,13 @@
 ---
 name: inspeck
-description: Inspeck notes — a person hovered an element of their web app, saw its CSS, and left a note about it. Use when Inspeck notes arrive (from the inspeck wait watcher or <channel source="inspeck">), when asked to check, fix or watch for Inspeck notes or comments, or when opening the person's app in the browser pane with Inspeck on it.
+description: Inspeck - a person hovers any element of their web app to see its CSS and clicks it to leave a note for Claude. Use when Inspeck notes arrive (from the inspeck wait watcher or <channel source="inspeck">), when asked to check, fix or watch for Inspeck notes or comments, when opening the person's app in the browser pane with Inspeck on it, and for ANY question about Inspeck - how to install, set up or use it, why it doesn't show or notes don't arrive, Auto-send, shortcuts, settings, copying notes, turning it off, updating or removing it.
 ---
 
-# Handling Inspeck notes
+# Inspeck
+
+For a question about using Inspeck, answer from **Questions people ask** at the end: short, plain, in the person's words, without the plumbing.
+
+## Handling Inspeck notes
 
 Each note is about one element of the person's own app. It reads like this:
 
@@ -66,3 +70,44 @@ claude plugin update inspeck@inspeck
 ```
 
 Then say, in one line, that the new version starts in their next chat (or after `/reload-plugins`), that reloading their app's page brings it there, and that their notes are kept. Never change Claude's settings files to turn on auto-update: if they want new versions to install by themselves, tell them it's `/plugin` › Marketplaces › inspeck › Enable auto-update.
+
+## Questions people ask
+
+Answer in a line or two, then offer to do it. Check before you claim: if a fix depends on what's running, look (`curl -s -H 'x-inspeck: 1' http://127.0.0.1:4848/health` says whether Inspeck's server answers, and its version).
+
+**How do I set it up?** In the app's folder: `npx inspeck init`. It installs the plugin, turns on its auto-update and adds Inspeck to the app (development only). After the first install, start a new chat: plugins load when a chat starts (`/reload-plugins` doesn't start a new plugin's server in the desktop app). Offer to run it for them.
+
+**How do I use it?** Run the app and press **I** (or click the circle in the corner). Hover to see an element's CSS, click to write a note, Enter to save. Then say "check my Inspeck notes" here. Dragging across a section notes all of it at once.
+
+**How do my notes get to you?** Two ways, and they choose in Inspeck's settings:
+- Default: notes wait on the page; "check my Inspeck notes" hands over all of them (call `pending`).
+- **Auto-send** on: each note comes as it's placed. In your browser pane that's all; in their own browser, they send "Listen for my Inspeck notes on <address>" once per chat (Settings gives them the line), and you start listening as described above.
+No `/inspeck:start` and no linking is needed: a note finds its chat by itself (the only chat open, or the chat in the app's project folder), and the chat that asks for notes takes any nobody else had.
+
+**What's `/inspeck:start`?** A shortcut for "open my app in your browser pane with Inspeck on". Optional.
+
+**Inspeck doesn't show on my page.** Go down this list and fix the first that fails:
+1. Inspeck's tools aren't in this chat (installed after the chat began): they need a new chat.
+2. The server doesn't answer on 127.0.0.1:4848 (health check above): it runs with a Claude chat that has the plugin; a new chat starts it. Another program on port 4848 is reported by the server; `INSPECK_PORT` moves it.
+3. The app doesn't load it: run `npx inspeck init` in the app's folder, or, in your pane, `bind` adds it until the next full reload.
+4. The page isn't on this computer (a deployed site, another machine): Inspeck only runs on local pages, by design.
+5. A Content-Security-Policy blocks it: allow `http://127.0.0.1:4848` in `script-src` and `connect-src` (Vite apps don't need this).
+6. A `file://` page: serve it (e.g. `npx serve`).
+7. Safari with an `https://localhost` dev server blocks it: use your pane, Chrome, or the Vite plugin.
+
+**My notes don't come.** With Auto-send off they wait until asked: call `pending`. If another chat took the site, `bind` with `page` set to the app's address brings it here. The watcher stops after a while with nothing to do: start it again.
+
+**Can I copy a note?** The copy button on a note's card copies the note, where the element is (page, element, component, file and line) and its CSS, to paste anywhere.
+
+**How do I open a menu while Inspeck is on?** Hold **Space** and click: clicks go to the app while Space is held. **F** freezes the page so tooltips and hover states stay put.
+
+**Shortcuts?** I on/off · click note · drag note an area · C CSS on hover · hold Shift spacing · ↑ ↓ parent/child · F freeze · hold Space click through · Esc close. All in Settings › Keyboard shortcuts.
+
+**Settings?** Auto-send, how sizes and colours are shown on the card (notes to you always carry the code as written), Check for updates, Keyboard shortcuts. Speaking a note: the mic in the note box (macOS 26+, on-device).
+
+**Turn it off / remove it.** Off for now: press I or Esc. From a project: remove `inspeck()` from the Vite/Astro config, or the Inspeck tag from the layout/HTML `init` edited. Entirely: `claude plugin uninstall inspeck@inspeck`. Their notes stay in `~/.inspeck` until deleted.
+
+**Does it send my data anywhere?** No. Notes, the server and voice stay on this Mac. The only outside request is a once-a-day check of the latest version number on GitHub (off in Settings › Check for updates).
+
+**Is it working on Windows/Linux?** macOS only for now.
+

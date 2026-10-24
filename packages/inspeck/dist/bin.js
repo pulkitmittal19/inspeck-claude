@@ -10,6 +10,9 @@ var MARKETPLACE = "pulkitmittal19/inspeck-claude";
 var PLUGIN = "inspeck@inspeck";
 var TAG_SRC = "http://127.0.0.1:4848/inspeck.js";
 var say = (s = "") => process.stdout.write(s + "\n");
+var styled = !!process.stdout.isTTY && !process.env.NO_COLOR;
+var bold = (s) => styled ? `\x1B[1m${s}\x1B[22m` : s;
+var dim = (s) => styled ? `\x1B[2m${s}\x1B[22m` : s;
 var done = (s) => say(`  \u2713 ${s}`);
 var note = (s) => say(`  \xB7 ${s}`);
 var warn = (s) => say(`  ! ${s}`);
@@ -24,18 +27,18 @@ function installPlugin() {
     warn("Claude Code isn't installed (no `claude` command). Install it from https://claude.com/claude-code, then run:");
     say(`      claude plugin marketplace add ${MARKETPLACE}`);
     say(`      claude plugin install ${PLUGIN}`);
-    return false;
+    return null;
   }
   if (/\binspeck@/.test(run("claude", ["plugin", "list"]).out)) {
     done("already installed");
-    return true;
+    return "present";
   }
   if (!/\binspeck\b/.test(run("claude", ["plugin", "marketplace", "list"]).out)) {
     const added = run("claude", ["plugin", "marketplace", "add", MARKETPLACE]);
     if (!added.ok) {
       warn(`couldn't add the marketplace:
 ${added.out.trim()}`);
-      return false;
+      return null;
     }
     done(`added the marketplace ${MARKETPLACE}`);
   }
@@ -43,10 +46,10 @@ ${added.out.trim()}`);
   if (!installed.ok) {
     warn(`couldn't install the plugin:
 ${installed.out.trim()}`);
-    return false;
+    return null;
   }
-  done("installed; new Claude sessions start with it");
-  return true;
+  done("installed: it connects Inspeck to Claude");
+  return "new";
 }
 var MARKETPLACE_NAME = "inspeck";
 var settingsFile = () => join(process.env.CLAUDE_CONFIG_DIR || join(homedir(), ".claude"), "settings.json");
@@ -508,18 +511,29 @@ async function main(argv) {
     say("  --no-auto-update  don't turn on auto-update for the plugin");
     return command === void 0 || command === "--help" || command === "-h" ? 0 : 1;
   }
-  say("Inspeck");
+  say(bold("Inspeck"));
   say("");
-  const plugin = flags.skipPlugin ? true : installPlugin();
+  const plugin = flags.skipPlugin ? "present" : installPlugin();
   if (!flags.skipPlugin && plugin && flags.autoUpdate) turnOnAutoUpdate();
-  say("");
+  if (!flags.skipPlugin) say("");
   await wireApp(flags);
   wireStorybook(flags.cwd);
   cspHint(flags.cwd);
   say("");
-  say("Next, in Claude: /inspeck:start");
-  say("It opens your app, turns Inspeck on and links it to the chat. Or open the app in your own browser and press I.");
-  if (!plugin) say("(Install the Claude Code plugin first: the widget is served by it.)");
+  if (!plugin) {
+    say("Install Claude Code's plugin first (above): Inspeck runs inside it.");
+    return 0;
+  }
+  const steps = [
+    ...plugin === "new" ? ["Start a new Claude chat " + dim("(Claude loads Inspeck when a chat starts)")] : [],
+    "Run your app and press " + bold("I"),
+    "Click anything, write a note, press Enter",
+    "In Claude, say: " + bold("check my Inspeck notes")
+  ];
+  say(bold("How to use"));
+  steps.forEach((t, i) => say(`  ${i + 1}  ${t}`));
+  say("");
+  say(dim("Notes sent to Claude as you place them: turn on Auto-send in Inspeck's settings."));
   return 0;
 }
 

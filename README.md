@@ -17,11 +17,18 @@ In your app's folder:
 npx inspeck init
 ```
 
-That's all. It installs the Inspeck plugin into Claude Code (every session starts it from then on), turns on Claude Code's auto-update for it and tells you so (`--no-auto-update` to skip), and adds the widget to your app the way it's built: `inspeck()` in a Vite config (React, Vue, Svelte, SvelteKit and other Vite apps) or in Astro's config, a development-only tag in a Next.js layout or in Nuxt's page head, or a tag that loads only on your computer in a plain `index.html` (it asks first). With Vite and Astro the widget comes through your dev server itself (`/__inspeck/`), so it works on any page the server renders and on the "Network" address too (`http://192.168.x.x:5173`). Running it again changes nothing.
+That's the one command. It installs the Inspeck plugin into Claude Code, turns on its auto-update (`--no-auto-update` to skip), and adds Inspeck to your app in development only, the way the app is built: Vite (React, Vue, Svelte, SvelteKit…), Astro, Next.js, Nuxt, Angular, Create React App, Vue CLI, Docusaurus, Storybook or a plain `index.html` (it asks first). Running it again changes nothing.
 
-Then, in Claude: **`/inspeck:start`**. It opens your app in the browser pane, turns Inspeck on and links it to the chat. If your project runs more than one (an app and Storybook, a site and an admin panel), it asks once and turns Inspeck on for each, and any local app Claude opens later in the chat is linked the same way. Set up once per project, Inspeck is in every run of it, on any port, in every tab and browser. The first time Inspeck opens, a four-step tour shows the basics.
+Then:
 
-**Inside the Claude app you don't even need the second part.** When Claude opens your app in its browser pane, it adds Inspeck to the page itself, so with just the plugin installed your code stays untouched. The app step is for using Inspeck in your own browser (Chrome, Safari, Arc).
+1. **Start a new Claude chat** (first install only: Claude loads plugins when a chat starts)
+2. **Run your app and press I**
+3. **Click anything, write a note, press Enter**
+4. **In Claude, say "check my Inspeck notes"**: Claude reads them all, with the file and line of each element, and fixes them
+
+Notes find their chat by themselves: the one open chat, or the chat in the app's project folder. Want each note to go to Claude the moment you place it? Turn on **Auto-send** in Inspeck's settings.
+
+**Inside the Claude app you can skip the app step.** When Claude opens your app in its browser pane, it adds Inspeck to the page itself, so with just the plugin your code stays untouched. The app step is what makes Inspeck appear in your own browser (Chrome, Safari, Arc) and survive full reloads.
 
 <details>
 <summary>Doing it by hand</summary>
@@ -85,7 +92,7 @@ To have new versions install by themselves, turn on auto-update in Claude: `/plu
 
 ## Use
 
-Open your app and click the circle in the corner, or press **I** (anywhere but a text box; I again puts it away). That's the one key to know: every other shortcut is in **Settings › Keyboard shortcuts**, and each is a quicker way to do something the pill or the note already offers. The pill opens to four buttons, CSS, Clear, Settings and Close, and you can start placing notes straight away. Notes wait on the page until you're done: say **"check my Inspeck notes"** in the chat and Claude gets them as one batch. In **Settings**, turn on *Auto-send notes to Claude* to have each go as you place it (Settings then gives you one line to send in your Claude chat, *Listen for my Inspeck notes on* your app's address, with a copy button: send it once per chat and Claude picks up every note as you place it, without being asked), and choose how the CSS card writes values: sizes by default, in px or in rem (at the page's own root size), and colours by default, or as hex, rgb or oklch. Notes to Claude always carry the code as written. **Speak a note** with the 🎙 in the note box: it listens (bars move with your voice), your words appear as you talk, and Enter saves it; Esc cancels, and typing takes over. Voice runs on the Mac itself with Apple's on-device speech engine (macOS 26 or later), free, nothing leaves your machine, and it works in the Claude app's browser too. If the circle covers something, drag it anywhere; it stays there on that site:
+Open your app and click the circle in the corner, or press **I** (anywhere but a text box; I again puts it away). That's the one key to know: every other shortcut is in **Settings › Keyboard shortcuts**, and each is a quicker way to do something the pill or the note already offers. The pill opens to four buttons, CSS, Clear, Settings and Close, and you can start placing notes straight away. Notes wait on the page until you're done: say **"check my Inspeck notes"** in the chat and Claude gets them as one batch. In **Settings**, turn on *Auto-send notes to Claude* to have each go as you place it. In Claude's browser pane that's all it takes. In your own browser, Settings also gives you one line to send in your Claude chat once (*Listen for my Inspeck notes on* your app's address, with a copy button), so that chat starts listening. Also in Settings, choose how the CSS card writes values: sizes by default, in px or in rem (at the page's own root size), and colours by default, or as hex, rgb or oklch. Notes to Claude always carry the code as written. **Speak a note** with the 🎙 in the note box: it listens (bars move with your voice), your words appear as you talk, and Enter saves it; Esc cancels, and typing takes over. Voice runs on the Mac itself with Apple's on-device speech engine (macOS 26 or later), free, nothing leaves your machine, and it works in the Claude app's browser too. If the circle covers something, drag it anywhere; it stays there on that site:
 
 | | |
 |---|---|
@@ -95,7 +102,7 @@ Open your app and click the circle in the corner, or press **I** (anywhere but a
 | **Click** | pin a card to it and write a note. Its CSS is there, folded: click the card's top line (the › chevron) to open it. With CSS on hover on, it opens spread out. **Enter** sends it to Claude, **Shift+Enter** adds a line, **Esc** or a click anywhere else closes it (an unsent note is kept: click the same element again to carry on) |
 | **↑ / ↓** | the element's parent or child (from some words, ↑ is the element they're in) |
 | **Hold Shift** | padding, margin and the gaps between children, with numbers. Keep holding and move to another element: the distance between the two |
-| **Menus** | to note something inside a menu, press **I** to put Inspeck away, open the menu, and press **I** again: a key doesn't close a menu the way a click would. Rest the pointer on a menu's button and Inspeck says so. (Or hold **Space**: clicks go to your app while it's held) |
+| **Menus** | hold **Space** and click the menu's button: while Space is held, clicks go to your app, so the menu opens and Inspeck stays on. Then let go and note what's inside |
 | **F** | freeze the page, with the pointer where it is: tooltips, hover cards, menus and what shows on hover (a row's buttons) stay as they are, so you can point at them and note them. Animations, spinners and loading states hold still too: the page's network answers wait until you release, so a loader you caught stays on screen. **F** again or **Esc** releases it. Writing a note freezes the page too, so an open menu stays open while you type |
 | **Tooltips** | Inspeck sees tooltips and other click-through layers: rest the pointer on one for a moment and it's outlined. Most close when the pointer leaves their button, so press **F** while it shows, then move onto it |
 | **Clear** (bin) | withdraw every note on this page; click twice to be sure |

@@ -112,7 +112,10 @@ test('a Vite app: the plugin is installed from GitHub and the config gets inspec
   })
   const out = p.run('--skip-install')
   assert.deepEqual(p.calls(), ['--version', 'plugin list', 'plugin marketplace list', 'plugin marketplace add pulkitmittal19/inspeck-claude', 'plugin install inspeck@inspeck'])
-  assert.match(out, /✓ installed; new Claude sessions start with it/)
+  assert.match(out, /✓ installed: it connects Inspeck to Claude/)
+  /* Then how to use it, in a few steps: a new chat first, since open ones don't have the plugin yet. */
+  assert.match(out, /1  Start a new Claude chat[\s\S]*press I[\s\S]*check my Inspeck notes/)
+  assert.doesNotMatch(out, /inspeck:start/)
   assert.match(p.read('vite.config.ts'), /import inspeck from 'inspeck\/vite'[\s\S]*plugins: \[inspeck\(\)\]/)
   assert.match(out, /✓ added inspeck\(\) to vite\.config\.ts/)
   assert.equal(p.settings()?.extraKnownMarketplaces?.inspeck?.autoUpdate, true, 'auto-update turned on')
@@ -123,6 +126,8 @@ test('a Vite app: the plugin is installed from GitHub and the config gets inspec
   assert.deepEqual(again.calls(), ['--version', 'plugin list'], 'already installed: nothing installed')
   assert.match(out2, /✓ already installed/)
   assert.match(out2, /already loads Inspeck/)
+  assert.doesNotMatch(out2, /Start a new Claude chat/, 'already installed: no new chat needed')
+  assert.match(out2, /1  Run your app and press I/)
 })
 
 test('a Next.js app: the root layout gets a development-only tag', () => {

@@ -1,6 +1,6 @@
 ---
 name: start
-description: Turn Inspeck on for the person's web app in one step - open the app in the browser pane, add Inspeck to it, link the tab to this chat and start listening for notes. Use when the person runs /inspeck:start, or asks to start, set up or turn on Inspeck.
+description: Optional shortcut - open the person's web app in the browser pane with Inspeck on, linked to this chat and listening for notes. Not needed for notes to reach Claude. Use when the person runs /inspeck:start, or asks to open their app with Inspeck, or to start or turn on Inspeck in the pane.
 ---
 
 # Start Inspeck
