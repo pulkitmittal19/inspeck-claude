@@ -97,12 +97,15 @@ exit 0
   chmodSync(join(bin, 'claude'), 0o755)
   /* Claude Code's settings go to a throwaway folder, never the real ~/.claude. */
   const config = mkdtempSync(join(tmpdir(), 'inspeck-config-'))
-  const run = (...args) => execFileSync(process.execPath, [BIN, 'init', ...args], {
-    cwd: dir, encoding: 'utf8', env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, CLAUDE_CONFIG_DIR: config }, stdio: ['ignore', 'pipe', 'pipe'],
+  const exec = args => execFileSync(process.execPath, [BIN, 'init', ...args], {
+    cwd: dir, encoding: 'utf8', env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, CLAUDE_CONFIG_DIR: config, NO_COLOR: '1' }, stdio: ['ignore', 'pipe', 'pipe'],
   })
+  /* Listing what it did, to check each step; `plain` is what the person sees. */
+  const run = (...args) => exec([...args, '--verbose'])
+  const plain = (...args) => exec(args)
   const settings = () => { try { return JSON.parse(readFileSync(join(config, 'settings.json'), 'utf8')) } catch { return null } }
   const calls = () => { try { return readFileSync(log, 'utf8').trim().split('\n') } catch { return [] } }
-  return { dir, run, calls, settings, read: name => readFileSync(join(dir, name), 'utf8') }
+  return { dir, run, plain, calls, settings, read: name => readFileSync(join(dir, name), 'utf8') }
 }
 
 test('a Vite app: the plugin is installed from GitHub and the config gets inspeck(); a second run does nothing', () => {
@@ -128,6 +131,22 @@ test('a Vite app: the plugin is installed from GitHub and the config gets inspec
   assert.match(out2, /already loads Inspeck/)
   assert.doesNotMatch(out2, /Start a new Claude chat/, 'already installed: no new chat needed')
   assert.match(out2, /1  Run your app and press I/)
+})
+
+test('what the person sees: that it\'s ready, and how to use it; nothing else', () => {
+  const vite = { 'package.json': JSON.stringify({ devDependencies: { vite: '^8.0.0' } }), 'vite.config.ts': `import { defineConfig } from 'vite'\n\nexport default defineConfig({\n  plugins: [],\n})\n` }
+  assert.equal(project(vite).plain('--skip-install'), [
+    '✓ Inspeck is ready', '', 'How to use',
+    '  1  Start a new Claude chat',
+    '  2  Run your app and press I',
+    '  3  Click anything, write a note, press Enter',
+    '  4  In Claude, say: check my Inspeck notes', '',
+  ].join('\n'))
+  /* Already installed: no new chat needed. */
+  assert.match(project(vite, { pluginInstalled: true }).plain('--skip-install'), /^✓ Inspeck is ready\n\nHow to use\n  1  Run your app and press I/)
+  /* Something it couldn't do shows, and it doesn't claim to be ready. */
+  const odd = project({ 'package.json': JSON.stringify({ devDependencies: { vite: '^8.0.0' } }), 'vite.config.ts': 'export default {}\n' }, { pluginInstalled: true }).plain('--skip-install')
+  assert.match(odd, /! couldn't find the plugins list[\s\S]*Inspeck is almost ready: see above\./)
 })
 
 test('a Next.js app: the root layout gets a development-only tag', () => {

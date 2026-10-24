@@ -30,10 +30,13 @@ interface Flags { yes: boolean; skipPlugin: boolean; skipInstall: boolean; autoU
 const say = (s = '') => process.stdout.write(s + '\n')
 const styled = !!process.stdout.isTTY && !process.env.NO_COLOR
 const bold = (s: string) => (styled ? `\x1b[1m${s}\x1b[22m` : s)
-const dim = (s: string) => (styled ? `\x1b[2m${s}\x1b[22m` : s)
-const done = (s: string) => say(`  ✓ ${s}`)
+/* What was done stays quiet (--verbose lists it): the person sees that it's ready and how to use it. What
+   needs them (a failure, a question, a line to add by hand) always shows. */
+let verbose = false
+let problems = 0
+const done = (s: string) => { if (verbose) say(`  ✓ ${s}`) }
 const note = (s: string) => say(`  · ${s}`)
-const warn = (s: string) => say(`  ! ${s}`)
+const warn = (s: string) => { problems++; say(`  ! ${s}`) }
 
 function run(cmd: string, args: string[], cwd?: string) {
   const r = spawnSync(cmd, args, { cwd, encoding: 'utf8', shell: process.platform === 'win32' })
@@ -44,7 +47,7 @@ function run(cmd: string, args: string[], cwd?: string) {
 
 /** 'new' when installed just now (open chats don't have it until a new one starts), 'present', or null. */
 function installPlugin(): 'new' | 'present' | null {
-  say('Claude Code plugin')
+  if (verbose) say('Claude Code plugin')
   const version = run('claude', ['--version'])
   if (version.missing) {
     warn('Claude Code isn\'t installed (no `claude` command). Install it from https://claude.com/claude-code, then run:')
@@ -389,7 +392,7 @@ async function wireApp(flags: Flags): Promise<void> {
   const { cwd } = flags
   const app = detect(cwd)
   const rel = (p: string) => relative(cwd, p) || p
-  say('Your app')
+  if (verbose) say('Your app')
 
   if (app.kind === 'astro') {
     if (!flags.skipInstall) {
@@ -492,39 +495,38 @@ export async function main(argv: string[]): Promise<number> {
     autoUpdate: !rest.includes('--no-auto-update'),
     cwd: process.cwd(),
   }
+  verbose = rest.includes('--verbose')
   if (command !== 'init') {
-    say('Usage: npx inspeck init [--yes] [--skip-plugin] [--skip-install] [--no-auto-update]')
+    say('Usage: npx inspeck init [--yes] [--skip-plugin] [--skip-install] [--no-auto-update] [--verbose]')
     say('')
     say('  Installs the Inspeck plugin for Claude Code and adds the widget to the app in this folder.')
     say('  --yes             add the tag to a plain HTML page without asking')
     say('  --skip-plugin     leave Claude Code alone')
     say('  --skip-install    don\'t install the npm package (Vite)')
     say('  --no-auto-update  don\'t turn on auto-update for the plugin')
+    say('  --verbose         list everything it did')
     return command === undefined || command === '--help' || command === '-h' ? 0 : 1
   }
-  say(bold('Inspeck'))
-  say('')
   const plugin = flags.skipPlugin ? 'present' : installPlugin()
   if (!flags.skipPlugin && plugin && flags.autoUpdate) turnOnAutoUpdate()
-  if (!flags.skipPlugin) say('')
+  if (verbose && !flags.skipPlugin) say('')
   await wireApp(flags)
   wireStorybook(flags.cwd)
   cspHint(flags.cwd)
-  say('')
+  if (problems || verbose) say('')
   if (!plugin) {
     say('Install Claude Code\'s plugin first (above): Inspeck runs inside it.')
     return 0
   }
-  /* What to do now, and nothing else: asking for the notes is all it takes. */
+  say(problems ? bold('Inspeck is almost ready: see above.') : bold('✓ Inspeck is ready'))
+  say('')
+  say('How to use')
   const steps = [
-    ...(plugin === 'new' ? ['Start a new Claude chat ' + dim('(Claude loads Inspeck when a chat starts)')] : []),
+    ...(plugin === 'new' ? ['Start a new Claude chat'] : []),
     'Run your app and press ' + bold('I'),
     'Click anything, write a note, press Enter',
     'In Claude, say: ' + bold('check my Inspeck notes'),
   ]
-  say(bold('How to use'))
   steps.forEach((t, i) => say(`  ${i + 1}  ${t}`))
-  say('')
-  say(dim('Notes sent to Claude as you place them: turn on Auto-send in Inspeck\'s settings.'))
   return 0
 }

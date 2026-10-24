@@ -12,16 +12,22 @@ var TAG_SRC = "http://127.0.0.1:4848/inspeck.js";
 var say = (s = "") => process.stdout.write(s + "\n");
 var styled = !!process.stdout.isTTY && !process.env.NO_COLOR;
 var bold = (s) => styled ? `\x1B[1m${s}\x1B[22m` : s;
-var dim = (s) => styled ? `\x1B[2m${s}\x1B[22m` : s;
-var done = (s) => say(`  \u2713 ${s}`);
+var verbose = false;
+var problems = 0;
+var done = (s) => {
+  if (verbose) say(`  \u2713 ${s}`);
+};
 var note = (s) => say(`  \xB7 ${s}`);
-var warn = (s) => say(`  ! ${s}`);
+var warn = (s) => {
+  problems++;
+  say(`  ! ${s}`);
+};
 function run(cmd, args, cwd) {
   const r = spawnSync(cmd, args, { cwd, encoding: "utf8", shell: process.platform === "win32" });
   return { ok: !r.error && r.status === 0, out: `${r.stdout ?? ""}${r.stderr ?? ""}`, missing: r.error?.code === "ENOENT" };
 }
 function installPlugin() {
-  say("Claude Code plugin");
+  if (verbose) say("Claude Code plugin");
   const version = run("claude", ["--version"]);
   if (version.missing) {
     warn("Claude Code isn't installed (no `claude` command). Install it from https://claude.com/claude-code, then run:");
@@ -357,7 +363,7 @@ async function wireApp(flags) {
   const { cwd } = flags;
   const app = detect(cwd);
   const rel = (p) => relative(cwd, p) || p;
-  say("Your app");
+  if (verbose) say("Your app");
   if (app.kind === "astro") {
     if (!flags.skipInstall) {
       const [pm, args] = packageManager(cwd);
@@ -501,39 +507,39 @@ async function main(argv) {
     autoUpdate: !rest.includes("--no-auto-update"),
     cwd: process.cwd()
   };
+  verbose = rest.includes("--verbose");
   if (command !== "init") {
-    say("Usage: npx inspeck init [--yes] [--skip-plugin] [--skip-install] [--no-auto-update]");
+    say("Usage: npx inspeck init [--yes] [--skip-plugin] [--skip-install] [--no-auto-update] [--verbose]");
     say("");
     say("  Installs the Inspeck plugin for Claude Code and adds the widget to the app in this folder.");
     say("  --yes             add the tag to a plain HTML page without asking");
     say("  --skip-plugin     leave Claude Code alone");
     say("  --skip-install    don't install the npm package (Vite)");
     say("  --no-auto-update  don't turn on auto-update for the plugin");
+    say("  --verbose         list everything it did");
     return command === void 0 || command === "--help" || command === "-h" ? 0 : 1;
   }
-  say(bold("Inspeck"));
-  say("");
   const plugin = flags.skipPlugin ? "present" : installPlugin();
   if (!flags.skipPlugin && plugin && flags.autoUpdate) turnOnAutoUpdate();
-  if (!flags.skipPlugin) say("");
+  if (verbose && !flags.skipPlugin) say("");
   await wireApp(flags);
   wireStorybook(flags.cwd);
   cspHint(flags.cwd);
-  say("");
+  if (problems || verbose) say("");
   if (!plugin) {
     say("Install Claude Code's plugin first (above): Inspeck runs inside it.");
     return 0;
   }
+  say(problems ? bold("Inspeck is almost ready: see above.") : bold("\u2713 Inspeck is ready"));
+  say("");
+  say("How to use");
   const steps = [
-    ...plugin === "new" ? ["Start a new Claude chat " + dim("(Claude loads Inspeck when a chat starts)")] : [],
+    ...plugin === "new" ? ["Start a new Claude chat"] : [],
     "Run your app and press " + bold("I"),
     "Click anything, write a note, press Enter",
     "In Claude, say: " + bold("check my Inspeck notes")
   ];
-  say(bold("How to use"));
   steps.forEach((t, i) => say(`  ${i + 1}  ${t}`));
-  say("");
-  say(dim("Notes sent to Claude as you place them: turn on Auto-send in Inspeck's settings."));
   return 0;
 }
 
