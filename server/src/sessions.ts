@@ -43,6 +43,28 @@ export interface Route {
 }
 
 const DIR = join(HOME, 'sessions')
+/* The watcher's heartbeat: a session listening for notes right now (see wait.ts). */
+const HEARD = join(HOME, 'listening')
+const HEARD_MS = 75_000
+
+/** The watcher is running for this session (on), or has stopped (off). Refreshed while it runs; a stale one
+    (a watcher that was killed) runs out by itself. */
+export function heartbeat(pid: number, on: boolean, ms = HEARD_MS): void {
+  const file = join(HEARD, `${pid}.json`)
+  try {
+    if (!on) { rmSync(file, { force: true }); return }
+    mkdirSync(HEARD, { recursive: true })
+    writeFileSync(file, JSON.stringify({ pid, until: Date.now() + ms }))
+  } catch { /* only a hint for the page */ }
+}
+
+/** Whether this session's watcher is running: a note for it reaches Claude without anyone asking. */
+export function listening(pid: number): boolean {
+  try {
+    const { until } = JSON.parse(readFileSync(join(HEARD, `${pid}.json`), 'utf8'))
+    return until > Date.now() && alive(pid)
+  } catch { return false }
+}
 const BINDINGS = join(HOME, 'bindings.json')
 
 function ps(pid: number, field: 'comm' | 'args' = 'comm'): { ppid: number; comm: string } | null {

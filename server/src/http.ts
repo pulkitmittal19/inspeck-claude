@@ -31,7 +31,7 @@ import { dirname, isAbsolute, join, normalize, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import * as store from './store.js'
 import { HOME } from './store.js'
-import { bindTab, liveSessions, projectOf, real, route as routeNote } from './sessions.js'
+import { bindTab, listening, liveSessions, projectOf, real, route as routeNote } from './sessions.js'
 import { newer } from './updates.js'
 
 export { newer }
@@ -240,6 +240,13 @@ async function route(req: IncomingMessage, res: ServerResponse, version: string,
   }
 
   /* Voice for notes: whether it works here, a listening session streamed as it goes, and stopping it. */
+  /* Whether a note from this page, in this tab, would reach a chat that's listening right now. */
+  if (url.pathname === '/listening' && req.method === 'GET') {
+    const page = url.searchParams.get('page') ?? ''
+    if (!ownSite(origin, page)) return send(res, 403, { error: 'A page can only ask about its own site' })
+    const to = routeNote(page, url.searchParams.get('tab') ?? undefined)
+    return send(res, 200, { listening: !!to.pid && listening(to.pid) })
+  }
   if (url.pathname === '/voice' && req.method === 'GET') return send(res, 200, voiceAvailable())
   if (url.pathname === '/voice/listen' && req.method === 'POST') return listenStream(req, res)
   if (url.pathname === '/voice/stop' && req.method === 'POST') return send(res, 200, { stopping: stopListening() })

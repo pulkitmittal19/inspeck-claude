@@ -1,6 +1,6 @@
 import type { SourceAt } from './source'
 /* Talking to the Inspeck server that served this script. */
-import { SERVER, TAB_ID, VERSION } from './env'
+import { pageHref, SERVER, TAB_ID, VERSION } from './env'
 import { nativeFetch } from './native'
 
 export interface CssLine { property: string; value: string; resolved?: string }
@@ -105,6 +105,11 @@ export const api = {
   /** Settings kept by the plugin, so they follow you to every app and browser. */
   async settings(): Promise<Record<string, unknown>> {
     return call<Record<string, unknown>>('GET', '/settings')
+  },
+  /** Whether a note from this tab would reach a Claude chat that's listening right now. */
+  async listening(): Promise<boolean> {
+    const q = new URLSearchParams({ page: pageHref(), tab: TAB_ID })
+    return (await call<{ listening: boolean }>('GET', `/listening?${q}`)).listening
   },
   async saveSettings(settings: Record<string, unknown>): Promise<void> {
     await call('POST', '/settings', settings)

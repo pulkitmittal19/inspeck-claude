@@ -103,6 +103,31 @@ test('the background watcher wakes for its own session’s note and leaves other
   assert.match(out, /inspeck\.mjs" wait/, 'tells Claude how to keep listening')
 })
 
+test('Settings can tell whether a note from a tab reaches a chat that\'s listening', async () => {
+  const listening = tab => new Promise(resolve => {
+    const q = new URLSearchParams({ page: 'http://localhost:5173/settings', tab })
+    http.get({ host: '127.0.0.1', port, path: `/listening?${q}`, headers: { origin: 'http://localhost:5173', 'x-inspeck': '1' } }, res => {
+      let raw = ''; res.on('data', c => { raw += c }); res.on('end', () => resolve(JSON.parse(raw).listening))
+    })
+  })
+  const D = await session('d')
+  const bindD = await post('/bind', { tabId: 'tab-listen', token: tokenFrom(await D.tool('bind')) })
+  assert.equal(bindD.status, 200)
+  assert.equal(await listening('tab-listen'), false, 'no watcher: Settings gives the line to send')
+  const waiter = spawn(process.execPath, [join(D.dir, 'inspeck.mjs'), 'wait', '--minutes', '1'], { env: D.env, cwd: D.dir })
+  const exited = new Promise(r => waiter.on('exit', r))
+  let on = false
+  for (let i = 0; i < 30 && !on; i++) { on = await listening('tab-listen'); if (!on) await new Promise(r => setTimeout(r, 100)) }
+  assert.equal(on, true, 'watcher running: Settings says notes go straight to the chat')
+  /* A note wakes it; Claude handles it and listens again, so it still counts as listening meanwhile. */
+  await post('/comments', note('Heard', { tabId: 'tab-listen' }))
+  await exited
+  assert.equal(await listening('tab-listen'), true)
+  /* A page can't ask about another site. */
+  const other = await new Promise(resolve => http.get({ host: '127.0.0.1', port, path: '/listening?page=http%3A%2F%2Flocalhost%3A9999%2F', headers: { origin: 'http://localhost:5173', 'x-inspeck': '1' } }, res => { res.resume(); resolve(res.statusCode) }))
+  assert.equal(other, 403)
+})
+
 test('a note from an ordinary browser that no session can place goes to the first session that checks, and so does the rest of that site', async () => {
   /* Nothing listens on this port, so no project can be found for the page: as
      with an app in Chrome when no session is open in its folder. */

@@ -15,6 +15,7 @@ import { ICONS } from './icons'
 import { SHORTCUTS, shortcutRow } from './keys'
 import { prefs, type Prefs } from './prefs'
 import { actionOf } from './router'
+import { api } from './api'
 
 /** What the person sends in their Claude chat so it listens for notes: Claude links this site to the chat
     and starts its watcher. The address says which app, so the notes go to that chat with others open. */
@@ -64,14 +65,18 @@ export function createSettings(ui: HTMLElement, onToggle: (open: boolean) => voi
       h('span', {}, h('b', {}, 'On:'), ' each note goes to Claude as you add it, and Claude starts on it.'),
       h('span', {}, h('b', {}, 'Off:'), ' notes wait on the page until you ask Claude to check them in the chat.')))
   /* Auto-send sends each note to the chat, but Claude only picks one up by itself while the chat is
-     listening, and only the chat can start that. So turning Auto-send on, this says what to send there:
-     once per chat, and from then on every note reaches Claude as it's placed. It shows just then, as the
-     switch goes on; opening Settings again later, it's gone. */
+     listening, and only the chat can start that. So turning Auto-send on, this asks whether a chat is
+     listening for this tab (in Claude's own browser it usually is): if so, it just says so; if not, it gives
+     the line to send there once. It shows just then, as the switch goes on; opening Settings again, it's gone. */
   let justTurnedOn = false
+  /* Whether a chat is listening: unknown (null) until the answer comes. */
+  let heard: boolean | null = null
   const copyBtn = h('button', { type: 'button', class: 'listen-copy', 'data-action': 'copy-listen', 'aria-label': 'Copy the message' }, svg(ICONS.copy, 12, 2))
-  const listenHint = h('div', { class: 'listen-wrap' }, h('div', { class: 'listen' },
+  const listenOk = h('p', { class: 'listen-line listen-ok' }, svg(ICONS.check, 11, 2.4), 'Going to your Claude chat')
+  const listenAsk = h('div', {},
     h('p', { class: 'listen-line' }, 'Now send this in your Claude chat, once per chat, so Claude picks notes up as they come:'),
-    h('div', { class: 'listen-msg' }, h('span', {}, listenMessage()), copyBtn)))
+    h('div', { class: 'listen-msg' }, h('span', {}, listenMessage()), copyBtn))
+  const listenHint = h('div', { class: 'listen-wrap' }, h('div', { class: 'listen' }, listenOk, listenAsk))
   main.append(
     h('div', { class: 'set-row set-toggle' }, h('span', { class: 'set-label', id: 'ix-set-live' }, 'Auto-send notes to Claude', more), live),
     listenHint,
@@ -123,7 +128,9 @@ export function createSettings(ui: HTMLElement, onToggle: (open: boolean) => voi
     }
     live.setAttribute('aria-checked', String(now.send === 'live'))
     if (now.send !== 'live') justTurnedOn = false
-    listenHint.toggleAttribute('data-open', justTurnedOn)
+    listenOk.hidden = heard !== true
+    listenAsk.hidden = heard !== false
+    listenHint.toggleAttribute('data-open', justTurnedOn && heard !== null)
   }
   /* Copied: the button turns into a tick for a moment. The page's clipboard, or, where that's not
      allowed (some embedded browsers), a selection copied the old way. */
@@ -178,7 +185,9 @@ export function createSettings(ui: HTMLElement, onToggle: (open: boolean) => voi
         if (a?.action === 'live') {
           const on = prefs.get().send !== 'live'
           justTurnedOn = on
+          heard = null
           prefs.set({ send: on ? 'live' : 'ask' })
+          if (on) void api.listening().then(v => v, () => false).then(v => { heard = v; sync() })
         }
         if (a?.action === 'set-page') show(a.el.dataset.page === 'keys' ? 'keys' : 'main')
         if (a?.action === 'copy-listen') void copyListen()

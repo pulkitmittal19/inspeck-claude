@@ -81,7 +81,7 @@ Answer in a line or two, then offer to do it. Check before you claim: if a fix d
 
 **How do my notes get to you?** Two ways, and they choose in Inspeck's settings:
 - Default: notes wait on the page; "check my Inspeck notes" hands over all of them (call `pending`).
-- **Auto-send** on: each note comes as it's placed. In your browser pane that's all; in their own browser, they send "Listen for my Inspeck notes on <address>" once per chat (Settings gives them the line), and you start listening as described above.
+- **Auto-send** on: each note comes as it's placed. If a chat is already listening for that tab (your watcher is running), Settings tells them it's going to their Claude chat and that's all; if not (typically their own browser), Settings gives them "Listen for my Inspeck notes on <address>" to send once per chat, and you start listening as described above.
 No `/inspeck:start` and no linking is needed: a note finds its chat by itself (the only chat open, or the chat in the app's project folder), and the chat that asks for notes takes any nobody else had.
 
 **What's `/inspeck:start`?** A shortcut for "open my app in your browser pane with Inspeck on". Optional.

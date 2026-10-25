@@ -518,6 +518,8 @@ button { appearance: none; background: none; border: 0; padding: 0; cursor: poin
 .listen-wrap[data-open] { grid-template-rows: 1fr; opacity: 1; }
 .listen { min-height: 0; overflow: hidden; }
 .listen-line { margin: 10px 0 7px; font: 500 10.5px/1.45 var(--ix-sans); color: var(--ix-dim); white-space: normal; }
+.listen-ok { display: flex; align-items: center; gap: 6px; margin-bottom: 0; color: #7EE2A8; }
+.listen-ok[hidden], .listen > div[hidden] { display: none; }
 .listen-msg {
   display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 6px 6px 10px; border-radius: 7px;
   background: rgba(255, 61, 138, 0.08); box-shadow: inset 0 0 0 1px rgba(255, 61, 138, 0.28);
