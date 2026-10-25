@@ -572,7 +572,7 @@ export function createCard(ui: HTMLElement): Card {
       if (desc) {
         /* The whole head is the fold toggle, so it's always in the same place. */
         const chevron = h('span', { class: 'chev', 'aria-hidden': 'true' }, svg(ICONS.chevron, 10, 2.4))
-        head = renderHead(desc, [h('span', { class: 'tools' }, tool('copy', 'copy', 'Copy note, place and CSS'), close)], o.existing?.n, chevron)
+        head = renderHead(desc, [h('span', { class: 'tools' }, tool('copy', 'copy', 'Copy details'), close)], o.existing?.n, chevron)
         head.setAttribute('data-action', 'fold')
         head.setAttribute('role', 'button')
         head.setAttribute('aria-label', 'Show or hide the CSS')
@@ -707,11 +707,10 @@ export function createCard(ui: HTMLElement): Card {
           case 'copy':
             if (desc) {
               const d = desc
-              const withNote = !!parts.note.value.trim()
               const note = parts.note
               const place = opts.place?.().catch(() => undefined) ?? Promise.resolve(undefined)
               void place.then(p => copyToClipboard(copyText(d, note.value, p), el)).then(ok => {
-                status(ok ? (withNote ? 'Note, place and CSS copied' : 'Place and CSS copied') : 'Couldn’t copy', ok ? 'ok' : 'error')
+                status(ok ? 'Copied' : 'Couldn’t copy', ok ? 'ok' : 'error')
                 /* The old way moved the selection: the cursor goes back to the end of the note. */
                 note.focus({ preventScroll: true })
                 note.setSelectionRange(note.value.length, note.value.length)
