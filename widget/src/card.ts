@@ -242,11 +242,6 @@ export function createCard(ui: HTMLElement): Card {
       else if (parts.status.textContent === FULL) setOpen(parts.statusWrap, false)
     }
     const has = parts.note.value.trim().length > 0
-    const copy = el.querySelector<HTMLElement>('[data-action="copy"]')
-    if (copy) {
-      const say = has ? 'Copy CSS and note' : 'Copy CSS'
-      if (copy.dataset.tip !== say) { copy.dataset.tip = say; copy.setAttribute('aria-label', say); if (micTipFor === copy) showMicTip(copy) }
-    }
     parts.send.disabled = !has || busy
     parts.send.toggleAttribute('data-ready', has)
     /* The first keystroke folds the CSS away so the note has the room. */

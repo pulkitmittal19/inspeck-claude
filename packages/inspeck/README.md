@@ -12,6 +12,13 @@ npx inspeck init
 
 It installs the [Inspeck plugin for Claude Code](https://github.com/pulkitmittal19/inspeck-claude), which serves the widget and hands your notes to Claude, with auto-update on so new versions arrive by themselves (`--no-auto-update` to skip), and adds the widget to your app in development only: `inspeck()` in a Vite config, a development-only tag in a Next.js layout, or the tag in a plain `index.html` (it asks first). Running it again changes nothing.
 
+Then:
+
+1. Start a new Claude chat (first install only)
+2. Run your app and press **I**
+3. Click anything, write a note, press Enter
+4. In Claude, say **"check my Inspeck notes"**
+
 Inside the Claude app's browser pane you only need the plugin: Claude adds the widget to the page when it opens your app.
 
 Inspeck runs on macOS with Node.js 20 or later. The Vite plugin works only while serving, never in a build, and its `/__inspeck/` address answers only your own computer, even when the dev server is open to the network (`--host`).
