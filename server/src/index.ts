@@ -107,6 +107,9 @@ const server = new McpServer(
   { capabilities: { experimental: { 'claude/channel': {} } }, instructions: INSTRUCTIONS },
 )
 
+/** Another program holds Inspeck's port: no page can send a note, which reading them must say, not "nothing open". */
+const portBlocked = () => portState.owner === 'other' ? `Port ${PORT} on this computer is used by another program, not Inspeck, so pages can't reach Inspeck. Tell the person: quit the program using port ${PORT} (lsof -nP -iTCP:${PORT} -sTCP:LISTEN shows which), then start a new chat.` : null
+
 server.registerTool('pending', {
   title: 'Check comments',
   description: 'Read the person\'s Inspeck comments: every one you haven\'t read yet, in full, and a line for each you already have that is still open. Reading them clears their markers from the page. Pass page (a URL) for one page only.',
@@ -124,7 +127,7 @@ server.registerTool('pending', {
     ? `Took ${adopted.length} note${adopted.length === 1 ? '' : 's'} no other session had, from ${sites.join(', ')}. Notes from ${sites.length === 1 ? 'there' : 'those sites'} now come to this session, in any browser.\n\n`
     : ''
   const list = store.open(page).filter(mine)
-  if (!list.length) return text(took + (page ? `Nothing open on ${pageLabel(page)}.` : 'Nothing open. When the person places a comment, it will show up here.'))
+  if (!list.length) return portBlocked() ? { ...text(portBlocked()!), isError: true } : text(took + (page ? `Nothing open on ${pageLabel(page)}.` : 'Nothing open. When the person places a comment, it will show up here.'))
   /* Asking to read the notes reads them: each new one comes in full, and is
      marked read, so its marker leaves the page. The person never has to clear
      what they've handed over. Ones read before get a line each. */
@@ -199,7 +202,7 @@ server.registerTool('bind', {
   inputSchema: { page: z.string().url().optional().describe('The app\'s address, e.g. http://localhost:5173, to link the whole site in any browser') },
   annotations: { readOnlyHint: true },
 }, async ({ page }) => {
-  if (portState.owner === 'other') return { ...text(`Port ${PORT} on this computer is used by another program, not Inspeck, so pages can't reach Inspeck. Tell the person: quit the program using port ${PORT} (lsof -nP -iTCP:${PORT} -sTCP:LISTEN shows which), then start a new chat.`), isError: true }
+  if (portBlocked()) return { ...text(portBlocked()!), isError: true }
   if (!SESSION) return { ...text('This session could not be identified, so notes go to whichever session checks first. They will still arrive.'), isError: true }
   if (page) {
     bindSite(page, SESSION.pid)

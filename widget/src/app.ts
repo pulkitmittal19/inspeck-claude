@@ -1,6 +1,6 @@
 /* The widget's state and the one place events are decided. Each feature
    (picking, the CSS card, notes, markers, spacing, freeze) plugs in here. */
-import { api, type GroupMember, type Note } from './api'
+import { api, onServerUpdated, type GroupMember, type Note } from './api'
 import { createCard, type Card } from './card'
 import { warmUp } from './css/cascade'
 import { borrowSheetsWith } from './css/rules'
@@ -92,6 +92,15 @@ export class App {
   private cssOnHover = (() => { try { return localStorage.getItem(CSS_KEY) === '1' } catch { return false } })()
   /** Half-written notes, kept when the card closes, given back when you click the same element again. */
   private drafts = new WeakMap<Element, string>()
+  /* A half-written note also outlives a reload (a hot reload as Claude edits the code, say): kept in the tab, under
+     the page and the element's address, and offered again when that element is opened. */
+  private draftKey = (el: Element) => `draft:${pageHref()}|${selectorFor(el)}`
+  private keepDraft = (el: Element, text: string | null) => tabStore.set(this.draftKey(el), text)
+  private savedDraft(el: Element): string | undefined {
+    const text = tabStore.get(this.draftKey(el)) ?? undefined
+    if (text) this.keepDraft(el, null)
+    return text
+  }
   /** The open card's note was just sent: nothing to keep as a draft when it closes. */
   private sent = false
   /** A press on the page that closed Settings: its up and click are swallowed too. */
@@ -116,6 +125,7 @@ export class App {
     this.host.ui.appendChild(this.shield)
     this.toolbar = createToolbar(this.host.ui)
     this.toolbar.setPressed('css', this.cssOnHover)
+    onServerUpdated(() => this.toolbar.setStatus('Inspeck was updated: reload this page'))
     this.tour = createTour(this.host.ui)
     this.settings = createSettings(this.host.ui, open => {
       this.toolbar.setPressed('settings', open)
@@ -380,7 +390,8 @@ export class App {
     const where = sourceOf(el)
     this.card.pin(el, {
       existing: existing ? { n: existing.n, note: existing.note } : undefined,
-      draft: existing ? undefined : this.drafts.get(el),
+      draft: existing ? undefined : this.drafts.get(el) ?? this.savedDraft(el),
+      onDraft: existing ? undefined : text => { if (!this.sent) this.keepDraft(el, text.trim() ? text : null) },
       cssOpen: this.cssOnHover,
       words,
       onSend: async text => {
@@ -395,6 +406,7 @@ export class App {
         const note = await api.add({ ...about, ...(source.length ? { source } : {}), held: this.holding })
         this.sent = true
         this.drafts.delete(el)
+        this.keepDraft(el, null)
         this.notes.added(note, el)
         return { n: note.n }
       },
@@ -501,8 +513,8 @@ export class App {
   unpin(): void {
     if (!this.pinned) return
     const draft = this.card.draft.trim()
-    if (draft && !this.sent && this.card.description && !this.card.editing) this.drafts.set(this.pinned, this.card.draft)
-    else if (!draft) this.drafts.delete(this.pinned)
+    if (draft && !this.sent && this.card.description && !this.card.editing) { this.drafts.set(this.pinned, this.card.draft); this.keepDraft(this.pinned, this.card.draft) }
+    else if (!draft) { this.drafts.delete(this.pinned); this.keepDraft(this.pinned, null) }
     this.sent = false
     this.pinned = null
     this.textPick = null

@@ -39,6 +39,14 @@ export interface Note {
 
 export class ApiError extends Error {}
 
+/* A page open since before Inspeck updated runs the old widget against the new server: say so, once. */
+let outdated: ((version: string) => void) | null = null
+export const onServerUpdated = (fn: (version: string) => void) => { outdated = fn }
+const checkVersion = (res: Response) => {
+  const theirs = res.headers.get('x-inspeck-version')
+  if (theirs && theirs !== VERSION && outdated) { outdated(theirs); outdated = null }
+}
+
 async function call<T>(method: string, path: string, body?: unknown): Promise<T> {
   let res: Response
   try {
@@ -51,6 +59,7 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<T>
   } catch {
     throw new ApiError('Can’t reach Inspeck. Open a Claude chat, then try again: your note stays here.')
   }
+  checkVersion(res)
   const data = await res.json().catch(() => ({})) as { error?: string } & T
   if (!res.ok) throw new ApiError(data.error ?? `Inspeck answered ${res.status}`)
   return data

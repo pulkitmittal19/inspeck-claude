@@ -36579,13 +36579,27 @@ function pageLabel(page) {
   }
 }
 var isHashRoute = (hash2) => /^#!?\//.test(hash2);
+var LOOPBACK = /* @__PURE__ */ new Set(["127.0.0.1", "[::1]", "::1"]);
+var oneLoopback = (u) => {
+  if (LOOPBACK.has(u.hostname)) u.hostname = "localhost";
+};
 function pageKey(page) {
   try {
     const u = new URL(page);
     if (!isHashRoute(u.hash)) u.hash = "";
+    oneLoopback(u);
     return u.toString();
   } catch {
     return page;
+  }
+}
+function originKey(page) {
+  try {
+    const u = new URL(page);
+    oneLoopback(u);
+    return u.origin;
+  } catch {
+    return null;
   }
 }
 var KIND_LABEL = { fix: "Fix", reference: "Reference" };
@@ -36792,18 +36806,18 @@ function get(id) {
 }
 function open2(page) {
   const key = page ? pageKey(page) : void 0;
-  return read().comments.filter((c) => (c.status === "new" || c.status === "seen") && (!key || c.page === key)).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  return read().comments.filter((c) => (c.status === "new" || c.status === "seen") && (!key || pageKey(c.page) === key)).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
 }
 function forPage(page) {
   const key = pageKey(page);
-  return read().comments.filter((c) => c.page === key).sort((a, b) => a.n - b.n);
+  return read().comments.filter((c) => pageKey(c.page) === key).sort((a, b) => a.n - b.n);
 }
 var readBy = (c, by) => {
   if (by) c.to = { how: "claimed", ...c.to, pid: by };
 };
 function claimNew(page, mine2 = () => true, by) {
   const key = page ? pageKey(page) : void 0;
-  const wanted = (c) => c.status === "new" && !c.held && (!key || c.page === key) && mine2(c);
+  const wanted = (c) => c.status === "new" && !c.held && (!key || pageKey(c.page) === key) && mine2(c);
   if (!read().comments.some(wanted)) return [];
   return change((inbox) => {
     const claimed = inbox.comments.filter(wanted);
@@ -37025,11 +37039,8 @@ function bindTab(tabId, token) {
   return s;
 }
 function siteKey(page) {
-  try {
-    return `site:${new URL(page).origin}`;
-  } catch {
-    return null;
-  }
+  const origin = originKey(page);
+  return origin ? `site:${origin}` : null;
 }
 function bindSite(page, pid) {
   const key = siteKey(page);
@@ -37579,11 +37590,8 @@ function devFile(req, res, name) {
 }
 function ownSite(origin, page) {
   if (!origin) return true;
-  try {
-    return new URL(page).origin === origin;
-  } catch {
-    return false;
-  }
+  const mine2 = originKey(origin);
+  return !!mine2 && originKey(page) === mine2;
 }
 function inProject(file2, page) {
   const inside = (f2, dir) => {
@@ -37685,17 +37693,11 @@ async function route2(req, res, version2, onNew) {
   }
   if (id === "send" && req.method === "POST") {
     const b = await body(req);
-    const siteOf = (u) => {
-      try {
-        return new URL(u).origin;
-      } catch {
-        return null;
-      }
-    };
+    const siteOf = originKey;
     let which = null;
     if (typeof b.page === "string") {
       const key = pageKey(b.page);
-      which = (c) => c.page === key;
+      which = (c) => pageKey(c.page) === key;
     } else if (typeof b.site === "string" && siteOf(b.site)) {
       const o = siteOf(b.site);
       which = (c) => siteOf(c.page) === o;
@@ -37863,8 +37865,10 @@ function listen(version2, log2, onNew = () => {
       });
       return send(res, 200, { stepping: true });
     }
+    res.setHeader("x-inspeck-version", version2);
     if (origin) {
       res.setHeader("access-control-allow-origin", origin);
+      res.setHeader("access-control-expose-headers", "x-inspeck-version");
       res.setHeader("vary", "Origin");
     }
     if (req.method === "OPTIONS") {
@@ -38098,6 +38102,7 @@ var server = new McpServer(
   { name: "inspeck", version: VERSION },
   { capabilities: { experimental: { "claude/channel": {} } }, instructions: INSTRUCTIONS }
 );
+var portBlocked = () => portState.owner === "other" ? `Port ${PORT} on this computer is used by another program, not Inspeck, so pages can't reach Inspeck. Tell the person: quit the program using port ${PORT} (lsof -nP -iTCP:${PORT} -sTCP:LISTEN shows which), then start a new chat.` : null;
 server.registerTool("pending", {
   title: "Check comments",
   description: "Read the person's Inspeck comments: every one you haven't read yet, in full, and a line for each you already have that is still open. Reading them clears their markers from the page. Pass page (a URL) for one page only.",
@@ -38117,7 +38122,7 @@ server.registerTool("pending", {
 
 ` : "";
   const list = open2(page).filter(mine);
-  if (!list.length) return text(took + (page ? `Nothing open on ${pageLabel(page)}.` : "Nothing open. When the person places a comment, it will show up here."));
+  if (!list.length) return portBlocked() ? { ...text(portBlocked()), isError: true } : text(took + (page ? `Nothing open on ${pageLabel(page)}.` : "Nothing open. When the person places a comment, it will show up here."));
   const fresh = list.filter((c) => c.status === "new");
   const earlier = list.filter((c) => c.status !== "new");
   markAllSeen(fresh.map((c) => c.id), ME);
@@ -38172,7 +38177,7 @@ server.registerTool("bind", {
   inputSchema: { page: external_exports.string().url().optional().describe("The app's address, e.g. http://localhost:5173, to link the whole site in any browser") },
   annotations: { readOnlyHint: true }
 }, async ({ page }) => {
-  if (portState.owner === "other") return { ...text(`Port ${PORT} on this computer is used by another program, not Inspeck, so pages can't reach Inspeck. Tell the person: quit the program using port ${PORT} (lsof -nP -iTCP:${PORT} -sTCP:LISTEN shows which), then start a new chat.`), isError: true };
+  if (portBlocked()) return { ...text(portBlocked()), isError: true };
   if (!SESSION) return { ...text("This session could not be identified, so notes go to whichever session checks first. They will still arrive."), isError: true };
   if (page) {
     bindSite(page, SESSION.pid);

@@ -26,6 +26,7 @@ import { randomBytes } from 'node:crypto'
 import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { basename, join, relative, isAbsolute } from 'node:path'
 import { HOME } from './store.js'
+import { originKey } from './format.js'
 
 export interface Session {
   pid: number
@@ -169,7 +170,8 @@ export function bindTab(tabId: string, token: string): Session | null {
 
 /** The site a page is on, as its link is stored: `site:http://localhost:5180`. */
 export function siteKey(page: string): string | null {
-  try { return `site:${new URL(page).origin}` } catch { return null }
+  const origin = originKey(page)
+  return origin ? `site:${origin}` : null
 }
 
 /** Send every later note from this page's site to session `pid`, in any browser. */

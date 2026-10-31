@@ -192,14 +192,25 @@ export function pageLabel(page: string): string {
 /** A hash that's a route (`#/settings`, `#!/settings`) is a page of its own; a plain anchor (`#pricing`) isn't. */
 export const isHashRoute = (hash: string) => /^#!?\//.test(hash)
 
+/* localhost:5173, 127.0.0.1:5173 and [::1]:5173 are the same app on this machine: one name for all three, so its
+   notes, numbers and markers are the same whichever address the page was opened at. */
+const LOOPBACK = new Set(['127.0.0.1', '[::1]', '::1'])
+const oneLoopback = (u: URL) => { if (LOOPBACK.has(u.hostname)) u.hostname = 'localhost' }
+
 export function pageKey(page: string): string {
   try {
     const u = new URL(page)
     if (!isHashRoute(u.hash)) u.hash = ''
+    oneLoopback(u)
     return u.toString()
   } catch {
     return page
   }
+}
+
+/** A page's site (or a request's Origin), with this machine's addresses under one name. */
+export function originKey(page: string): string | null {
+  try { const u = new URL(page); oneLoopback(u); return u.origin } catch { return null }
 }
 
 const KIND_LABEL: Record<Kind, string> = { fix: 'Fix', reference: 'Reference' }

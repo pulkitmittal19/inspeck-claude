@@ -53,6 +53,8 @@ export interface PinOptions {
   /** A note on a dragged area rather than one element: what the head says. No CSS. */
   group?: { label: string; size: string }
   onSend(note: string): Promise<{ n: number } | void>
+  /** The words in the box as they change, typed or spoken: kept so a reload doesn't lose them. */
+  onDraft?(note: string): void
   onClose(): void
   onDelete?(): Promise<void>
   /** Where the element is, for Copy. */
@@ -235,6 +237,7 @@ export function createCard(ui: HTMLElement): Card {
   let full = false
   const sync = () => {
     if (!parts) return
+    opts?.onDraft?.(parts.note.value)
     const now = parts.note.value.length >= NOTE_MAX
     if (now !== full) {
       full = now

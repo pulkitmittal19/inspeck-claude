@@ -35,7 +35,7 @@ import { bindTab, listening, liveSessions, projectOf, real, route as routeNote }
 import { newer } from './updates.js'
 
 export { newer }
-import { isThisMachine, NewComment, NOTE_MAX, pageKey, type Comment, type SourceAt } from './format.js'
+import { isThisMachine, NewComment, NOTE_MAX, originKey, pageKey, type Comment, type SourceAt } from './format.js'
 import { findLines, resolveSource } from './sourcemap.js'
 import { listenStream, stopListening, voiceAvailable, warmVoice } from './voice.js'
 
@@ -162,7 +162,8 @@ function devFile(req: IncomingMessage, res: ServerResponse, name: string): void 
     program on this machine, not a page (a page's every call carries Origin, see CALL_HEADER): it may. */
 function ownSite(origin: string | undefined, page: string): boolean {
   if (!origin) return true
-  try { return new URL(page).origin === origin } catch { return false }
+  const mine = originKey(origin)
+  return !!mine && originKey(page) === mine
 }
 
 /** Whether a file is in a project Inspeck works for: an open Claude session's, this one's, or the one serving
@@ -281,9 +282,9 @@ async function route(req: IncomingMessage, res: ServerResponse, version: string,
   /* Send the notes held on a page (the pill's Send), or on a whole site (Auto-send notes to Claude turned on). */
   if (id === 'send' && req.method === 'POST') {
     const b = (await body(req)) as { page?: unknown; site?: unknown }
-    const siteOf = (u: string) => { try { return new URL(u).origin } catch { return null } }
+    const siteOf = originKey
     let which: ((c: Comment) => boolean) | null = null
-    if (typeof b.page === 'string') { const key = pageKey(b.page); which = c => c.page === key }
+    if (typeof b.page === 'string') { const key = pageKey(b.page); which = c => pageKey(c.page) === key }
     else if (typeof b.site === 'string' && siteOf(b.site)) { const o = siteOf(b.site); which = c => siteOf(c.page) === o }
     if (!which) return send(res, 400, { error: 'Send { page } or { site }' })
     if (!ownSite(origin, String(b.page ?? b.site))) return send(res, 403, { error: 'A page can only send its own site\'s notes' })
@@ -476,8 +477,11 @@ export function listen(version: string, log: (msg: string) => void, onNew: (c: C
       })
       return send(res, 200, { stepping: true })
     }
+    /* Which Inspeck answers: a page still running an older widget (open since before an update) can say so. */
+    res.setHeader('x-inspeck-version', version)
     if (origin) {
       res.setHeader('access-control-allow-origin', origin)
+      res.setHeader('access-control-expose-headers', 'x-inspeck-version')
       res.setHeader('vary', 'Origin')
     }
     if (req.method === 'OPTIONS') {

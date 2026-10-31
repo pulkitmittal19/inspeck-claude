@@ -73,12 +73,19 @@ export const tabStore = {
   },
 }
 
-/** This browser tab, stable across reloads, so its notes go to the session it's bound to. */
+/**
+ * This browser tab, so its notes go to the session it's bound to: stable across reloads, and across the local
+ * addresses the tab moves between. Another port is another origin, with session storage of its own, so the id
+ * also rides in the tab's window name, which Chromium (and so Claude's browser pane, where tabs are linked) keeps
+ * going from localhost:5173 to localhost:3000; Firefox and Safari clear it between origins. Only in the top page
+ * (a frame's name may be in use), and only when the page leaves the name empty or it's ours.
+ */
+const TAB_NAME = 'inspeck-tab:'
 export const TAB_ID = (() => {
-  let id = tabStore.get('tab')
-  if (!id) {
-    id = Array.from(crypto.getRandomValues(new Uint8Array(9)), b => b.toString(16).padStart(2, '0')).join('')
-    tabStore.set('tab', id)
-  }
+  const top = window === window.top
+  const named = top && window.name.startsWith(TAB_NAME) ? window.name.slice(TAB_NAME.length) : ''
+  const id = named || tabStore.get('tab') || Array.from(crypto.getRandomValues(new Uint8Array(9)), b => b.toString(16).padStart(2, '0')).join('')
+  tabStore.set('tab', id)
+  if (top && (!window.name || named)) try { window.name = TAB_NAME + id } catch { /* not ours to set */ }
   return id
 })()

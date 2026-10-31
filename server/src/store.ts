@@ -182,14 +182,14 @@ export function get(id: string): Comment | undefined {
 export function open(page?: string): Comment[] {
   const key = page ? pageKey(page) : undefined
   return read().comments
-    .filter(c => (c.status === 'new' || c.status === 'seen') && (!key || c.page === key))
+    .filter(c => (c.status === 'new' || c.status === 'seen') && (!key || pageKey(c.page) === key))
     .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
 }
 
 /** Everything on one page, closed ones included — what a page needs to draw its badges. */
 export function forPage(page: string): Comment[] {
   const key = pageKey(page)
-  return read().comments.filter(c => c.page === key).sort((a, b) => a.n - b.n)
+  return read().comments.filter(c => pageKey(c.page) === key).sort((a, b) => a.n - b.n)
 }
 
 /**
@@ -203,7 +203,7 @@ const readBy = (c: Comment, by?: number | null) => { if (by) c.to = { how: 'clai
 
 export function claimNew(page?: string, mine: (c: Comment) => boolean = () => true, by?: number | null): Comment[] {
   const key = page ? pageKey(page) : undefined
-  const wanted = (c: Comment) => c.status === 'new' && !c.held && (!key || c.page === key) && mine(c)
+  const wanted = (c: Comment) => c.status === 'new' && !c.held && (!key || pageKey(c.page) === key) && mine(c)
   /* Watch calls this every second. Look first without the lock, so an idle
      watch never rewrites the file; the claim itself re-checks under it. */
   if (!read().comments.some(wanted)) return []
