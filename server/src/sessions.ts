@@ -258,6 +258,15 @@ export function unclaimed(to: Route | undefined, live: Session[] = liveSessions(
   return !to.cwd || !live.some(s => sameProject(s.cwd, to.cwd!))
 }
 
+/**
+ * Whether a note went to a chat only by guess (the one session open, or the newest in its project), not
+ * because the person linked their tab or site to it, and that chat is in `myCwd`'s project. With two chats
+ * open in a project the guess can be the wrong one: the chat the person asks for their notes takes it.
+ */
+export function guessedInProject(to: Route | undefined, myCwd: string): boolean {
+  return !!to && (to.how === 'only' || to.how === 'project') && !!to.cwd && sameProject(myCwd, to.cwd)
+}
+
 /** Whether a note routed this way belongs to the session `me` (in folder `myCwd`). */
 export function belongsTo(to: Route | undefined, me: number | null, myCwd: string): boolean {
   if (!to) return true

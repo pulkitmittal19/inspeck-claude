@@ -26,8 +26,8 @@ function standIn() {
   return p.pid
 }
 
-async function session(name) {
-  const dir = mkdtempSync(join(tmpdir(), `inspeck-${name}-`))
+async function session(name, project) {
+  const dir = project ? mkdtempSync(join(project, `${name}-`)) : mkdtempSync(join(tmpdir(), `inspeck-${name}-`))
   copyFileSync(join(root, 'server/dist/inspeck.mjs'), join(dir, 'inspeck.mjs'))
   mkdirSync(join(dir, 'widget'))
   copyFileSync(join(root, 'server/dist/widget/inspeck.js'), join(dir, 'widget/inspeck.js'))
@@ -168,6 +168,33 @@ test('when a chat closes, the next one gets its unread notes, not the ones it al
   assert.match(next, /Never read/, 'an unread note is handed over')
   assert.doesNotMatch(next, /Read by C/, 'a note the closed chat read is not listed again')
   assert.match(await A.tool('pending'), /Never read/, 'and what this chat read stays listed for it')
+})
+
+test('with two chats open in one project, the chat the person asks takes the notes placed on that project’s page', async () => {
+  /* Both chats are in the project whose dev server serves the page, so a note goes to the newer one by guess.
+     The person asks the older one: it must take the note, or its marker stays on the page for good. */
+  const project = mkdtempSync(join(tmpdir(), 'inspeck-proj-'))
+  cleanup.push(() => rmSync(project, { recursive: true, force: true }))
+  const devPort = port + 2
+  const dev = spawn(process.execPath, ['-e', `require('http').createServer((q, s) => s.end('ok')).listen(${devPort}, '127.0.0.1')`], { cwd: project, stdio: 'ignore' })
+  cleanup.push(() => dev.kill())
+  const Older = await session('older', project)
+  const Newer = await session('newer', project)
+  await new Promise(r => setTimeout(r, 300))
+  const page = `http://localhost:${devPort}/style-guide.html`
+  const r = await post('/comments', note('Placed with Auto-send off', { page, held: true }), `http://localhost:${devPort}`)
+  assert.equal(r.json.comment.to.how, 'project')
+  assert.equal(r.json.comment.to.pid, Newer.pid)
+
+  const asked = await Older.tool('pending')
+  assert.match(asked, /Placed with Auto-send off/)
+  const left = await new Promise(resolve => http.get({ host: '127.0.0.1', port, path: `/comments?page=${encodeURIComponent(page)}`, headers: { origin: `http://localhost:${devPort}`, 'x-inspeck': '1' } }, res => {
+    let raw = ''; res.on('data', c => { raw += c }); res.on('end', () => resolve(JSON.parse(raw).comments))
+  }))
+  assert.deepEqual(left.map(c => c.status), ['seen'], 'read: its marker leaves the page')
+  assert.doesNotMatch(await Newer.tool('pending'), /Placed with Auto-send off/, 'and the other chat doesn’t get it twice')
+  const id = left[0].id
+  assert.match(await Older.tool('resolve', { id, summary: 'done' }), /Done/)
 })
 
 test('with one session open, an unbound tab’s note goes to it', async () => {

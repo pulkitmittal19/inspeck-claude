@@ -37106,6 +37106,9 @@ function unclaimed(to, live = liveSessions()) {
   if (to.pid && alive(to.pid)) return false;
   return !to.cwd || !live.some((s) => sameProject(s.cwd, to.cwd));
 }
+function guessedInProject(to, myCwd) {
+  return !!to && (to.how === "only" || to.how === "project") && !!to.cwd && sameProject(myCwd, to.cwd);
+}
 function belongsTo(to, me, myCwd) {
   if (!to) return true;
   if (to.pid && to.pid === me) return true;
@@ -38101,7 +38104,7 @@ server.registerTool("pending", {
   inputSchema: { page: external_exports.string().optional().describe("Only this page, as a URL") },
   annotations: { readOnlyHint: true }
 }, async ({ page }) => {
-  const adopted = ME ? adopt((c) => c.status === "new" && unclaimed(c.to), { pid: ME, cwd: MY_CWD, how: "claimed" }) : [];
+  const adopted = ME ? adopt((c) => c.status === "new" && (unclaimed(c.to) || c.to?.pid !== ME && guessedInProject(c.to, MY_CWD)), { pid: ME, cwd: MY_CWD, how: "claimed" }) : [];
   const sites = [...new Set(adopted.map((c) => {
     try {
       return new URL(c.page).origin;

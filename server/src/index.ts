@@ -24,7 +24,7 @@ import { listen, PORT, portState } from './http.js'
 import { heading, pageLabel, render, summaryLine, type Comment } from './format.js'
 import { keepCurrent } from './updates.js'
 import { markOffered, NEEDED, outdatedPackage } from './outdated.js'
-import { belongsTo, bindSite, claudeCommand, claudePid, register, unclaimed } from './sessions.js'
+import { belongsTo, bindSite, claudeCommand, claudePid, guessedInProject, register, unclaimed } from './sessions.js'
 import { runWait, WAIT_COMMAND } from './wait.js'
 
 /* `node inspeck.mjs wait`: the background watcher, not the MCP server. */
@@ -115,8 +115,9 @@ server.registerTool('pending', {
 }, async ({ page }) => {
   /* Notes no open session will pick up (say, from a page in Chrome, with no
      session opened in its project) come to whoever asks first, and so does
-     every later note from that site. */
-  const adopted = ME ? store.adopt(c => c.status === 'new' && unclaimed(c.to), { pid: ME, cwd: MY_CWD, how: 'claimed' }) : []
+     every later note from that site. So do unread ones another chat in this
+     project was only guessed to have: the person is asking this one. */
+  const adopted = ME ? store.adopt(c => c.status === 'new' && (unclaimed(c.to) || (c.to?.pid !== ME && guessedInProject(c.to, MY_CWD))), { pid: ME, cwd: MY_CWD, how: 'claimed' }) : []
   const sites = [...new Set(adopted.map(c => { try { return new URL(c.page).origin } catch { return c.page } }))]
   for (const c of adopted) bindSite(c.page, ME!)
   const took = adopted.length
