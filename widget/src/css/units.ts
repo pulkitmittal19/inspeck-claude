@@ -1,22 +1,25 @@
-/* A CSS value as the card shows it, in the units and colour format you chose
- * in Settings. Only what the card shows: notes to Claude and Copy keep the
- * code exactly as written, so Claude finds `14px` in the file, not `0.875rem`.
+/* A CSS value written every way, for the tip on a row of the CSS card: a
+ * size in px and rem, a colour as hex, rgb and oklch, the way the code writes
+ * it first. The card itself, the copy and the note keep the code exactly as
+ * written, so Claude finds `14px` in the file, not `0.875rem`.
  *
  * Tokens (`var(--x)`) and urls are left whole: a token's name is the point,
- * and its resolved value is shown (and converted) beside it. Sizes convert
- * between px and rem only, at the page's own root font size; em, %, vw and
- * unitless numbers depend on where they're used, so they stay as written.
+ * and its resolved value is converted instead. Sizes convert between px and
+ * rem only, at the page's own root font size; em, %, vw and unitless numbers
+ * depend on where they're used, so they have no other form.
  */
 import { COLOR_FN, convertColor, HEX_COLOR, parseColor, type ColorFormat } from './color'
 
-export type SizeFormat = 'written' | 'px' | 'rem'
-export type ColorChoice = 'written' | ColorFormat
-export interface ValueFormat { sizes: SizeFormat; colors: ColorChoice; rootPx: number }
+/** One part of a value (a size, a colour), each way it can be written: the code's own way first, marked. */
+export interface Part { forms: Array<{ label: string; text: string; code?: true }> }
 
 /** Properties where a bare word can be a colour name (`red`); elsewhere `red` may be a font. */
 const COLOR_PROP = /^(color|background(-color)?|border(-(top|right|bottom|left|block|inline)(-(start|end))?)?(-color)?|outline(-color)?|(box|text)-shadow|fill|stroke|caret-color|accent-color|text-decoration(-color)?|column-rule(-color)?|--.*)$/
 /** Properties whose text isn't values to convert. */
 const TEXT_PROP = /^(font-family|font|content|quotes|grid-template-areas|transition-property|will-change|animation-name)$/
+const NOT_A_COLOR = /^(transparent|currentcolor|none|inherit|initial|unset|revert|inset|solid|dashed|dotted|double|groove|ridge|outset|hidden)$/i
+/** At most this many parts get a line in the tip: a long gradient lists its first few. */
+const MAX_FORMS = 3
 
 const round = (x: number) => {
   const s = (Math.round(x * 10000) / 10000).toString()
@@ -24,51 +27,53 @@ const round = (x: number) => {
 }
 
 const LENGTH = /(?<![\w.#-])(-?(?:\d+\.?\d*|\.\d+))(px|rem)\b/g
-
-function sizes(text: string, to: SizeFormat, rootPx: number): string {
-  if (to === 'written' || !(rootPx > 0)) return text
-  return text.replace(LENGTH, (all, num: string, unit: string) => {
-    if (unit === to) return all
-    const x = parseFloat(num)
-    return `${round(to === 'rem' ? x / rootPx : x * rootPx)}${to}`
-  })
-}
-
 const WORD = /(?<![\w#(-])([a-zA-Z]+)(?![\w(-])/g
+const FORMATS: ColorFormat[] = ['hex', 'rgb', 'oklch']
 
-function colors(text: string, to: ColorChoice, prop: string): string {
-  if (to === 'written') return text
-  let out = text.replace(COLOR_FN, fn => convertColor(fn, to)).replace(HEX_COLOR, hex => convertColor(hex, to))
-  if (COLOR_PROP.test(prop)) {
-    out = out.replace(WORD, word => (/^(transparent|currentcolor|none|inherit|initial|unset|revert|inset|solid|dashed|dotted|double|groove|ridge|outset|hidden)$/i.test(word) || !parseColor(word) ? word : convertColor(word, to)))
-  }
-  return out
+/** A colour as written, then in the formats it isn't written in; none if it can't be read. */
+function colorForms(text: string): Part['forms'] {
+  const own = text.startsWith('#') ? 'hex' : /^rgba?\(/i.test(text) ? 'rgb' : /^oklch\(/i.test(text) ? 'oklch' : null
+  const others = FORMATS.filter(f => f !== own).map(f => ({ label: f, text: convertColor(text, f) })).filter(o => o.text !== text)
+  if (!others.length) return []
+  const label = own ?? (/^[a-z]+$/i.test(text) ? 'name' : text.slice(0, text.indexOf('(')).toLowerCase())
+  return [{ label, text, code: true }, ...others]
 }
 
-/** The value in pieces: tokens and urls kept whole, everything else free to convert. */
-function pieces(value: string): Array<{ text: string; keep: boolean }> {
-  const out: Array<{ text: string; keep: boolean }> = []
-  let i = 0, from = 0
+/** The value outside its tokens and urls, which are kept whole. */
+function loose(value: string): string {
+  let out = '', i = 0
   while (i < value.length) {
-    const m = /^(var|url)\(/i.exec(value.slice(i))
-    if (!m) { i++; continue }
-    if (i > from) out.push({ text: value.slice(from, i), keep: false })
-    let depth = 0, j = i
-    for (; j < value.length; j++) {
-      if (value[j] === '(') depth++
-      else if (value[j] === ')' && --depth === 0) { j++; break }
+    if (!/^(var|url)\(/i.test(value.slice(i))) { out += value[i++]; continue }
+    let depth = 0
+    for (; i < value.length; i++) {
+      if (value[i] === '(') depth++
+      else if (value[i] === ')' && --depth === 0) { i++; break }
     }
-    out.push({ text: value.slice(i, j), keep: true })
-    i = from = j
+    out += ' '
   }
-  if (from < value.length) out.push({ text: value.slice(from), keep: false })
   return out
 }
 
-/** `value` of `prop`, in the chosen sizes and colours. */
-export function present(value: string, prop: string, f: ValueFormat): string {
-  if ((f.sizes === 'written' && f.colors === 'written') || TEXT_PROP.test(prop)) return value
-  return pieces(value).map(p => (p.keep ? p.text : colors(sizes(p.text, f.sizes, f.rootPx), f.colors, prop))).join('')
+/** Each size and colour in `value` of `prop`, every way it can be written, in the order they're written. */
+export function allForms(value: string, prop: string, rootPx: number): Part[] {
+  if (TEXT_PROP.test(prop)) return []
+  const text = loose(value)
+  const found: Array<{ at: number; part: Part }> = []
+  const add = (at: number, forms: Part['forms']) => {
+    if (forms.length && !found.some(f => f.part.forms[0].text === forms[0].text)) found.push({ at, part: { forms } })
+  }
+  if (rootPx > 0) {
+    for (const m of text.matchAll(LENGTH)) {
+      const x = parseFloat(m[1])
+      if (x !== 0) add(m.index, [{ label: m[2], text: m[0], code: true }, m[2] === 'px' ? { label: 'rem', text: `${round(x / rootPx)}rem` } : { label: 'px', text: `${round(x * rootPx)}px` }])
+    }
+  }
+  for (const m of text.matchAll(COLOR_FN)) add(m.index, colorForms(m[0]))
+  for (const m of text.matchAll(HEX_COLOR)) add(m.index, colorForms(m[0]))
+  if (COLOR_PROP.test(prop)) {
+    for (const m of text.matchAll(WORD)) if (!NOT_A_COLOR.test(m[0]) && parseColor(m[0])) add(m.index, colorForms(m[0]))
+  }
+  return found.sort((a, b) => a.at - b.at).slice(0, MAX_FORMS).map(f => f.part)
 }
 
 /** The page's root font size, which rem is measured against. */

@@ -103,7 +103,7 @@ No `/inspeck:start` and no linking is needed: a note finds its chat by itself (t
 
 **Shortcuts?** I on/off · click note · drag note an area · C CSS on hover · hold Shift spacing · ↑ ↓ parent/child · F freeze · hold Space click through · Esc close. All in Settings › Keyboard shortcuts.
 
-**Settings?** Auto-send, how sizes and colours are shown on the card (notes to you always carry the code as written), Keyboard shortcuts. Speaking a note: the mic in the note box (macOS 26+, on-device).
+**Settings?** Auto-send and Keyboard shortcuts. Values on the card are as the code writes them; hovering a row shows its sizes in px/rem and colours as hex/rgb/oklch (notes to you always carry the code as written). Speaking a note: the mic in the note box (macOS 26+, on-device).
 
 **Turn it off / remove it.** Off for now: press I or Esc. From a project: remove `inspeck()` from the Vite/Astro config, or the Inspeck tag from the layout/HTML `init` edited. Entirely: `claude plugin uninstall inspeck@inspeck`. Their notes stay in `~/.inspeck` until deleted.
 
