@@ -13,7 +13,7 @@ export interface InspeckOptions {
 export interface InspeckVitePlugin {
   name: 'inspeck'
   apply: 'serve'
-  config(): { server: { proxy: Record<string, unknown> } }
+  config(): { server: { proxy: Record<string, { target: string; changeOrigin: boolean; rewrite(path: string): string }> } }
   configureServer(server: { middlewares: { use(fn: (req: unknown, res: unknown, next: (err?: unknown) => void) => void): void } }): void
   transformIndexHtml(): Array<{ tag: string; attrs: Record<string, string | boolean>; injectTo: 'body' }>
 }

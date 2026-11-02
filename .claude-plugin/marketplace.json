@@ -1,6 +1,6 @@
 {
   "name": "inspeck",
-  "description": "Inspeck \u2014 design-system-aware comments for Claude.",
+  "description": "Hover your app to inspect its CSS; click anything to leave a note, and Claude fixes it.",
   "owner": {
     "name": "Pulkit Mittal"
   },

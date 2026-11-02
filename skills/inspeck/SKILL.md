@@ -28,7 +28,7 @@ css      border-radius: var(--radius-200);   8px
 
 When you open the person's app in your browser pane:
 
-1. Call `bind`, and run the line of JavaScript it returns in that browser tab. Notes from that tab now come to this session, even with other Claude sessions open, and keep coming after reloads. If the app doesn't load Inspeck itself, the line adds it to the page, but only until a full reload; so offer once to add it to the app the standard way (see the start skill: `npx inspeck init --skip-plugin --yes`, or the guarded tag for plain HTML). Never put a session token or a `bind(...)` call in their code.
+1. Call `bind`, and run the line of JavaScript it returns in that browser tab. Notes from that tab now come to this session, even with other Claude sessions open, and keep coming after reloads. If the app doesn't load Inspeck itself, the line adds it to the page, but only until a full reload; so offer once to add it to the app the standard way (see the start skill: `npx inspeck init --skip-plugin --yes`, or the guarded tag for plain HTML). In a git worktree whose other copy has Inspeck but hasn't committed it, suggest committing it there instead, so every copy has it. Never put a session token or a `bind(...)` call in their code.
 2. Start the watcher **in the background** with the exact command `bind` gives you (`"<node>" ".../inspeck.mjs" wait`: it names the Node to use, so run it as given). It finishes, printing the notes, the moment the person sends them. Handle them, then start it again.
 
 Notes wait on the page until the person asks you to check them, so you get a batch once they've finished looking. If they've turned on **Auto-send notes to Claude** in Inspeck's settings, each note comes as it's placed instead. `pending` reads waiting notes too: when the person asks you to check their notes, that sends them.
@@ -105,7 +105,7 @@ No `/inspeck:start` and no linking is needed: a note finds its chat by itself (t
 
 **Settings?** Auto-send and Keyboard shortcuts. Values on the card are as the code writes them; hovering a row shows its sizes in px/rem and colours as hex/rgb/oklch (notes to you always carry the code as written). Speaking a note: the mic in the note box (macOS 26+, on-device).
 
-**Turn it off / remove it.** Off for now: press I or Esc. From a project: remove `inspeck()` from the Vite/Astro config, or the Inspeck tag from the layout/HTML `init` edited. Entirely: `claude plugin uninstall inspeck@inspeck`. Their notes stay in `~/.inspeck` until deleted.
+**Turn it off / remove it.** Off for now: press I or Esc. From a project: remove `inspeck()` from the Vite/Astro config, or the Inspeck tag from the layout/HTML `init` edited. Entirely: `claude plugin uninstall inspeck@inspeck`, then `claude plugin marketplace remove inspeck` (that also ends the auto-update). With Vite or Astro, remove `inspeck()` and its import before `npm uninstall inspeck`, or the dev server won't start. Their notes stay in `~/.inspeck` until deleted (`rm -rf ~/.inspeck`).
 
 **Does it send my data anywhere?** No. Notes, the server and voice stay on this Mac. The only outside request is reading Inspeck's latest version number from GitHub, at most once a week, to update itself (off with `INSPECK_AUTO_UPDATE=off`).
 

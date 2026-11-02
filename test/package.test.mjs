@@ -5,6 +5,8 @@ import assert from 'node:assert/strict'
 import { createRequire } from 'node:module'
 import { execFileSync } from 'node:child_process'
 import { join, dirname } from 'node:path'
+import { mkdtempSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
 const pkg = join(dirname(fileURLToPath(import.meta.url)), '..', 'packages', 'inspeck')
@@ -41,4 +43,13 @@ test('the tarball carries the Vite plugin, its types, the init command, the READ
   const files = packed.files.map(f => f.path).sort()
   assert.deepEqual(files, ['LICENSE', 'README.md', 'dist/bin.js', 'dist/cli.js', 'dist/vite.cjs', 'dist/vite.js', 'package.json', 'vite.d.ts'])
   assert.equal(packed.name, 'inspeck')
+})
+
+test('inspeck() type-checks in a TypeScript vite.config, against Vite\'s own types (a project\'s `tsc -b` before its build)', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'inspeck-types-'))
+  writeFileSync(join(dir, 'vite.config.ts'), `import { defineConfig } from 'vite'\nimport inspeck from ${JSON.stringify(join(pkg, 'vite.js'))}\n\nexport default defineConfig({\n  plugins: [inspeck(), inspeck({ port: 4900, enabled: false })],\n})\n`)
+  const tsc = join(dirname(fileURLToPath(import.meta.url)), '..', 'node_modules', '.bin', 'tsc')
+  const vite = join(dirname(fileURLToPath(import.meta.url)), '..', 'node_modules', 'vite')
+  writeFileSync(join(dir, 'tsconfig.json'), JSON.stringify({ compilerOptions: { strict: true, noEmit: true, module: 'esnext', moduleResolution: 'bundler', target: 'es2022', skipLibCheck: true, types: [], paths: { vite: [vite] } }, files: ['vite.config.ts'] }))
+  try { execFileSync(tsc, ['-p', dir], { encoding: 'utf8' }) } catch (e) { assert.fail(`vite.config.ts doesn't type-check:\n${e.stdout}`) }
 })

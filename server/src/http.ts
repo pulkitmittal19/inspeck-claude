@@ -25,7 +25,7 @@ import { randomBytes, timingSafeEqual } from 'node:crypto'
 import { lookup } from 'node:dns/promises'
 import { isIP } from 'node:net'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
-import { hostname, networkInterfaces } from 'node:os'
+import { homedir, hostname, networkInterfaces } from 'node:os'
 import { execFileSync } from 'node:child_process'
 import { dirname, isAbsolute, join, normalize, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -440,6 +440,17 @@ async function handover(mine: string, there: string): Promise<boolean> {
   }
 }
 
+/** A note that couldn't be saved because of the notes folder itself (no permission, a full or read-only
+    disk), said plainly: the person can fix that, and a raw system error with a path tells them nothing. */
+function unsaved(err: Error): string | null {
+  const code = (err as NodeJS.ErrnoException).code ?? ''
+  if (!['EACCES', 'EPERM', 'EROFS', 'ENOSPC', 'EDQUOT'].includes(code)) return null
+  const where = HOME.replace(homedir(), '~')
+  return code === 'ENOSPC' || code === 'EDQUOT'
+    ? `Inspeck can’t save notes: the disk is full. Free some space, then try again: your note stays here.`
+    : `Inspeck can’t save notes: it isn’t allowed to write to ${where}. Check that folder’s permissions, then try again: your note stays here.`
+}
+
 /** Whether this process answers pages, or why not. Set by listen(); `bind` reads it. */
 export const portState: { owner: 'me' | 'inspeck' | 'other' | 'unknown' } = { owner: 'unknown' }
 
@@ -493,7 +504,7 @@ export function listen(version: string, log: (msg: string) => void, onNew: (c: C
       res.writeHead(204).end()
       return
     }
-    route(req, res, version, onNew).catch((err: Error) => send(res, err instanceof HttpError ? err.status : 400, { error: err.message }))
+    route(req, res, version, onNew).catch((err: Error) => send(res, err instanceof HttpError ? err.status : unsaved(err) ? 507 : 400, { error: unsaved(err) ?? err.message }))
   })
 
   return new Promise(resolve => {

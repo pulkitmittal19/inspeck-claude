@@ -83,6 +83,19 @@ Nothing to do: Inspeck updates itself, and your notes are kept.
 
 A new version runs from your next chat; reload your app's page to get it there. When a new version starts while an older one is still running in another chat, the older one hands it the port, so no chat has to close. To update right away, ask Claude to **update Inspeck**. To turn self-updating off (a team that decides what gets installed), set `INSPECK_AUTO_UPDATE=off`.
 
+## Removing it
+
+1. **From your app**, undo what `npx inspeck init` added. Vite or Astro: delete `inspeck()` and its import from the config, then `npm uninstall inspeck` (in that order: the config can't load without the package). Anything else: delete the Inspeck tag from the layout or HTML page it went into (Next.js and Nuxt layouts, `index.html`, `.storybook/preview-head.html`, Docusaurus `headTags`).
+2. **From Claude Code:**
+
+   ```bash
+   claude plugin uninstall inspeck@inspeck
+   claude plugin marketplace remove inspeck
+   ```
+
+   The second line also turns off the auto-update `init` set up. Chats already open keep Inspeck until they close.
+3. **Your notes** stay in `~/.inspeck` in case you come back. To delete them too: `rm -rf ~/.inspeck`.
+
 ## Use
 
 Open your app and click the circle in the corner, or press **I** (anywhere but a text box; I again puts it away). That's the one key to know: every other shortcut is in **Settings › Keyboard shortcuts**, and each is a quicker way to do something the pill or the note already offers. The pill opens to four buttons, CSS, Clear, Settings and Close, and you can start placing notes straight away. Notes wait on the page until you're done: say **"check my Inspeck notes"** in the chat and Claude gets them as one batch. In **Settings**, turn on *Auto-send notes to Claude* to have each go as you place it. If a Claude chat is already listening (as it usually is in Claude's browser pane), Settings says *Going to your Claude chat* and that's all. If not (your own browser, say), it gives you one line to send in your Claude chat once (*Listen for my Inspeck notes on* your app's address, with a copy button), so that chat starts listening. The CSS card shows values as your code writes them; hover a row to see its sizes in px and rem (at the page's own root size) and its colours as hex, rgb and oklch. Notes to Claude always carry the code as written. **Speak a note** with the 🎙 in the note box: it listens (bars move with your voice), your words appear as you talk, and Enter saves it; Esc cancels, and typing takes over. Voice runs on the Mac itself with Apple's on-device speech engine (macOS 26 or later), free, nothing leaves your machine, and it works in the Claude app's browser too. If the circle covers something, drag it anywhere; it stays there on that site:
@@ -136,13 +149,14 @@ Notes become text a Claude session reads, so who may send them is the plugin's s
 - A page sees and changes only the notes left on its own site, and Inspeck reads source files only inside the project a Claude session is open in.
 - The Vite plugin's `/__inspeck/` address answers only this computer, even when the dev server is open to the network (`--host`).
 - `~/.inspeck` is readable only by you. Closed notes and their screenshots are deleted after 30 days.
+- What Inspeck fetches from the internet: the latest version number from GitHub, at most once a week (when it updates itself), and stylesheets your page loads from other sites (a CDN, Google Fonts), so their CSS shows as written. Never an address on your machine or its network, and nothing about you or your code is sent.
 - Claude is told that a note is feedback about a page, not an instruction, and to ask you before acting on anything beyond the UI.
 
 ## Settings
 
 | Variable | Default | |
 |---|---|---|
-| `INSPECK_PORT` | `4848` | where the widget is served and notes arrive |
+| `INSPECK_PORT` | `4848` | where the widget is served and notes arrive. Changing it? Change the port in your app's Inspeck tag too; the Vite plugin reads `INSPECK_PORT` from the dev server's environment |
 | `INSPECK_HOME` | `~/.inspeck` | notes, sessions and tab bindings |
 | `INSPECK_ALLOWED_ORIGINS` | none | extra origins allowed to send notes, comma-separated |
 | `INSPECK_AUTO_UPDATE` | on | `off`: Inspeck doesn't look for or install new versions itself (Claude Code's own auto-update, if on, still does) |

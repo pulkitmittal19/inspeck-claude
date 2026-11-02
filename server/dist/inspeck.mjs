@@ -36915,7 +36915,7 @@ import { randomBytes as randomBytes3, timingSafeEqual } from "crypto";
 import { lookup } from "dns/promises";
 import { isIP } from "net";
 import { createServer } from "http";
-import { hostname as hostname3, networkInterfaces } from "os";
+import { homedir as homedir3, hostname as hostname3, networkInterfaces } from "os";
 import { execFileSync as execFileSync2 } from "child_process";
 import { dirname as dirname3, isAbsolute as isAbsolute3, join as join6, normalize, relative as relative2 } from "path";
 import { fileURLToPath as fileURLToPath3 } from "url";
@@ -37840,6 +37840,12 @@ async function handover(mine2, there) {
     return false;
   }
 }
+function unsaved(err) {
+  const code = err.code ?? "";
+  if (!["EACCES", "EPERM", "EROFS", "ENOSPC", "EDQUOT"].includes(code)) return null;
+  const where = HOME.replace(homedir3(), "~");
+  return code === "ENOSPC" || code === "EDQUOT" ? `Inspeck can\u2019t save notes: the disk is full. Free some space, then try again: your note stays here.` : `Inspeck can\u2019t save notes: it isn\u2019t allowed to write to ${where}. Check that folder\u2019s permissions, then try again: your note stays here.`;
+}
 var portState = { owner: "unknown" };
 function listen(version2, log2, onNew = () => {
 }) {
@@ -37878,7 +37884,7 @@ function listen(version2, log2, onNew = () => {
       res.writeHead(204).end();
       return;
     }
-    route2(req, res, version2, onNew).catch((err) => send(res, err instanceof HttpError ? err.status : 400, { error: err.message }));
+    route2(req, res, version2, onNew).catch((err) => send(res, err instanceof HttpError ? err.status : unsaved(err) ? 507 : 400, { error: unsaved(err) ?? err.message }));
   });
   return new Promise((resolve) => {
     let warned = "";
@@ -37917,7 +37923,7 @@ function listen(version2, log2, onNew = () => {
 // server/src/outdated.ts
 import { existsSync as existsSync6, mkdirSync as mkdirSync5, readFileSync as readFileSync6, readdirSync as readdirSync2, writeFileSync as writeFileSync5 } from "fs";
 import { dirname as dirname4, join as join7 } from "path";
-var NEEDED = "0.12.0";
+var NEEDED = "0.13.1";
 var OFFERED = () => join7(HOME, "package-update-offered.json");
 var offerKey = (dir) => `${dir} ${NEEDED}`;
 var older = (a, b) => {
@@ -38041,7 +38047,7 @@ if (process.argv[2] === "wait") {
   await runWait(process.argv.slice(3));
   process.exit(0);
 }
-var VERSION = "0.19.2";
+var VERSION = "0.19.3";
 var CLAUDE = JSON.stringify(claudeCommand());
 void keepCurrent(VERSION, claudeCommand());
 var OUTDATED = outdatedPackage(process.cwd());
@@ -38075,7 +38081,7 @@ Notes arrive at http://127.0.0.1:${PORT}.
 
 If the person asks to update Inspeck: run ${CLAUDE} plugin marketplace update inspeck, then ${CLAUDE} plugin update inspeck@inspeck. Then tell them the new version starts in their next chat, reloading the page brings it there, and their notes are kept. (Inspeck also updates itself; this is only for now.)${OUTDATED ? `
 
-This project's Inspeck dev plugin (the inspeck npm package in ${OUTDATED.dir}) is ${OUTDATED.version}, older than ${NEEDED}, which some of Inspeck's fixes need (a security fix: older ones let other devices on the network reach Inspeck when the dev server runs with --host; also server-rendered pages such as SvelteKit and Astro, strict security policies) and which then keeps itself current through this plugin. Early on, at a natural moment, ask the person once in one line: "Update Inspeck's dev plugin in this project? It has a security fix (one command)". On yes, run \`${OUTDATED.command}\` in ${OUTDATED.dir}, then restart their dev server if it's running. If they say no, don't ask again.` : ""}`;
+This project's Inspeck dev plugin (the inspeck npm package in ${OUTDATED.dir}) is ${OUTDATED.version}, older than ${NEEDED}, which some of Inspeck's fixes need (0.13.0 and older: in a TypeScript project, the type check before a build, such as \`tsc -b && vite build\`, rejects inspeck() in vite.config.ts, so the build fails; before 0.12.0, a security fix: other devices on the network could reach Inspeck when the dev server runs with --host) and which then keeps itself current through this plugin. Early on, at a natural moment, ask the person once in one line: "Update Inspeck's dev plugin in this project? It fixes a build error in TypeScript projects (one command)". On yes, run \`${OUTDATED.command}\` in ${OUTDATED.dir}, then restart their dev server if it's running. If they say no, don't ask again.` : ""}`;
 var MIME = { ".png": "image/png", ".jpg": "image/jpeg", ".webp": "image/webp" };
 function contentFor(c) {
   const out = [

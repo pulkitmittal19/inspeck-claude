@@ -2,7 +2,7 @@
  * other localhosts (each served from its own project folder, as a dev server is, so Inspeck can tell their
  * projects apart), and stand-in Claude chats connected to the plugin the way Claude connects. */
 import { spawn } from 'node:child_process'
-import { copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -24,6 +24,8 @@ export function world() {
   const kids = []
   const chats = []
   return {
+    /** This world's Inspeck folder (notes, settings), as ~/.inspeck is for a person. */
+    home,
     /** An app on its own localhost port, from its own project folder; `tag: false` doesn't load Inspeck itself. */
     app(name, port, { tag = true } = {}) {
       const dir = join(base, name)
@@ -33,12 +35,17 @@ export function world() {
       kids.push(spawn(process.execPath, ['-e', `require('http').createServer((q,r)=>{const f=q.url==='/'?'index.html':q.url.slice(1).split('?')[0];try{const b=require('fs').readFileSync(f);r.writeHead(200,{'content-type':'text/html'});r.end(b)}catch{r.writeHead(404).end()}}).listen(${port},'127.0.0.1')`], { cwd: dir, stdio: 'ignore' }))
       return { dir, port, url: `http://localhost:${port}` }
     },
-    /** A Claude chat opened in a folder: a live stand-in for the `claude` process, and the plugin's server as Claude starts it. */
-    async chat(name, cwd) {
+    /** A Claude chat opened in a folder: a live stand-in for the `claude` process, and the plugin's server as Claude starts it.
+        `version` makes its Inspeck say it's that version (a newer one, say). */
+    async chat(name, cwd, { version } = {}) {
       const stand = spawn('sleep', ['900'], { stdio: 'ignore' })
       kids.push(stand)
       const dir = mkdtempSync(join(base, `chat-${name}-`))
       copyFileSync(join(ROOT, 'server/dist/inspeck.mjs'), join(dir, 'inspeck.mjs'))
+      if (version) {
+        const ours = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')).version
+        writeFileSync(join(dir, 'inspeck.mjs'), readFileSync(join(dir, 'inspeck.mjs'), 'utf8').split(`"${ours}"`).join(`"${version}"`))
+      }
       mkdirSync(join(dir, 'widget'))
       copyFileSync(join(ROOT, 'server/dist/widget/inspeck.js'), join(dir, 'widget/inspeck.js'))
       const env = { ...process.env, INSPECK_HOME: home, INSPECK_PORT: String(PORT), INSPECK_SESSION_PID: String(stand.pid), INSPECK_LATEST_URL: 'off', INSPECK_AUTO_UPDATE: 'off', CLAUDE_PLUGIN_ROOT: '' }

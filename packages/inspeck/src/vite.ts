@@ -47,7 +47,7 @@ type Middleware = (req: IncomingMessage, res: ServerResponse, next: Next) => voi
 export interface InspeckVitePlugin {
   name: 'inspeck'
   apply: 'serve'
-  config(): { server: { proxy: Record<string, unknown> } }
+  config(): { server: { proxy: Record<string, { target: string; changeOrigin: boolean; rewrite(path: string): string }> } }
   configureServer(server: { middlewares: { use(fn: Middleware): void } }): void
   transformIndexHtml(): HtmlTag[]
 }

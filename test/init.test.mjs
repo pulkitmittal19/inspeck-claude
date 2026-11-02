@@ -2,7 +2,7 @@
  * projects with a stand-in `claude` command that records what it was asked. */
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { execFileSync } from 'node:child_process'
+import { execFileSync, spawnSync } from 'node:child_process'
 import { chmodSync, existsSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, dirname } from 'node:path'
@@ -59,6 +59,12 @@ test('HTML: the tag before </body>', () => {
   const { src, result } = wireHtml(`<html>\n  <body>\n    <h1>Hi</h1>\n  </body>\n</html>\n`)
   assert.equal(result, 'added')
   assert.match(src, /\n {4}<script>\/\* Inspeck: loads on this computer only, never on the live site \*\/ if \(.*location\.hostname\)\) .*src: 'http:\/\/127\.0\.0\.1:4848\/inspeck\.js'.*<\/script>\n {2}<\/body>/)
+
+  /* On one line with the rest (minified, or hand-written that way): just before the last </body>. */
+  const one = wireHtml('<html><body><h1>Hi</h1><p>a </body> in text</p></BODY></html>')
+  assert.equal(one.result, 'added')
+  assert.match(one.src, /<\/p><script>[^\n]*inspeck\.js[^\n]*<\/script><\/BODY><\/html>$/)
+  assert.equal(wireHtml('<html><p>no end</p></html>').result, 'manual')
 })
 
 test('auto-update: added to empty or existing settings, kept once on, and a local-folder marketplace left alone', () => {
@@ -77,7 +83,7 @@ test('auto-update: added to empty or existing settings, kept once on, and a loca
 /* ---------- full runs ---------- */
 
 /** A throwaway project, and a `claude` on PATH that logs its arguments and answers like the real one. */
-function project(files, { pluginInstalled = false } = {}) {
+function project(files, { pluginInstalled = false, in: sub = '', offline = false } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'inspeck-init-'))
   for (const [name, text] of Object.entries(files)) {
     mkdirSync(dirname(join(dir, name)), { recursive: true })
@@ -91,14 +97,17 @@ case "$*" in
   "--version") echo "2.1.0 (Claude Code)";;
   "plugin list") ${pluginInstalled ? 'echo "  ❯ inspeck@inspeck"' : 'echo "Installed plugins:"'};;
   "plugin marketplace list") echo "Configured marketplaces:";;
+  "plugin marketplace add"*) ${offline ? 'echo "✘ Failed to add marketplace: Network error or timeout while cloning repository."; exit 1' : 'true'};;
 esac
 exit 0
 `)
   chmodSync(join(bin, 'claude'), 0o755)
+  /* Package managers that log what they were asked to do, and do nothing. */
+  for (const pm of ['npm', 'pnpm', 'yarn', 'bun']) { writeFileSync(join(bin, pm), `#!/bin/sh\necho "${pm} $*" >> "${log}"\nexit 0\n`); chmodSync(join(bin, pm), 0o755) }
   /* Claude Code's settings go to a throwaway folder, never the real ~/.claude. */
   const config = mkdtempSync(join(tmpdir(), 'inspeck-config-'))
   const exec = args => execFileSync(process.execPath, [BIN, 'init', ...args], {
-    cwd: dir, encoding: 'utf8', env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, CLAUDE_CONFIG_DIR: config, NO_COLOR: '1' }, stdio: ['ignore', 'pipe', 'pipe'],
+    cwd: join(dir, sub), encoding: 'utf8', env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, CLAUDE_CONFIG_DIR: config, NO_COLOR: '1' }, stdio: ['ignore', 'pipe', 'pipe'],
   })
   /* Listing what it did, to check each step; `plain` is what the person sees. */
   const run = (...args) => exec([...args, '--verbose'])
@@ -147,6 +156,52 @@ test('what the person sees: that it\'s ready, and how to use it; nothing else', 
   /* Something it couldn't do shows, and it doesn't claim to be ready. */
   const odd = project({ 'package.json': JSON.stringify({ devDependencies: { vite: '^8.0.0' } }), 'vite.config.ts': 'export default {}\n' }, { pluginInstalled: true }).plain('--skip-install')
   assert.match(odd, /! couldn't find the plugins list[\s\S]*Inspeck is almost ready: see above\./)
+})
+
+test('in a git project, it says to commit what it changed, so every copy of the project has Inspeck; nothing changed, nothing said', () => {
+  const vite = { 'package.json': JSON.stringify({ devDependencies: { vite: '^8.0.0' } }), 'vite.config.ts': `import { defineConfig } from 'vite'\n\nexport default defineConfig({\n  plugins: [],\n})\n` }
+  const p = project(vite, { pluginInstalled: true })
+  execFileSync('git', ['init', '-q'], { cwd: p.dir })
+  assert.match(p.plain('--skip-install'), /check my Inspeck notes\n\nCommit vite\.config\.ts so every copy of this project has Inspeck\.\n$/)
+  assert.doesNotMatch(p.plain('--skip-install'), /Commit/, 'already there: nothing to commit')
+  assert.doesNotMatch(project(vite, { pluginInstalled: true }).plain('--skip-install'), /Commit/, 'not a git project')
+})
+
+test('offline (Claude Code can\'t reach GitHub): its error shows, the last line says to run it again, and it exits 1', () => {
+  const p = project({ 'package.json': JSON.stringify({ devDependencies: { vite: '^6.0.0' } }), 'vite.config.ts': `import { defineConfig } from 'vite'\n\nexport default defineConfig({\n  plugins: [],\n})\n` }, { offline: true })
+  let out = '', status = 0
+  try { out = p.plain('--skip-install') } catch (e) { out = e.stdout; status = e.status }
+  assert.equal(status, 1)
+  assert.match(out, /couldn't add the marketplace:\n✘ Failed to add marketplace: Network error/)
+  assert.match(out, /Inspeck isn't in Claude Code yet: see above, then run this again\.\n$/)
+  assert.equal(p.settings(), null, 'no half-written settings')
+})
+
+test('a folder with no app (the wrong folder, often): it says what to do, and doesn\'t claim to be ready', () => {
+  const out = project({ 'README.md': 'hi' }, { pluginInstalled: true }).plain()
+  assert.match(out, /! No Vite, [^\n]* here\. In your app's folder, run this again; or add this/)
+  assert.match(out, /Inspeck is almost ready: see above\./)
+  assert.doesNotMatch(out, /✓ Inspeck is ready/)
+})
+
+test('output cut short (piped into something that stops reading): it stops quietly, no crash', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'inspeck-init-'))
+  for (let i = 0; i < 5; i++) {
+    const r = spawnSync('sh', ['-c', `"${process.execPath}" "${BIN}" init --skip-plugin | true`], { cwd: dir, encoding: 'utf8' })
+    assert.doesNotMatch(r.stderr, /EPIPE|Unhandled/)
+  }
+})
+
+test('a workspace app: Inspeck is added with the package manager whose lockfile is at the workspace root', () => {
+  const vite = `import { defineConfig } from 'vite'\n\nexport default defineConfig({\n  plugins: [],\n})\n`
+  for (const [lock, want] of [['pnpm-lock.yaml', 'pnpm add -D inspeck'], ['yarn.lock', 'yarn add -D inspeck'], ['bun.lock', 'bun add -d inspeck'], ['package-lock.json', 'npm install -D inspeck']]) {
+    const p = project({ [lock]: '', 'package.json': '{"private":true}', 'apps/web/package.json': JSON.stringify({ devDependencies: { vite: '^6.0.0' } }), 'apps/web/vite.config.ts': vite }, { pluginInstalled: true, in: 'apps/web' })
+    p.plain()
+    assert.ok(p.calls().includes(want), `${lock}: ${p.calls().join(' | ')}`)
+  }
+  const none = project({ 'package.json': JSON.stringify({ devDependencies: { vite: '^6.0.0' } }), 'vite.config.ts': vite }, { pluginInstalled: true })
+  none.plain()
+  assert.ok(none.calls().includes('npm install -D inspeck'), 'no lockfile: npm')
 })
 
 test('a Next.js app: the root layout gets a development-only tag', () => {

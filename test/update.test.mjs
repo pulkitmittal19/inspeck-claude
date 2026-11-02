@@ -181,13 +181,13 @@ test('a project on an inspeck npm package older than the one needed is offered t
     return said
   }
   const first = await open()
-  assert.match(first, /Inspeck dev plugin \(the inspeck npm package in .*apps\/admin\) is 0\.10\.2, older than 0\.12\.0/)
+  assert.match(first, /Inspeck dev plugin \(the inspeck npm package in .*apps\/admin\) is 0\.10\.2, older than 0\.13\.1/)
   assert.match(first, /`pnpm add -D inspeck@latest`/, "the project's own package manager")
   assert.doesNotMatch(await open(), /Inspeck dev plugin/, 'offered once')
 
   /* Up to date: nothing to offer. */
   rmSync(home, { recursive: true, force: true })
-  writeFileSync(join(project, 'apps', 'admin', 'node_modules', 'inspeck', 'package.json'), JSON.stringify({ name: 'inspeck', version: '0.12.0' }))
+  writeFileSync(join(project, 'apps', 'admin', 'node_modules', 'inspeck', 'package.json'), JSON.stringify({ name: 'inspeck', version: '0.13.1' }))
   assert.doesNotMatch(await open(), /Inspeck dev plugin/)
   rmSync(tmp, { recursive: true, force: true })
 })

@@ -37,6 +37,9 @@ let problems = 0
 const done = (s: string) => { if (verbose) say(`  ✓ ${s}`) }
 const note = (s: string) => say(`  · ${s}`)
 const warn = (s: string) => { problems++; say(`  ! ${s}`) }
+/* The app's files init changed, for the reminder to commit them (see the end of main). */
+let changed: string[] = []
+const save = (file: string, src: string) => { writeFileSync(file, src); changed.push(file) }
 
 function run(cmd: string, args: string[], cwd?: string) {
   const r = spawnSync(cmd, args, { cwd, encoding: 'utf8', shell: process.platform === 'win32' })
@@ -45,8 +48,9 @@ function run(cmd: string, args: string[], cwd?: string) {
 
 /* ---------- 1. the Claude Code plugin ---------- */
 
-/** 'new' when installed just now (open chats don't have it until a new one starts), 'present', or null. */
-function installPlugin(): 'new' | 'present' | null {
+/** 'new' when installed just now (open chats don't have it until a new one starts), 'present', 'failed' (Claude Code
+    couldn't, say offline: the error is shown), or null when there's no Claude Code. */
+function installPlugin(): 'new' | 'present' | 'failed' | null {
   if (verbose) say('Claude Code plugin')
   const version = run('claude', ['--version'])
   if (version.missing) {
@@ -61,11 +65,11 @@ function installPlugin(): 'new' | 'present' | null {
   }
   if (!/\binspeck\b/.test(run('claude', ['plugin', 'marketplace', 'list']).out)) {
     const added = run('claude', ['plugin', 'marketplace', 'add', MARKETPLACE])
-    if (!added.ok) { warn(`couldn't add the marketplace:\n${added.out.trim()}`); return null }
+    if (!added.ok) { warn(`couldn't add the marketplace:\n${added.out.trim()}`); return 'failed' }
     done(`added the marketplace ${MARKETPLACE}`)
   }
   const installed = run('claude', ['plugin', 'install', PLUGIN])
-  if (!installed.ok) { warn(`couldn't install the plugin:\n${installed.out.trim()}`); return null }
+  if (!installed.ok) { warn(`couldn't install the plugin:\n${installed.out.trim()}`); return 'failed' }
   done('installed: it connects Inspeck to Claude')
   return 'new'
 }
@@ -161,11 +165,27 @@ function detect(cwd: string): App {
   return { kind: 'other' }
 }
 
+/* Each lockfile and the command that adds Inspeck with its package manager; npm when there's none. */
+const LOCKS: Array<[string, [string, string[]]]> = [
+  ['pnpm-lock.yaml', ['pnpm', ['add', '-D', 'inspeck']]],
+  ['yarn.lock', ['yarn', ['add', '-D', 'inspeck']]],
+  ['bun.lock', ['bun', ['add', '-d', 'inspeck']]],
+  ['bun.lockb', ['bun', ['add', '-d', 'inspeck']]],
+  ['package-lock.json', ['npm', ['install', '-D', 'inspeck']]],
+]
+
+/** The project's lockfile, here or in a folder above (a workspace keeps one at its root), with its package manager. */
+function lockfile(cwd: string): { file: string; add: [string, string[]] } | null {
+  for (let d = cwd, i = 0; i < 6; i++, d = dirname(d)) {
+    for (const [name, add] of LOCKS) if (existsSync(join(d, name))) return { file: join(d, name), add }
+    /* Not above the repository: a stray lockfile in the home folder isn't this project's. */
+    if (existsSync(join(d, '.git')) || dirname(d) === d) break
+  }
+  return null
+}
+
 function packageManager(cwd: string): [string, string[]] {
-  if (existsSync(join(cwd, 'pnpm-lock.yaml'))) return ['pnpm', ['add', '-D', 'inspeck']]
-  if (existsSync(join(cwd, 'yarn.lock'))) return ['yarn', ['add', '-D', 'inspeck']]
-  if (existsSync(join(cwd, 'bun.lockb')) || existsSync(join(cwd, 'bun.lock'))) return ['bun', ['add', '-d', 'inspeck']]
-  return ['npm', ['install', '-D', 'inspeck']]
+  return lockfile(cwd)?.add ?? ['npm', ['install', '-D', 'inspeck']]
 }
 
 /** Put a line after the file's last top-level import (or at the top). */
@@ -283,10 +303,13 @@ export const HTML_TAG = `<script>/* Inspeck: loads on this computer only, never 
 /** Add the tag before </body> in a plain HTML page. */
 export function wireHtml(src: string): { src: string; result: 'added' | 'present' | 'manual' } {
   if (src.includes('inspeck.js')) return { src, result: 'present' }
+  /* </body> on a line of its own: the tag goes on the line above, indented one step in. */
   const body = /^([ \t]*)<\/body>/im.exec(src)
-  if (!body) return { src, result: 'manual' }
-  const line = `${body[1]}  ${HTML_TAG}\n`
-  return { src: src.slice(0, body.index) + line + src.slice(body.index), result: 'added' }
+  if (body) return { src: src.slice(0, body.index) + `${body[1]}  ${HTML_TAG}\n` + src.slice(body.index), result: 'added' }
+  /* On one line with the rest (a minified or hand-written page): just before the last one. */
+  const inline = [...src.matchAll(/<\/body>/gi)].pop()
+  if (!inline) return { src, result: 'manual' }
+  return { src: src.slice(0, inline.index) + HTML_TAG + src.slice(inline.index), result: 'added' }
 }
 
 async function confirm(question: string, flags: Flags): Promise<boolean> {
@@ -356,7 +379,7 @@ function wireStorybook(cwd: string): void {
   const file = join(cwd, '.storybook', 'preview-head.html')
   const { src, result } = wireStorybookHead(existsSync(file) ? readFileSync(file, 'utf8') : null)
   if (result === 'present') { done('Storybook already loads Inspeck'); return }
-  writeFileSync(file, src)
+  save(file, src)
   done('added Inspeck to Storybook (.storybook/preview-head.html): it runs in each story, on this computer only')
 }
 
@@ -399,11 +422,12 @@ async function wireApp(flags: Flags): Promise<void> {
       const [pm, args] = packageManager(cwd)
       const r = run(pm, args, cwd)
       if (!r.ok) { warn(`\`${pm} ${args.join(' ')}\` failed:\n${r.out.trim()}`); return }
+      changed.push(join(cwd, 'package.json'), ...[lockfile(cwd)?.file ?? []].flat())
       done(`installed inspeck with ${pm}`)
     }
     const { src, result } = wireAstro(readFileSync(app.config, 'utf8'))
     if (result === 'present') done(`${rel(app.config)} already loads Inspeck`)
-    else if (result === 'added') { writeFileSync(app.config, src); done(`added inspeck() to Vite in ${rel(app.config)} (only in astro dev, never in a build)`) }
+    else if (result === 'added') { save(app.config, src); done(`added inspeck() to Vite in ${rel(app.config)} (only in astro dev, never in a build)`) }
     else {
       warn(`couldn't find where to add it in ${rel(app.config)}. Add this yourself:`)
       say(`      import inspeck from 'inspeck/vite'`)
@@ -415,7 +439,7 @@ async function wireApp(flags: Flags): Promise<void> {
   if (app.kind === 'nuxt') {
     const { src, result } = wireNuxt(readFileSync(app.config, 'utf8'))
     if (result === 'present') done(`${rel(app.config)} already loads Inspeck`)
-    else if (result === 'added') { writeFileSync(app.config, src); done(`added a development-only script to ${rel(app.config)}`) }
+    else if (result === 'added') { save(app.config, src); done(`added a development-only script to ${rel(app.config)}`) }
     else {
       warn(`couldn't find where to add it in ${rel(app.config)}. Add this to defineNuxtConfig yourself:`)
       say(`      ${NUXT_HEAD}`)
@@ -428,11 +452,12 @@ async function wireApp(flags: Flags): Promise<void> {
       const [pm, args] = packageManager(cwd)
       const r = run(pm, args, cwd)
       if (!r.ok) { warn(`\`${pm} ${args.join(' ')}\` failed:\n${r.out.trim()}`); return }
+      changed.push(join(cwd, 'package.json'), ...[lockfile(cwd)?.file ?? []].flat())
       done(`installed inspeck with ${pm}`)
     }
     const { src, result } = wireVite(readFileSync(app.config, 'utf8'), app.config)
     if (result === 'present') done(`${rel(app.config)} already loads Inspeck`)
-    else if (result === 'added') { writeFileSync(app.config, src); done(`added inspeck() to ${rel(app.config)} (only while vite serves, never in a build)`) }
+    else if (result === 'added') { save(app.config, src); done(`added inspeck() to ${rel(app.config)} (only while vite serves, never in a build)`) }
     else {
       warn(`couldn't find the plugins list in ${rel(app.config)}. Add this yourself:`)
       say(`      import inspeck from 'inspeck/vite'`)
@@ -445,7 +470,7 @@ async function wireApp(flags: Flags): Promise<void> {
     if (!app.layout) { warn('Next.js app, but no app/layout or pages/_document found. Add this inside <body> of your root layout:'); printNextTag(); return }
     const { src, result } = wireNext(readFileSync(app.layout, 'utf8'))
     if (result === 'present') done(`${rel(app.layout)} already loads Inspeck`)
-    else if (result === 'added') { writeFileSync(app.layout, src); done(`added a development-only tag to ${rel(app.layout)}`) }
+    else if (result === 'added') { save(app.layout, src); done(`added a development-only tag to ${rel(app.layout)}`) }
     else { warn(`couldn't find </body> in ${rel(app.layout)}. Add this inside <body>:`); printNextTag() }
     return
   }
@@ -456,7 +481,7 @@ async function wireApp(flags: Flags): Promise<void> {
     note(`${rel(app.file)} is a plain page: the tag loads Inspeck only when the page is opened on this computer, never on a deployed site.`)
     if (!(await confirm(`Add the tag to ${rel(app.file)}?`, flags))) { note('left it alone. To add it yourself:'); printTag(); return }
     const { src, result } = wireHtml(current)
-    if (result === 'added') { writeFileSync(app.file, src); done(`added the tag to ${rel(app.file)}`) }
+    if (result === 'added') { save(app.file, src); done(`added the tag to ${rel(app.file)}`) }
     else { warn(`couldn't find </body> in ${rel(app.file)}. Add this before it:`); printTag() }
     return
   }
@@ -467,7 +492,7 @@ async function wireApp(flags: Flags): Promise<void> {
     note(`${app.name}: the tag goes in ${rel(app.file)}. It loads Inspeck only when the page is opened on this computer, never on a deployed site.`)
     if (!(await confirm(`Add the tag to ${rel(app.file)}?`, flags))) { note('left it alone. To add it yourself:'); printTag(); return }
     const { src, result } = wireHtml(current)
-    if (result === 'added') { writeFileSync(app.file, src); done(`added the tag to ${rel(app.file)}`) }
+    if (result === 'added') { save(app.file, src); done(`added the tag to ${rel(app.file)}`) }
     else { warn(`couldn't find </body> in ${rel(app.file)}. Add this before it:`); printTag() }
     return
   }
@@ -475,12 +500,13 @@ async function wireApp(flags: Flags): Promise<void> {
   if (app.kind === 'docusaurus') {
     const { src, result } = wireDocusaurus(readFileSync(app.config, 'utf8'))
     if (result === 'present') done(`${rel(app.config)} already loads Inspeck`)
-    else if (result === 'added') { writeFileSync(app.config, src); done(`added Inspeck to headTags in ${rel(app.config)} (it loads only when the site is opened on this computer)`) }
+    else if (result === 'added') { save(app.config, src); done(`added Inspeck to headTags in ${rel(app.config)} (it loads only when the site is opened on this computer)`) }
     else { warn(`couldn't find where to add it in ${rel(app.config)}. Add this to its headTags:`); say(`      { tagName: 'script', attributes: {}, innerHTML: ${JSON.stringify(TAG_CODE)} }`) }
     return
   }
 
-  note('No Vite, Next.js, Astro, Nuxt, Angular, Create React App, Vue CLI, Docusaurus or plain index.html here. Add this to your page\'s HTML (it loads only on this computer):')
+  /* Nothing to wire (the wrong folder, often): it isn't ready until that tag is in, so this counts as something to do. */
+  warn('No Vite, Next.js, Astro, Nuxt, Angular, Create React App, Vue CLI, Docusaurus or plain index.html here. In your app\'s folder, run this again; or add this to your page\'s HTML (it loads only on this computer):')
   printTag()
 }
 
@@ -496,6 +522,7 @@ export async function main(argv: string[]): Promise<number> {
     cwd: process.cwd(),
   }
   verbose = rest.includes('--verbose')
+  changed = []
   if (command !== 'init') {
     say('Usage: npx inspeck init [--yes] [--skip-plugin] [--skip-install] [--no-auto-update] [--verbose]')
     say('')
@@ -508,7 +535,7 @@ export async function main(argv: string[]): Promise<number> {
     return command === undefined || command === '--help' || command === '-h' ? 0 : 1
   }
   const plugin = flags.skipPlugin ? 'present' : installPlugin()
-  if (!flags.skipPlugin && plugin && flags.autoUpdate) turnOnAutoUpdate()
+  if (!flags.skipPlugin && (plugin === 'new' || plugin === 'present') && flags.autoUpdate) turnOnAutoUpdate()
   if (verbose && !flags.skipPlugin) say('')
   await wireApp(flags)
   wireStorybook(flags.cwd)
@@ -517,6 +544,10 @@ export async function main(argv: string[]): Promise<number> {
   if (!plugin) {
     say('Install Claude Code\'s plugin first (above): Inspeck runs inside it.')
     return 0
+  }
+  if (plugin === 'failed') {
+    say(bold('Inspeck isn\'t in Claude Code yet: see above, then run this again.'))
+    return 1
   }
   say(problems ? bold('Inspeck is almost ready: see above.') : bold('✓ Inspeck is ready'))
   say('')
@@ -528,5 +559,12 @@ export async function main(argv: string[]): Promise<number> {
     'In Claude, say: ' + bold('check my Inspeck notes'),
   ]
   steps.forEach((t, i) => say(`  ${i + 1}  ${t}`))
+  /* In a git project, a change that isn't committed never reaches the project's other copies (a Claude chat
+     working in its own worktree, a teammate's clone), so each of them would be without Inspeck. */
+  if (changed.length && run('git', ['rev-parse', '--is-inside-work-tree'], flags.cwd).ok) {
+    const files = [...new Set(changed.map(f => relative(flags.cwd, f)))]
+    say('')
+    say(`Commit ${files.length > 1 ? `${files.slice(0, -1).join(', ')} and ${files[files.length - 1]}` : files[0]} so every copy of this project has Inspeck.`)
+  }
   return 0
 }

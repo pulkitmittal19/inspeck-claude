@@ -22,6 +22,11 @@ var warn = (s) => {
   problems++;
   say(`  ! ${s}`);
 };
+var changed = [];
+var save = (file, src) => {
+  writeFileSync(file, src);
+  changed.push(file);
+};
 function run(cmd, args, cwd) {
   const r = spawnSync(cmd, args, { cwd, encoding: "utf8", shell: process.platform === "win32" });
   return { ok: !r.error && r.status === 0, out: `${r.stdout ?? ""}${r.stderr ?? ""}`, missing: r.error?.code === "ENOENT" };
@@ -44,7 +49,7 @@ function installPlugin() {
     if (!added.ok) {
       warn(`couldn't add the marketplace:
 ${added.out.trim()}`);
-      return null;
+      return "failed";
     }
     done(`added the marketplace ${MARKETPLACE}`);
   }
@@ -52,7 +57,7 @@ ${added.out.trim()}`);
   if (!installed.ok) {
     warn(`couldn't install the plugin:
 ${installed.out.trim()}`);
-    return null;
+    return "failed";
   }
   done("installed: it connects Inspeck to Claude");
   return "new";
@@ -142,11 +147,22 @@ function detect(cwd) {
   if (html && !deps.react && !deps.vue && !deps.svelte && !deps["@angular/core"]) return { kind: "html", file: html };
   return { kind: "other" };
 }
+var LOCKS = [
+  ["pnpm-lock.yaml", ["pnpm", ["add", "-D", "inspeck"]]],
+  ["yarn.lock", ["yarn", ["add", "-D", "inspeck"]]],
+  ["bun.lock", ["bun", ["add", "-d", "inspeck"]]],
+  ["bun.lockb", ["bun", ["add", "-d", "inspeck"]]],
+  ["package-lock.json", ["npm", ["install", "-D", "inspeck"]]]
+];
+function lockfile(cwd) {
+  for (let d = cwd, i = 0; i < 6; i++, d = dirname(d)) {
+    for (const [name, add] of LOCKS) if (existsSync(join(d, name))) return { file: join(d, name), add };
+    if (existsSync(join(d, ".git")) || dirname(d) === d) break;
+  }
+  return null;
+}
 function packageManager(cwd) {
-  if (existsSync(join(cwd, "pnpm-lock.yaml"))) return ["pnpm", ["add", "-D", "inspeck"]];
-  if (existsSync(join(cwd, "yarn.lock"))) return ["yarn", ["add", "-D", "inspeck"]];
-  if (existsSync(join(cwd, "bun.lockb")) || existsSync(join(cwd, "bun.lock"))) return ["bun", ["add", "-d", "inspeck"]];
-  return ["npm", ["install", "-D", "inspeck"]];
+  return lockfile(cwd)?.add ?? ["npm", ["install", "-D", "inspeck"]];
 }
 function afterImports(src, line) {
   const imports = [...src.matchAll(/^import[^\n]*?(?:from\s*)?['"][^'"]+['"];?[ \t]*$/gm)];
@@ -253,10 +269,11 @@ var HTML_TAG = `<script>/* Inspeck: loads on this computer only, never on the li
 function wireHtml(src) {
   if (src.includes("inspeck.js")) return { src, result: "present" };
   const body = /^([ \t]*)<\/body>/im.exec(src);
-  if (!body) return { src, result: "manual" };
-  const line = `${body[1]}  ${HTML_TAG}
-`;
-  return { src: src.slice(0, body.index) + line + src.slice(body.index), result: "added" };
+  if (body) return { src: src.slice(0, body.index) + `${body[1]}  ${HTML_TAG}
+` + src.slice(body.index), result: "added" };
+  const inline = [...src.matchAll(/<\/body>/gi)].pop();
+  if (!inline) return { src, result: "manual" };
+  return { src: src.slice(0, inline.index) + HTML_TAG + src.slice(inline.index), result: "added" };
 }
 async function confirm(question, flags) {
   if (flags.yes) return true;
@@ -318,7 +335,7 @@ function wireStorybook(cwd) {
     done("Storybook already loads Inspeck");
     return;
   }
-  writeFileSync(file, src);
+  save(file, src);
   done("added Inspeck to Storybook (.storybook/preview-head.html): it runs in each story, on this computer only");
 }
 var CSP_FILES = [
@@ -373,12 +390,13 @@ async function wireApp(flags) {
 ${r.out.trim()}`);
         return;
       }
+      changed.push(join(cwd, "package.json"), ...[lockfile(cwd)?.file ?? []].flat());
       done(`installed inspeck with ${pm}`);
     }
     const { src, result } = wireAstro(readFileSync(app.config, "utf8"));
     if (result === "present") done(`${rel(app.config)} already loads Inspeck`);
     else if (result === "added") {
-      writeFileSync(app.config, src);
+      save(app.config, src);
       done(`added inspeck() to Vite in ${rel(app.config)} (only in astro dev, never in a build)`);
     } else {
       warn(`couldn't find where to add it in ${rel(app.config)}. Add this yourself:`);
@@ -391,7 +409,7 @@ ${r.out.trim()}`);
     const { src, result } = wireNuxt(readFileSync(app.config, "utf8"));
     if (result === "present") done(`${rel(app.config)} already loads Inspeck`);
     else if (result === "added") {
-      writeFileSync(app.config, src);
+      save(app.config, src);
       done(`added a development-only script to ${rel(app.config)}`);
     } else {
       warn(`couldn't find where to add it in ${rel(app.config)}. Add this to defineNuxtConfig yourself:`);
@@ -408,12 +426,13 @@ ${r.out.trim()}`);
 ${r.out.trim()}`);
         return;
       }
+      changed.push(join(cwd, "package.json"), ...[lockfile(cwd)?.file ?? []].flat());
       done(`installed inspeck with ${pm}`);
     }
     const { src, result } = wireVite(readFileSync(app.config, "utf8"), app.config);
     if (result === "present") done(`${rel(app.config)} already loads Inspeck`);
     else if (result === "added") {
-      writeFileSync(app.config, src);
+      save(app.config, src);
       done(`added inspeck() to ${rel(app.config)} (only while vite serves, never in a build)`);
     } else {
       warn(`couldn't find the plugins list in ${rel(app.config)}. Add this yourself:`);
@@ -431,7 +450,7 @@ ${r.out.trim()}`);
     const { src, result } = wireNext(readFileSync(app.layout, "utf8"));
     if (result === "present") done(`${rel(app.layout)} already loads Inspeck`);
     else if (result === "added") {
-      writeFileSync(app.layout, src);
+      save(app.layout, src);
       done(`added a development-only tag to ${rel(app.layout)}`);
     } else {
       warn(`couldn't find </body> in ${rel(app.layout)}. Add this inside <body>:`);
@@ -453,7 +472,7 @@ ${r.out.trim()}`);
     }
     const { src, result } = wireHtml(current);
     if (result === "added") {
-      writeFileSync(app.file, src);
+      save(app.file, src);
       done(`added the tag to ${rel(app.file)}`);
     } else {
       warn(`couldn't find </body> in ${rel(app.file)}. Add this before it:`);
@@ -475,7 +494,7 @@ ${r.out.trim()}`);
     }
     const { src, result } = wireHtml(current);
     if (result === "added") {
-      writeFileSync(app.file, src);
+      save(app.file, src);
       done(`added the tag to ${rel(app.file)}`);
     } else {
       warn(`couldn't find </body> in ${rel(app.file)}. Add this before it:`);
@@ -487,7 +506,7 @@ ${r.out.trim()}`);
     const { src, result } = wireDocusaurus(readFileSync(app.config, "utf8"));
     if (result === "present") done(`${rel(app.config)} already loads Inspeck`);
     else if (result === "added") {
-      writeFileSync(app.config, src);
+      save(app.config, src);
       done(`added Inspeck to headTags in ${rel(app.config)} (it loads only when the site is opened on this computer)`);
     } else {
       warn(`couldn't find where to add it in ${rel(app.config)}. Add this to its headTags:`);
@@ -495,7 +514,7 @@ ${r.out.trim()}`);
     }
     return;
   }
-  note("No Vite, Next.js, Astro, Nuxt, Angular, Create React App, Vue CLI, Docusaurus or plain index.html here. Add this to your page's HTML (it loads only on this computer):");
+  warn("No Vite, Next.js, Astro, Nuxt, Angular, Create React App, Vue CLI, Docusaurus or plain index.html here. In your app's folder, run this again; or add this to your page's HTML (it loads only on this computer):");
   printTag();
 }
 async function main(argv) {
@@ -508,6 +527,7 @@ async function main(argv) {
     cwd: process.cwd()
   };
   verbose = rest.includes("--verbose");
+  changed = [];
   if (command !== "init") {
     say("Usage: npx inspeck init [--yes] [--skip-plugin] [--skip-install] [--no-auto-update] [--verbose]");
     say("");
@@ -520,7 +540,7 @@ async function main(argv) {
     return command === void 0 || command === "--help" || command === "-h" ? 0 : 1;
   }
   const plugin = flags.skipPlugin ? "present" : installPlugin();
-  if (!flags.skipPlugin && plugin && flags.autoUpdate) turnOnAutoUpdate();
+  if (!flags.skipPlugin && (plugin === "new" || plugin === "present") && flags.autoUpdate) turnOnAutoUpdate();
   if (verbose && !flags.skipPlugin) say("");
   await wireApp(flags);
   wireStorybook(flags.cwd);
@@ -529,6 +549,10 @@ async function main(argv) {
   if (!plugin) {
     say("Install Claude Code's plugin first (above): Inspeck runs inside it.");
     return 0;
+  }
+  if (plugin === "failed") {
+    say(bold("Inspeck isn't in Claude Code yet: see above, then run this again."));
+    return 1;
   }
   say(problems ? bold("Inspeck is almost ready: see above.") : bold("\u2713 Inspeck is ready"));
   say("");
@@ -540,10 +564,19 @@ async function main(argv) {
     "In Claude, say: " + bold("check my Inspeck notes")
   ];
   steps.forEach((t, i) => say(`  ${i + 1}  ${t}`));
+  if (changed.length && run("git", ["rev-parse", "--is-inside-work-tree"], flags.cwd).ok) {
+    const files = [...new Set(changed.map((f) => relative(flags.cwd, f)))];
+    say("");
+    say(`Commit ${files.length > 1 ? `${files.slice(0, -1).join(", ")} and ${files[files.length - 1]}` : files[0]} so every copy of this project has Inspeck.`);
+  }
   return 0;
 }
 
 // packages/inspeck/src/bin.ts
+process.stdout.on("error", (err) => {
+  if (err.code === "EPIPE") process.exit(process.exitCode ?? 0);
+  throw err;
+});
 main(process.argv.slice(2)).then((code) => {
   process.exitCode = code;
 }, (err) => {
