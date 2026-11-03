@@ -1,5 +1,5 @@
 /* Load and the edges of a person's day: many notes at once from many tabs, a page with hundreds of notes,
- * thousands of notes to read, settings saved by an older Inspeck, Inspeck going away mid-note, and another
+ * thousands of notes to read, settings saved earlier, Inspeck going away mid-note, and another
  * Mac user's Inspeck on the same port. The heavy ones run in Chrome only: they measure Inspeck, not the engine. */
 import { test, expect } from '@playwright/test'
 import { writeFileSync, mkdirSync } from 'node:fs'
@@ -72,7 +72,7 @@ test('2,000 notes over 50 pages: reading them all takes a couple of seconds, and
   expect(took).toBeLessThan(3000)
 })
 
-test('settings saved by an older Inspeck (sizes and colours) are ignored, and Auto-send still holds', async ({ context }) => {
+test('settings saved earlier (sizes, colours, Auto-send) are there when Settings opens', async ({ context }) => {
   mkdirSync(w.home, { recursive: true })
   writeFileSync(join(w.home, 'settings.json'), JSON.stringify({ sizes: 'rem', colors: 'oklch', send: 'live' }))
   const A = w.app('alpha', 5301)
@@ -86,8 +86,12 @@ test('settings saved by an older Inspeck (sizes and colours) are ignored, and Au
   const btn = await (await root(p)).evaluate(s => { const b = s.querySelector('[data-action="settings"]').getBoundingClientRect(); return { x: b.left + b.width / 2, y: b.top + b.height / 2 } })
   await p.mouse.click(btn.x, btn.y)
   await p.waitForTimeout(500)
-  const shown = await (await root(p)).evaluate(s => ({ rows: s.querySelectorAll('.settings .seg-opt').length, live: s.querySelector('.settings .switch')?.getAttribute('aria-checked') }))
-  expect(shown).toEqual({ rows: 0, live: 'true' })
+  const shown = await (await root(p)).evaluate(s => ({
+    options: [...s.querySelectorAll('.settings .seg-opt')].map(b => b.textContent),
+    chosen: [...s.querySelectorAll('.settings .seg-opt[aria-checked="true"]')].map(b => b.textContent),
+    live: s.querySelector('.settings .switch')?.getAttribute('aria-checked'),
+  }))
+  expect(shown).toEqual({ options: ['As is', 'px', 'rem', 'As is', 'hex', 'rgb', 'oklch'], chosen: ['rem', 'oklch'], live: 'true' })
   expect(errors).toEqual([])
 })
 

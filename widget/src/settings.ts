@@ -1,5 +1,6 @@
-/* Settings, from the sliders button in the pill: whether notes go to Claude
- * as you place them, and the shortcuts. A small panel above the pill (below it when the pill is at the
+/* Settings, from the sliders button in the pill: how the CSS card writes sizes
+ * and colours, whether notes go to Claude as you place them, and the
+ * shortcuts. A small panel above the pill (below it when the pill is at the
  * top); a press anywhere else or Escape puts it away.
  *
  * Shortcuts is a second page of the same panel: the panel slides over to it
@@ -11,13 +12,19 @@ import { pageUrl } from './env'
 import { copyToClipboard, h, svg } from './dom'
 import { ICONS } from './icons'
 import { SHORTCUTS, shortcutRow } from './keys'
-import { prefs } from './prefs'
+import { prefs, type Prefs } from './prefs'
 import { actionOf } from './router'
 import { api } from './api'
 
 /** What the person sends in their Claude chat so it listens for notes: Claude links this site to the chat
     and starts its watcher. The address says which app, so the notes go to that chat with others open. */
 export const listenMessage = () => `Listen for my Inspeck notes on ${pageUrl().origin}`
+
+/* "As is": each value the way the code writes it (px here, rem there), which is what the card starts with. */
+const ROWS: Array<{ key: 'sizes' | 'colors'; label: string; options: Array<[string, string]> }> = [
+  { key: 'sizes', label: 'Show sizes in', options: [['written', 'As is'], ['px', 'px'], ['rem', 'rem']] },
+  { key: 'colors', label: 'Show colors as', options: [['written', 'As is'], ['hex', 'hex'], ['rgb', 'rgb'], ['oklch', 'oklch']] },
+]
 
 /** How long a page change takes (matches the CSS). */
 const PAGE_MS = 320
@@ -41,6 +48,14 @@ export function createSettings(ui: HTMLElement, onToggle: (open: boolean) => voi
   /* ---------- the main page ----------
      Built once; a change only moves the selection, so hover and focus stay put. */
   const main = h('div', { class: 'set-view' }, h('p', { class: 'set-title' }, 'Settings'))
+  for (const row of ROWS) {
+    main.append(h('div', { class: 'set-row' },
+      h('span', { class: 'set-label', id: `ix-set-${row.key}` }, row.label),
+      h('div', { class: 'seg', role: 'radiogroup', 'aria-labelledby': `ix-set-${row.key}` },
+        ...row.options.map(([value, text]) => h('button', {
+          type: 'button', class: 'seg-opt', role: 'radio', 'data-action': 'pref', 'data-key': row.key, 'data-value': value,
+        }, text)))))
+  }
   /* Off: notes wait on the page until you ask Claude for them in the chat. On: each goes as you place it. */
   const live = h('button', { type: 'button', class: 'switch', role: 'switch', 'data-action': 'live', 'aria-labelledby': 'ix-set-live', 'aria-describedby': 'ix-set-live-more' }, h('span', { class: 'knob' }))
   /* The ⓘ says what each state means, on hover or focus. */
@@ -116,6 +131,9 @@ export function createSettings(ui: HTMLElement, onToggle: (open: boolean) => voi
 
   const sync = () => {
     const now = prefs.get()
+    for (const b of Array.from(el.querySelectorAll<HTMLElement>('.seg-opt'))) {
+      b.setAttribute('aria-checked', String(now[b.dataset.key as 'sizes' | 'colors'] === b.dataset.value))
+    }
     live.setAttribute('aria-checked', String(now.send === 'live'))
     if (now.send !== 'live') justTurnedOn = false
     listenOk.hidden = heard !== true
@@ -171,6 +189,7 @@ export function createSettings(ui: HTMLElement, onToggle: (open: boolean) => voi
       if (e.type === 'mousedown') { if (!(e.composedPath()[0] as Element).closest?.('.listen-msg > span')) e.preventDefault(); return true }
       if (e.type === 'click') {
         const a = actionOf(e)
+        if (a?.action === 'pref' && a.el.dataset.key && a.el.dataset.value) prefs.set({ [a.el.dataset.key]: a.el.dataset.value } as Partial<Prefs>)
         if (a?.action === 'live') {
           const on = prefs.get().send !== 'live'
           justTurnedOn = on

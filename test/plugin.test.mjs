@@ -199,10 +199,10 @@ test('the first-run tour is seen once per machine: the server keeps the record',
 
 test('settings are kept per machine; only known keys and values are stored', async () => {
   assert.deepEqual((await page(s.port, 'GET', '/settings')).json, {})
-  const saved = (await page(s.port, 'POST', '/settings', { body: { send: 'live', evil: 'x', __proto__: { a: 1 } } })).json
-  assert.deepEqual(saved, { send: 'live' })
-  assert.deepEqual((await page(s.port, 'POST', '/settings', { body: { send: 'furlongs', sizes: 'rem' } })).json, { send: 'live' }, 'an unknown key or value is ignored')
-  assert.deepEqual((await page(s.port, 'GET', '/settings', { origin: 'http://localhost:3000' })).json, { send: 'live' }, 'every app on this machine sees them')
+  const saved = (await page(s.port, 'POST', '/settings', { body: { sizes: 'rem', colors: 'oklch', evil: 'x', __proto__: { a: 1 } } })).json
+  assert.deepEqual(saved, { sizes: 'rem', colors: 'oklch' })
+  assert.deepEqual((await page(s.port, 'POST', '/settings', { body: { sizes: 'furlongs', colors: 'hex' } })).json, { sizes: 'rem', colors: 'hex' }, 'an unknown value is ignored')
+  assert.deepEqual((await page(s.port, 'GET', '/settings', { origin: 'http://localhost:3000' })).json, { sizes: 'rem', colors: 'hex' }, 'every app on this machine sees them')
 })
 
 test('voice: the server says whether it can listen, and a session it can\'t run ends with a reason', async () => {

@@ -4,7 +4,7 @@
  */
 import { describe, type Description } from './css/describe'
 import { highlight, middle, resolved } from './css/highlight'
-import { allForms, rootFontPx, type Part } from './css/units'
+import { present, rootFontPx } from './css/units'
 import { prefs } from './prefs'
 import { splitList } from './css/rules'
 import { enter, leave, play } from './anim'
@@ -80,40 +80,37 @@ export interface Card {
   readonly draft: string
   /** The open note is one already sent, being edited. */
   readonly editing: boolean
+  /** Draw the CSS again, after Settings changed how values are written. */
+  refresh(): void
 }
 
 export function renderCss(d: Description): HTMLDivElement {
   const box = h('div', { class: 'css' })
-  const rootPx = rootFontPx()
+  /* Sizes and colours as chosen in Settings. The title, the copy and the note keep the code as written. */
+  const fmt = { ...prefs.get(), rootPx: rootFontPx() }
   for (const l of d.lines) {
-    const value = l.value
+    const value = present(l.value, l.prop, fmt)
     /* A long list (a font stack, layered shadows, a transition per property):
        the first item, and how many more. The whole value is in the row's tip and the copy. */
     const items = value.length > LIST_MAX ? splitList(value) : [value]
     const shown = items.length > 1 ? items[0] : value
     /* The tip gives the declaration as written, in full. It's worth showing when the row hides something:
-       a list cut to its first item, a token's short name, or a value cut off at the card's edge (that one is
-       checked when the pointer arrives). */
+       a list cut to its first item, a token's short name, a colour this format can only come near,
+       or a value cut off at the card's edge (that one is checked when the pointer arrives). */
     /* A value set by CSS Inspeck couldn't read is what renders, not what's written: the tip says so. */
-    const hides = items.length > 1 || /var\(/.test(shown) || !!l.unread
-    /* Its sizes and colours every way they can be written (px and rem; hex, rgb and oklch), the code's way
-       marked; a token's from its resolved value, which isn't how the code writes it. */
-    const token = !!l.resolved && /var\(/.test(value)
-    const forms = allForms(token ? l.resolved! : value, l.prop, rootPx)
-      .map(p => (token ? { forms: p.forms.map(({ label, text }) => ({ label, text })) } : p))
+    const hides = items.length > 1 || /var\(|≈/.test(shown) || !!l.unread
     const note = l.unread ? 'Set by a stylesheet Inspeck can’t read: this is what renders, not how it’s written'
-      : forms.some(p => p.forms.some(f => f.text.includes('≈'))) ? '≈ the nearest colour this format can show' : null
+      : shown.includes('≈') ? '≈ the nearest colour this format can show' : null
     const row = h('div', {
       class: l.unread ? 'decl unread' : 'decl', 'data-tip': `${l.prop}: ${l.value};`, 'data-tip-code': '', 'data-tip-res': l.resolved ?? null,
       'data-tip-note': note,
       'data-tip-if': hides ? null : 'clipped',
-      'data-tip-forms': forms.length ? JSON.stringify(forms) : null,
     },
       h('span', { class: 'c-prop' }, l.prop), h('span', { class: 'c-punct' }, ': '),
       /* The value may be cut short; the resolved value after it never is. */
       h('span', { class: 'val' }, highlight(shown)),
       items.length > 1 ? h('span', { class: 'more' }, `+${items.length - 1}`) : null,
-      l.resolved ? resolved(l.resolved) : null)
+      l.resolved ? resolved(present(l.resolved, l.prop, fmt)) : null)
     box.appendChild(row)
   }
   if (!d.lines.length) box.appendChild(h('div', { class: 'decl empty' }, 'No styles of its own'))
@@ -299,21 +296,13 @@ export function createCard(ui: HTMLElement): Card {
     clearTimeout(micTipWait)
     micTipFor = btn
     const text = btn?.dataset.tip
-    /* A CSS row's sizes and colours every way they're written: these are why its tip shows, if nothing else is. */
-    const parts: Part[] = btn?.dataset.tipForms ? JSON.parse(btn.dataset.tipForms) : []
-    /* Some tips only repeat what's on screen unless it was cut off: that part waits until it is. */
-    const full = btn?.dataset.tipIf !== 'clipped' || clipped(btn)
-    if (!micTip || !btn || !text || (!full && !parts.length)) { micTip?.removeAttribute('data-show'); return }
-    /* A declaration reads as code, with its resolved value after it a shade dimmer (unless the list below gives it). */
+    /* Some tips only repeat what's on screen unless it was cut off: those wait until it is. */
+    const needed = btn?.dataset.tipIf !== 'clipped' || clipped(btn)
+    if (!micTip || !btn || !text || !needed) { micTip?.removeAttribute('data-show'); return }
+    /* A declaration reads as code, with its resolved value after it a shade dimmer. */
     const { tipRes: res, tipNote: note } = btn.dataset
-    micTip.replaceChildren(
-      ...(full ? [h('span', { class: 'tip-decl' }, text, ...(res && !parts.length ? [h('span', { class: 'tip-res' }, res)] : []))] : []),
-      /* Each size or colour, one way per line: its label, the value, and "code" by the way the code writes it. */
-      ...parts.map(p => h('span', { class: 'tip-part' }, ...p.forms.map(f => h('span', { class: 'tip-line' },
-        h('span', { class: 'tip-label' }, f.label), h('span', { class: 'tip-val' }, f.text), f.code ? h('span', { class: 'tip-code' }, 'code') : null)))),
-      ...(note ? [h('span', { class: 'tip-note' }, note)] : []))
+    micTip.replaceChildren(text, ...(res ? [h('span', { class: 'tip-res' }, res)] : []), ...(note ? [h('span', { class: 'tip-note' }, note)] : []))
     micTip.toggleAttribute('data-code', btn.dataset.tipCode !== undefined)
-    micTip.toggleAttribute('data-forms', parts.length > 0)
     const r = btn.getBoundingClientRect(), c = el.getBoundingClientRect()
     const below = r.top < 36
     micTip.toggleAttribute('data-below', below)
@@ -639,6 +628,15 @@ export function createCard(ui: HTMLElement): Card {
 
     focus() {
       parts?.note.focus({ preventScroll: true })
+    },
+
+    refresh() {
+      if (!desc) return
+      for (const box of Array.from(el.querySelectorAll('.css'))) {
+        const next = renderCss(desc)
+        box.replaceWith(next)
+        if (mode === 'pinned') next.querySelectorAll<HTMLElement>('[data-tip]').forEach(tipOnHover)
+      }
     },
 
     pulse() {

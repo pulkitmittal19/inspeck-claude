@@ -41,6 +41,8 @@ import { listenStream, stopListening, voiceAvailable, warmVoice } from './voice.
 
 /** Settings the widget may keep, and the values each may take. */
 const SETTINGS: Record<string, string[]> = {
+  sizes: ['written', 'px', 'rem'],
+  colors: ['written', 'hex', 'rgb', 'oklch'],
   /* Auto-send notes to Claude (live), or keep them on the page until you send them (ask). */
   send: ['ask', 'live'],
 }

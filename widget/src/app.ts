@@ -139,9 +139,11 @@ export class App {
     /* Markers first, so the card is drawn above them. */
     this.notes = createNotes(this.host.ui, (note, el) => this.openNote(note, el))
     this.card = createCard(this.host.ui)
-    /* Auto-send notes to Claude turned on (here or in another app): whatever was waiting goes now, from every page of this site. */
+    /* Sizes or colours changed in Settings (here or in another app): the card says them the new way.
+       Auto-send notes to Claude turned on: whatever was waiting goes now, from every page of this site. */
     let sending = prefs.get().send
     prefs.onChange(() => {
+      this.card.refresh()
       const now = prefs.get().send
       if (now === 'live' && sending === 'ask') void api.sendHeld({ site: pageUrl().origin }).then(() => this.notes.refresh(), () => {})
       sending = now

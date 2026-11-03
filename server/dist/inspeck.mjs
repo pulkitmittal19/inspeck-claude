@@ -37469,6 +37469,8 @@ function stopListening() {
 
 // server/src/http.ts
 var SETTINGS = {
+  sizes: ["written", "px", "rem"],
+  colors: ["written", "hex", "rgb", "oklch"],
   /* Auto-send notes to Claude (live), or keep them on the page until you send them (ask). */
   send: ["ask", "live"]
 };

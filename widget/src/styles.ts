@@ -317,14 +317,6 @@ button { appearance: none; background: none; border: 0; padding: 0; cursor: poin
 /* A declaration, in full: as code, wrapping if it's long, the resolved value dimmer after it. */
 .card-tip[data-code] { max-width: 300px; white-space: normal; overflow-wrap: anywhere; font: 500 11px/1.45 var(--ix-mono); padding: 6px 9px; }
 .card-tip .tip-res { margin-left: 8px; color: var(--ix-dim); }
-/* A row's sizes and colours every way they're written: one per line, a small label, the value, and "code"
-   by the way the code writes it. Several parts (a border's width and colour) each get their group. */
-.card-tip[data-forms] { min-width: 200px; }
-.card-tip .tip-decl { display: block; }
-.card-tip .tip-decl + .tip-part, .card-tip .tip-part + .tip-part { margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--ix-line); }
-.card-tip .tip-line { display: flex; align-items: baseline; gap: 10px; white-space: nowrap; line-height: 20px; }
-.card-tip .tip-label { flex: none; width: 38px; font: 600 9.5px/1 var(--ix-sans); letter-spacing: 0.06em; text-transform: uppercase; color: var(--ix-faint); }
-.card-tip .tip-code { margin-left: auto; padding-left: 12px; font: 500 10px/1 var(--ix-sans); color: var(--ix-faint); }
 .card-tip .tip-note { display: block; margin-top: 4px; font: 500 10.5px/1.3 var(--ix-sans); color: var(--ix-faint); }
 .voice-text .w { transition: color 480ms ease; }
 .voice-text .w.new { animation: ix-word 320ms ease-out var(--d, 0ms) both; }
@@ -495,8 +487,18 @@ button { appearance: none; background: none; border: 0; padding: 0; cursor: poin
 .set-title { margin: 0 0 16px; font: 600 12.5px/1 var(--ix-sans); color: #fff; }
 .set-row + .set-row { margin-top: 16px; }
 .set-label { display: block; margin-bottom: 8px; font: 500 11px/1 var(--ix-sans); color: var(--ix-dim); }
+.seg { display: flex; padding: 2px; gap: 2px; border-radius: 8px; background: rgba(255, 255, 255, 0.06); }
+.seg-opt {
+  flex: 1 1 auto; height: 24px; padding: 0 7px; border-radius: 6px; white-space: nowrap;
+  font: 500 11px/1 var(--ix-mono); color: var(--ix-dim);
+  transition: background 140ms ease, color 140ms ease, box-shadow 140ms ease;
+}
+.seg-opt:first-child { font-family: var(--ix-sans); }
+.seg-opt:hover { color: var(--ix-text); }
+.seg-opt[aria-checked="true"] { background: rgba(255, 61, 138, 0.22); color: #fff; box-shadow: 0 0 0 1px rgba(255, 61, 138, 0.45) inset; }
+.seg-opt:active { transform: scale(0.96); }
 /* An on/off row: the label, and a switch at the end. */
-.set-toggle { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.set-toggle { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding-top: 16px; border-top: 1px solid var(--ix-line); }
 .set-toggle .set-label { margin: 0; color: var(--ix-text); }
 .switch {
   position: relative; flex: none; width: 30px; height: 18px; border-radius: 9px; background: rgba(255, 255, 255, 0.14);
