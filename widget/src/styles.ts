@@ -544,11 +544,12 @@ button { appearance: none; background: none; border: 0; padding: 0; cursor: poin
 .info:hover .info-tip, .info:focus-visible .info-tip { opacity: 1; transform: none; }
 
 /* Changing page in Settings: the old page drifts out and fades quickly while the new one drifts in a beat
-   later and settles slowly, so the two cross rather than swap. Both pages share one grid cell, so the
-   panel is as tall as the taller and keeps that height on either. */
-.settings { --ix-page: cubic-bezier(0.32, 0.72, 0, 1); display: grid; }
-.set-view { grid-area: 1 / 1; min-width: 0; }
-.set-view[data-off] { visibility: hidden; }
+   later and settles slowly, so the two cross rather than swap. Both share one grid cell while they cross;
+   the panel's height goes from the old page's to the new one's in the same time, then fits its page. */
+.settings { --ix-page: cubic-bezier(0.32, 0.72, 0, 1); display: grid; transition: opacity 160ms ease, transform 220ms var(--ix-ease), height 320ms var(--ix-page); }
+.settings[style*="height"] { overflow: hidden; }
+.set-view { grid-area: 1 / 1; min-width: 0; align-self: start; }
+.set-view[data-off] { display: none; }
 .set-view[data-out] { pointer-events: none; }
 .set-view[data-out="forward"] { animation: ix-page-out-left 180ms cubic-bezier(0.4, 0, 1, 1) both; }
 .set-view[data-out="back"] { animation: ix-page-out-right 180ms cubic-bezier(0.4, 0, 1, 1) both; }
@@ -614,5 +615,6 @@ button { appearance: none; background: none; border: 0; padding: 0; cursor: poin
   .bar, .bar .logo, .bar .btn, .card, .outline, .preview, .marker, .reveal { transition-duration: 120ms !important; }
   .card[data-state], .preview[data-state], .bar .btn { transform: none !important; }
   .set-view, .cap { animation: none !important; transform: none !important; }
+  .settings { transition-duration: 120ms !important; }
 }
 `

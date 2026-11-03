@@ -3,8 +3,7 @@
  * top); a press anywhere else or Escape puts it away.
  *
  * Shortcuts is a second page of the same panel: the panel slides over to it
- * and back. Both pages sit in the same spot, so the panel is always as tall as
- * the taller one and never changes size between them. One list: the key worth learning, I, first,
+ * and back, growing or shrinking to fit the page it shows. One list: the key worth learning, I, first,
  * then the quicker ways to look closer. While it's showing, a key you
  * press lights up its keycap, so the list answers "which one was that?". */
 import { enter, leave } from './anim'
@@ -92,10 +91,16 @@ export function createSettings(ui: HTMLElement, onToggle: (open: boolean) => voi
     const dir = to === 'keys' ? 'forward' : 'back'
     page = to
     if (to === 'keys') paint()
-    /* Off: still taking its room (that's what keeps the height), but not seen, read or reached. */
+    /* Off: not shown, read or reached, and taking no room. */
     const off = (v: HTMLElement, o: boolean) => { v.toggleAttribute('data-off', o); v.toggleAttribute('inert', o); v.setAttribute('aria-hidden', String(o)) }
+    /* The panel goes from the height it has to the new page's, while the pages cross. */
+    const from = el.offsetHeight
     off(coming, false)
     if (!animate) { off(leaving, true); return }
+    const pad = parseFloat(getComputedStyle(el).paddingTop) + parseFloat(getComputedStyle(el).paddingBottom)
+    el.style.height = `${from}px`
+    void el.offsetHeight
+    el.style.height = `${coming.offsetHeight + pad}px`
     leaving.dataset.out = dir
     coming.dataset.in = dir
     settled = () => {
@@ -103,6 +108,8 @@ export function createSettings(ui: HTMLElement, onToggle: (open: boolean) => voi
       off(leaving, true)
       delete leaving.dataset.out
       delete coming.dataset.in
+      /* Settled: back to fitting its page, so a line that opens on it (Auto-send's) has room. */
+      el.style.height = ''
     }
     settle = window.setTimeout(settled, PAGE_MS)
   }
