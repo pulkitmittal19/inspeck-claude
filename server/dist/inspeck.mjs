@@ -38061,7 +38061,7 @@ if (process.argv[2] === "wait") {
   await runWait(process.argv.slice(3));
   process.exit(0);
 }
-var VERSION = "0.19.3";
+var VERSION = "0.19.4";
 var CLAUDE = JSON.stringify(claudeCommand());
 void keepCurrent(VERSION, claudeCommand());
 var OUTDATED = outdatedPackage(process.cwd());
