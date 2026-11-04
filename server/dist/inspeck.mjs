@@ -37897,6 +37897,31 @@ function stylesheet(href) {
   return entry.text;
 }
 var RETRY_MS = 5e3;
+var QUICK_MS = 20;
+var CLAIM = () => join6(HOME, "port-claim.json");
+var alive3 = (pid) => {
+  try {
+    process.kill(Number(pid), 0);
+    return true;
+  } catch {
+    return false;
+  }
+};
+function claimedByNewer(version2) {
+  try {
+    const c = JSON.parse(readFileSync5(CLAIM(), "utf8"));
+    return c.pid !== process.pid && newer(String(c.version), version2) && alive3(c.pid);
+  } catch {
+    return false;
+  }
+}
+function claim2(version2) {
+  try {
+    mkdirSync4(HOME, { recursive: true });
+    writeFileSync4(CLAIM(), JSON.stringify({ pid: process.pid, version: version2 }));
+  } catch {
+  }
+}
 function handoverKey() {
   const file2 = join6(HOME, "handover-key");
   try {
@@ -37981,7 +38006,14 @@ function listen(version2, log2, onNew = () => {
   });
   return new Promise((resolve) => {
     let warned = "";
+    let quickUntil = 0;
+    const again = () => setTimeout(attempt, Date.now() < quickUntil ? QUICK_MS : RETRY_MS).unref();
     attempt = () => {
+      if (claimedByNewer(version2)) {
+        resolve(false);
+        if (standby) again();
+        return;
+      }
       const onError = (err) => {
         if (err.code !== "EADDRINUSE") {
           log2(`Could not listen on ${PORT}: ${err.message}`);
@@ -37997,12 +38029,19 @@ function listen(version2, log2, onNew = () => {
             log2(owner === "other" ? `Port ${PORT} is used by another program, not Inspeck. Pages can't reach Inspeck until it's free; or set INSPECK_PORT to another port.` : `Port ${PORT} is taken by another Claude session's Inspeck. Sharing its inbox.`);
           }
           if (standby) resolve(false);
-          const ok = there?.inspeck ? await handover(version2, there.version) : false;
-          if (!standby && !ok) {
-            resolve(false);
+          if (there?.inspeck && !newer(version2, there.version)) {
+            if (!standby) {
+              resolve(false);
+              return;
+            }
+            again();
             return;
           }
-          setTimeout(attempt, ok ? 300 : RETRY_MS).unref();
+          if (there?.inspeck) {
+            claim2(version2);
+            if (await handover(version2, there.version)) quickUntil = Date.now() + 2e3;
+          }
+          again();
         });
       };
       server2.once("error", onError);
@@ -38144,15 +38183,15 @@ if (process.argv[2] === "wait") {
   await runWait(process.argv.slice(3));
   process.exit(0);
 }
-var VERSION = "0.20.1";
+var VERSION = "0.20.2";
 var log = (msg) => process.stderr.write(`inspeck: ${msg}
 `);
 if (process.argv[2] === "serve") {
-  if (!await listen(VERSION, log, () => {
-  }, { standby: false })) process.exit(0);
   setInterval(() => {
     if (!liveSessions().length) process.exit(0);
   }, 15e3);
+  if (!await listen(VERSION, log, () => {
+  }, { standby: false })) process.exit(0);
   await new Promise(() => {
   });
 }

@@ -7,7 +7,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { spawn } from 'node:child_process'
+import { execFileSync, spawn } from 'node:child_process'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import http from 'node:http'
@@ -199,6 +199,38 @@ test('a newer installed version answers pages: started in the background once, i
     chat.kill()
     assert.ok(await until(async () => again.exitCode !== null, 25000), 'and goes once no chat is left')
   } finally { chat.kill(); await s.stop(); gh.close(); rmSync(tmp, { recursive: true, force: true }) }
+})
+
+test('with older chats waiting for the port (real 0.19.5 code), a newer Inspeck takes it and keeps it: no flapping', async () => {
+  const tmp = mkdtempSync(join(tmpdir(), 'inspeck-race-'))
+  const home = join(tmp, 'home'), port = 49600 + Math.floor(Math.random() * 90)
+  /* The released 0.19.5 server, as chats opened before an update still run it. */
+  const old = join(tmp, 'old.mjs')
+  writeFileSync(old, execFileSync('git', ['show', 'c8a9cb3:server/dist/inspeck.mjs'], { cwd: root, encoding: 'utf8', maxBuffer: 1 << 26 }))
+  const stamped = (v) => { const f = join(tmp, `new-${v}.mjs`); mkdirSync(join(tmp, 'widget'), { recursive: true }); writeFileSync(f, readFileSync(join(root, 'server/dist/inspeck.mjs'), 'utf8').split(`"${VERSION}"`).join(`"${v}"`)); return f }
+  const chat = spawn('sleep', ['120'], { stdio: 'ignore' })
+  const env = { ...process.env, INSPECK_HOME: home, INSPECK_PORT: String(port), INSPECK_LATEST_URL: 'off', INSPECK_SESSION_PID: String(chat.pid), CLAUDE_PLUGIN_ROOT: '' }
+  const clients = []
+  const open = async (file) => { const c = new Client({ name: 'chat', version: '0' }); await c.connect(new StdioClientTransport({ command: process.execPath, args: [file], cwd: tmp, env, stderr: 'ignore' })); clients.push(c) }
+  let serve
+  try {
+    for (let i = 0; i < 3; i++) await open(old)
+    assert.ok(await until(async () => (await health(port))?.version === '0.19.5', 9000), 'an old chat answers')
+    await open(stamped('0.20.0'))
+    assert.ok(await until(async () => (await health(port))?.version === '0.20.0', 12000), 'a 0.20.0 chat takes it')
+    /* The update: a newer one starts to answer pages, while three older chats wait for the port every 5 s. */
+    serve = spawn(process.execPath, [stamped('9.9.9'), 'serve'], { stdio: 'ignore', env })
+    assert.ok(await until(async () => (await health(port))?.version === '9.9.9', 12000), 'the newer one takes it')
+    const seen = new Set()
+    for (let i = 0; i < 80; i++) { const v = (await health(port))?.version ?? 'none'; seen.add(v); await new Promise(r => setTimeout(r, 250)) }
+    assert.deepEqual([...seen].filter(v => v !== '9.9.9' && v !== 'none'), [], `over 20 s the port only answered ${[...seen].join(', ')}`)
+    assert.equal((await health(port))?.version, '9.9.9')
+    assert.equal(serve.exitCode, null, 'and it stays')
+  } finally {
+    serve?.kill(); chat.kill()
+    for (const c of clients) await c.close().catch(() => {})
+    rmSync(tmp, { recursive: true, force: true })
+  }
 })
 
 test('a newer Inspeck takes the port from an older one; the older takes it back if the newer goes', async () => {

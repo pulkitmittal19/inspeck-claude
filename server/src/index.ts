@@ -43,8 +43,9 @@ const log = (msg: string) => process.stderr.write(`inspeck: ${msg}\n`)
    to answer pages: no chat of its own. It takes the port from older ones, steps aside for a newer one, and goes
    when no chat is left. */
 if (process.argv[2] === 'serve') {
-  if (!await listen(VERSION, log, () => {}, { standby: false })) process.exit(0)
+  /* Started first: it's also what keeps this process alive while it waits its turn for the port. */
   setInterval(() => { if (!liveSessions().length) process.exit(0) }, 15_000)
+  if (!await listen(VERSION, log, () => {}, { standby: false })) process.exit(0)
   /* Everything below is a chat's: this one only answers pages, until it exits. */
   await new Promise(() => {})
 }

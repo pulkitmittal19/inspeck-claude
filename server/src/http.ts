@@ -406,6 +406,23 @@ function stylesheet(href: string): Promise<string> {
 
 /** How often a session sharing the port tries for it again. */
 const RETRY_MS = 5000
+/** How soon a newer Inspeck tries again once the older one let go: before another one waiting can take it. */
+const QUICK_MS = 20
+
+/* A newer Inspeck taking the port over says so here first, with its process and version. One waiting in the
+   background that's older leaves the port to it, even in the instant between the old one going and the new one
+   arriving. (Inspecks from before 0.20.2 don't read this: the newer one asks them again, and wins it back.) */
+const CLAIM = () => join(HOME, 'port-claim.json')
+const alive = (pid: unknown) => { try { process.kill(Number(pid), 0); return true } catch { return false } }
+function claimedByNewer(version: string): boolean {
+  try {
+    const c = JSON.parse(readFileSync(CLAIM(), 'utf8')) as { pid?: number; version?: string }
+    return c.pid !== process.pid && newer(String(c.version), version) && alive(c.pid)
+  } catch { return false }
+}
+function claim(version: string): void {
+  try { mkdirSync(HOME, { recursive: true }); writeFileSync(CLAIM(), JSON.stringify({ pid: process.pid, version })) } catch { /* only a courtesy */ }
+}
 
 /** A secret only this person's Inspecks can read (it's in their own ~/.inspeck): asking for the port takes it,
     so no other program can make Inspeck let go. Made the first time it's needed. */
@@ -513,7 +530,16 @@ export function listen(version: string, log: (msg: string) => void, onNew: (c: C
 
   return new Promise(resolve => {
     let warned = ''
+    /* Until when to keep trying every few milliseconds: just after an older one agreed to let go. */
+    let quickUntil = 0
+    const again = () => setTimeout(attempt, Date.now() < quickUntil ? QUICK_MS : RETRY_MS).unref()
     attempt = () => {
+      /* A newer Inspeck is taking the port over: it's its, even if it's free this instant. */
+      if (claimedByNewer(version)) {
+        resolve(false)
+        if (standby) again()
+        return
+      }
       const onError = (err: NodeJS.ErrnoException) => {
         if (err.code !== 'EADDRINUSE') { log(`Could not listen on ${PORT}: ${err.message}`); portState.owner = 'other'; resolve(false); return }
         void onPort().then(async there => {
@@ -526,11 +552,21 @@ export function listen(version: string, log: (msg: string) => void, onNew: (c: C
               : `Port ${PORT} is taken by another Claude session's Inspeck. Sharing its inbox.`)
           }
           if (standby) resolve(false)
-          /* An older Inspeck on the port is asked to hand it over; then it's ours in a moment. */
-          const ok = there?.inspeck ? await handover(version, there.version) : false
-          /* Only answering pages, and the one there is as new: it answers them, so this one goes. */
-          if (!standby && !ok) { resolve(false); return }
-          setTimeout(attempt, ok ? 300 : RETRY_MS).unref()
+          /* As new an Inspeck answers pages already: a chat's shares it; one only answering pages has no reason to stay. */
+          if (there?.inspeck && !newer(version, there.version)) {
+            if (!standby) { resolve(false); return }
+            again()
+            return
+          }
+          /* An older Inspeck on the port is asked to hand it over, once this one has said it's taking over; then
+             it tries again at once, and every few milliseconds for a moment, so the port is never free for long. */
+          if (there?.inspeck) {
+            claim(version)
+            if (await handover(version, there.version)) quickUntil = Date.now() + 2000
+          }
+          /* Nobody answering (one going, another arriving) or another program: try again; only answering pages,
+             it doesn't give up while an older one, or nothing, is in its way. */
+          again()
         })
       }
       server.once('error', onError)
