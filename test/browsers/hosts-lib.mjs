@@ -76,6 +76,15 @@ export function world() {
   }
 }
 
+/** A chat's background watcher, as Claude runs it: `done` resolves with what it printed when it hands notes over. */
+export function watcher(c) {
+  const kid = spawn(process.execPath, [join(c.dir, 'inspeck.mjs'), 'wait', '--minutes', '2'], { cwd: c.cwd, env: c.env, stdio: ['ignore', 'pipe', 'ignore'] })
+  let out = ''
+  kid.stdout.on('data', d => { out += d })
+  const done = new Promise(r => kid.on('exit', () => r(out)))
+  return { done, stop: () => kid.kill() }
+}
+
 /** A call to Inspeck from inside a page, as the widget makes it. */
 export const api = (page, method, path, body) => page.evaluate(async ([method, path, body, port]) => {
   const r = await fetch(`http://127.0.0.1:${port}${path}`, { method, headers: { 'x-inspeck': '1', ...(body ? { 'content-type': 'application/json' } : {}) }, body: body ? JSON.stringify(body) : undefined })

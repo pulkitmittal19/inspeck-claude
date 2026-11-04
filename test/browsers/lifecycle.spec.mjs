@@ -2,23 +2,12 @@
  * and one chat reaching a second localhost, including an app that doesn't load Inspeck itself, with its notes
  * read automatically by the chat's watcher (Auto-send) and on asking (check my notes). */
 import { test, expect } from '@playwright/test'
-import { spawn } from 'node:child_process'
-import { join } from 'node:path'
-import { api, deleteNote, markers, note, ready, world } from './hosts-lib.mjs'
+import { api, deleteNote, markers, note, ready, watcher, world } from './hosts-lib.mjs'
 
 let w
 test.beforeEach(() => { w = world() })
 test.afterEach(async () => { await w.cleanup() })
 test.setTimeout(180_000)
-
-/** The chat's background watcher, as Claude runs it: resolves with what it printed when it hands notes over. */
-function watcher(c) {
-  const kid = spawn(process.execPath, [join(c.dir, 'inspeck.mjs'), 'wait', '--minutes', '2'], { cwd: c.cwd, env: c.env, stdio: ['ignore', 'pipe', 'ignore'] })
-  let out = ''
-  kid.stdout.on('data', d => { out += d })
-  const done = new Promise(r => kid.on('exit', () => r(out)))
-  return { done, stop: () => kid.kill() }
-}
 
 test('numbers on a page: a deleted waiting note closes its gap; after Claude reads or closes notes, new ones carry on; another page starts at 1', async ({ context }) => {
   const A = w.app('alpha', 5301)
