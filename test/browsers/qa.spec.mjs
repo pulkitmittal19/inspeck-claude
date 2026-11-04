@@ -50,6 +50,33 @@ test('a site linked to a chat that has since closed: the next chat in the projec
   expect(await next.tool('pending')).toContain('after the linked chat closed')
 })
 
+test('a note left waiting by a closed chat: a chat in another project leaves it and says so; a chat in its project, or linking its site, takes it', async ({ context }) => {
+  const A = w.app('alpha', 5301), B = w.app('beta', 5302)
+  const first = await w.chat('first', A.dir)
+  await w.up()
+  const p = await context.newPage(); await p.goto(A.url); await ready(p)
+  await note(p, '#title', 'for the alpha project')
+  await first.close()
+  const other = await w.chat('other', B.dir)
+  await new Promise(r => setTimeout(r, 400))
+  expect(await w.up()).toBe(true)
+  /* Asked in another project's chat (what happened with localhost:5189): left where it is, only mentioned. */
+  const asked = await other.tool('pending')
+  expect(asked).not.toContain('\nfor the alpha project\n')
+  expect(asked).toMatch(/1 note is waiting from http:\/\/localhost:5301, an app in another project \([^)]*alpha\): left for a chat opened there/)
+  await p.reload(); await ready(p); await p.evaluate(() => window.__INSPECK__.app.setOpen(true))
+  await expect.poll(() => markers(p), { timeout: 8000, message: 'still waiting on the page' }).toEqual(['1'])
+  /* A chat in its own project takes it. */
+  const home = await w.chat('home', A.dir)
+  expect(await home.tool('pending')).toContain('for the alpha project')
+  /* Linking the site from the other project's chat takes the ones waiting there. */
+  await note(p, '#buy', 'second for alpha')
+  await home.close()
+  const linked = await other.tool('bind', { page: A.url })
+  expect(linked).toContain('1 note was waiting there')
+  expect(await other.tool('pending')).toContain('second for alpha')
+})
+
 test('a monorepo: the chat at the repo root gets notes from an app served from a package folder', async ({ context }) => {
   const mono = join(w.app('mono', 5309).dir)
   const web = w.app('mono/packages/web', 5301)

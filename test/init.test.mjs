@@ -10,7 +10,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 
 const pkg = join(dirname(fileURLToPath(import.meta.url)), '..', 'packages', 'inspeck')
 const BIN = join(pkg, 'dist/bin.js')
-const { wireVite, wireNext, wireHtml, wireAstro, wireNuxt, cspFileIn, wireStorybookHead, withAutoUpdate, wireDocusaurus } = await import(pathToFileURL(join(pkg, 'dist/cli.js')).href)
+const { wireVite, wireNext, wireHtml, wireAstro, wireNuxt, cspFileIn, wireStorybookHead, withAutoUpdate, wireDocusaurus, HTML_TAG } = await import(pathToFileURL(join(pkg, 'dist/cli.js')).href)
 const vitePlugin = await import(pathToFileURL(join(pkg, 'dist/vite.js')).href)
 
 test('Vite: inspeck() goes first in the plugins list, the import after the others; twice changes nothing', () => {
@@ -65,6 +65,28 @@ test('HTML: the tag before </body>', () => {
   assert.equal(one.result, 'added')
   assert.match(one.src, /<\/p><script>[^\n]*inspeck\.js[^\n]*<\/script><\/BODY><\/html>$/)
   assert.equal(wireHtml('<html><p>no end</p></html>').result, 'manual')
+})
+
+test('the local-only tag loads on this computer\'s addresses, *.test included (Laravel Valet, Herd), and never on a public site', () => {
+  const guard = new RegExp(HTML_TAG.match(/if \(\/(.*?)\/\.test\(location\.hostname\)/)[1])
+  for (const host of ['localhost', '127.0.0.1', '[::1]', 'app.localhost', 'shop.test', 'my-app.test']) assert.ok(guard.test(host), host)
+  for (const host of ['example.com', 'test.example.com', 'evil.test.com', 'mytest', 'localhost.example.com']) assert.ok(!guard.test(host), host)
+})
+
+test('a tag an older init added (without *.test) is brought up to date by running it again: HTML, Storybook, Docusaurus', () => {
+  const newGuard = String.raw`|\.(localhost|test)$/`, oldGuard = String.raw`|\.localhost$/`
+  const oldTag = HTML_TAG.split(newGuard).join(oldGuard)
+  assert.notEqual(oldTag, HTML_TAG)
+  const page = `<html>\n  <body>\n    ${oldTag}\n  </body>\n</html>\n`
+  const html = wireHtml(page)
+  assert.equal(html.result, 'added')
+  assert.ok(html.src.includes(HTML_TAG) && !html.src.includes(oldTag))
+  assert.equal(wireHtml(html.src).result, 'present', 'and only once')
+  const head = wireStorybookHead(`${oldTag}\n`)
+  assert.equal(head.result, 'added'); assert.ok(head.src.includes(HTML_TAG))
+  const code = t => JSON.stringify(t.replace(/^<script>/, '').replace(/<\/script>$/, ''))
+  const docs = wireDocusaurus(`export default {\n  headTags: [{ tagName: 'script', attributes: {}, innerHTML: ${code(oldTag)} }],\n}\n`)
+  assert.equal(docs.result, 'added'); assert.ok(docs.src.includes(code(HTML_TAG)))
 })
 
 test('auto-update: added to empty or existing settings, kept once on, and a local-folder marketplace left alone', () => {

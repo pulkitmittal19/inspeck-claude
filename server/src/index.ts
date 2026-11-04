@@ -16,15 +16,16 @@
  */
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs'
 import { extname, join } from 'node:path'
+import { homedir } from 'node:os'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod'
 import * as store from './store.js'
 import { listen, PORT, portState } from './http.js'
-import { heading, pageLabel, render, summaryLine, type Comment } from './format.js'
+import { heading, originKey, pageLabel, render, summaryLine, type Comment } from './format.js'
 import { keepCurrent } from './updates.js'
 import { markOffered, NEEDED, outdatedPackage } from './outdated.js'
-import { belongsTo, bindSite, claudeCommand, claudePid, guessedInProject, register, unclaimed } from './sessions.js'
+import { belongsTo, bindSite, claudeCommand, claudePid, fromOtherProjects, guessedInProject, register, unclaimed } from './sessions.js'
 import { runWait, WAIT_COMMAND } from './wait.js'
 
 /* `node inspeck.mjs wait`: the background watcher, not the MCP server. */
@@ -55,7 +56,7 @@ Setting up, once per session, when you open the person's app in your browser pan
 Notes wait on the page until the person asks you for them ("check my Inspeck notes"), unless they've turned on Auto-send notes to Claude in Inspeck's settings; then each comes as it's placed. The watcher wakes you only for notes that have come; pending reads waiting ones too, so asking for the notes is how they're sent.
 When the person says "Listen for my Inspeck notes on <address>" (Inspeck's settings give them that line to send once per chat when they turn Auto-send on), call bind with page set to that address, so every note from that site comes to this chat; call pending once to take any already waiting and handle them; then start the watcher as a background task and confirm in one short line that you're listening. Keep starting it again after each batch.
 Any local app you open in your browser pane later in this chat (another port, Storybook, a new project's dev server), you link the same way: run bind's line in its tab. If that app's project doesn't load Inspeck itself, offer once per project to add it (as above), so it stays after reloads.
-If the person uses their own browser (Chrome, Safari) instead of your pane, call bind with page set to the app's address instead of running a line: every note from that site, in any browser, then comes here. Saying "check my Inspeck notes" (pending) also takes notes no other session could have picked up, and links their site to you.
+If the person uses their own browser (Chrome, Safari) instead of your pane, call bind with page set to the app's address instead of running a line: every note from that site, in any browser, then comes here. Saying "check my Inspeck notes" (pending) also takes notes no other session could have picked up from this project's apps, and links their site to you; notes waiting for another project's chat are only mentioned (bind with that site's address takes them, if the person wants them here).
 
 Working through notes: pending gives every new note in full (and lists ones read before), get opens one again, watch waits for new ones in the foreground. Reading a note (pending, get, watch or the watcher) clears its marker from the page, so the person never clears notes by hand. resolve closes a note with one line saying what changed, dismiss declines with a reason.
 
@@ -116,16 +117,24 @@ server.registerTool('pending', {
   inputSchema: { page: z.string().optional().describe('Only this page, as a URL') },
   annotations: { readOnlyHint: true },
 }, async ({ page }) => {
-  /* Notes no open session will pick up (say, from a page in Chrome, with no
-     session opened in its project) come to whoever asks first, and so does
-     every later note from that site. So do unread ones another chat in this
-     project was only guessed to have: the person is asking this one. */
-  const adopted = ME ? store.adopt(c => c.status === 'new' && (unclaimed(c.to) || (c.to?.pid !== ME && guessedInProject(c.to, MY_CWD))), { pid: ME, cwd: MY_CWD, how: 'claimed' }) : []
-  const sites = [...new Set(adopted.map(c => { try { return new URL(c.page).origin } catch { return c.page } }))]
+  /* Notes no open session will pick up (say, from a page in Chrome, with no session opened in its project)
+     come to whoever asks first, and so does every later note from that site: but only from this chat's own
+     project. One from another project's app is left for a chat opened there, and only mentioned. So do unread
+     ones another chat in this project was only guessed to have: the person is asking this one. */
+  const waiting = ME ? store.open().filter(c => c.status === 'new' && unclaimed(c.to)) : []
+  const theirs = fromOtherProjects(waiting, MY_CWD)
+  const adopted = ME ? store.adopt(c => c.status === 'new' && ((unclaimed(c.to) && !theirs.has(c.id)) || (c.to?.pid !== ME && guessedInProject(c.to, MY_CWD))), { pid: ME, cwd: MY_CWD, how: 'claimed' }) : []
+  const siteOf = (c: Comment) => { try { return new URL(c.page).origin } catch { return c.page } }
+  const sites = [...new Set(adopted.map(siteOf))]
   for (const c of adopted) bindSite(c.page, ME!)
-  const took = adopted.length
+  const left = waiting.filter(c => theirs.has(c.id))
+  const leftSites = [...new Set(left.map(siteOf))]
+  const leftFolders = [...new Set(left.map(c => theirs.get(c.id)!.replace(homedir(), '~')))]
+  const took = (adopted.length
     ? `Took ${adopted.length} note${adopted.length === 1 ? '' : 's'} no other session had, from ${sites.join(', ')}. Notes from ${sites.length === 1 ? 'there' : 'those sites'} now come to this session, in any browser.\n\n`
-    : ''
+    : '') + (left.length
+    ? `${left.length} note${left.length === 1 ? ' is' : 's are'} waiting from ${leftSites.join(', ')}, an app in another project (${leftFolders.join(', ')}): left for a chat opened there. If the person wants ${left.length === 1 ? 'it' : 'them'} here instead, link that site with bind and its address.\n\n`
+    : '')
   const list = store.open(page).filter(mine)
   if (!list.length) return portBlocked() ? { ...text(portBlocked()!), isError: true } : text(took + (page ? `Nothing open on ${pageLabel(page)}.` : 'Nothing open. When the person places a comment, it will show up here.'))
   /* Asking to read the notes reads them: each new one comes in full, and is
@@ -206,7 +215,11 @@ server.registerTool('bind', {
   if (!SESSION) return { ...text('This session could not be identified, so notes go to whichever session checks first. They will still arrive.'), isError: true }
   if (page) {
     bindSite(page, SESSION.pid)
-    return text(`Notes from ${new URL(page).origin} now come to this session, in any browser.\n\nStart the watcher in the background: ${WAIT_COMMAND}`)
+    /* Linking a site asks for its notes: those waiting there that no open chat has come here too. */
+    const site = originKey(page)
+    const taken = store.adopt(c => c.status === 'new' && originKey(c.page) === site && unclaimed(c.to), { pid: SESSION.pid, cwd: MY_CWD, how: 'claimed' })
+    const waiting = taken.length ? ` ${taken.length} note${taken.length === 1 ? ' was' : 's were'} waiting there: read ${taken.length === 1 ? 'it' : 'them'} with pending.` : ''
+    return text(`Notes from ${new URL(page).origin} now come to this session, in any browser.${waiting}\n\nStart the watcher in the background: ${WAIT_COMMAND}`)
   }
   return text([
     'Run this in the browser pane tab showing the app. It links the tab to this session (the link survives reloads). If the app doesn\'t load Inspeck itself, it also adds it to the page, but only until a full reload: offer once to add it to the app (npx inspeck init --skip-plugin --yes, development only). Never copy this line, or its token, into their code.',

@@ -296,13 +296,25 @@ export function wireNext(src: string): { src: string; result: 'added' | 'present
 }
 
 /* A plain page has no development build to leave the tag out of, so the tag checks for itself: it loads
-   Inspeck only when the page is opened on this computer, never on a deployed site (where a visitor's
-   browser could ask them about local network access). */
-export const HTML_TAG = `<script>/* Inspeck: loads on this computer only, never on the live site */ if (/^(localhost|127\\.0\\.0\\.1|\\[::1\\])$|\\.localhost$/.test(location.hostname)) document.head.appendChild(Object.assign(document.createElement('script'), { src: '${TAG_SRC}', async: true }))</script>`
+   Inspeck only when the page is opened on this computer (localhost, 127.0.0.1, *.localhost, and *.test,
+   which local servers such as Laravel Valet use and no public site can have), never on a deployed site
+   (where a visitor's browser could ask them about local network access). */
+const GUARD = String.raw`/^(localhost|127\.0\.0\.1|\[::1\])$|\.(localhost|test)$/`
+/** The check as 0.13.2 and before wrote it, without *.test: a tag init added then is brought up to date. */
+const OLD_GUARD = String.raw`/^(localhost|127\.0\.0\.1|\[::1\])$|\.localhost$/`
+export const HTML_TAG = `<script>/* Inspeck: loads on this computer only, never on the live site */ if (${GUARD}.test(location.hostname)) document.head.appendChild(Object.assign(document.createElement('script'), { src: '${TAG_SRC}', async: true }))</script>`
+
+/** A file that loads Inspeck already: as it is ('present'), or with an older tag's check brought up to date
+    ('added'), whether the tag is written as HTML or inside a config's string (Docusaurus). */
+function already(src: string): { src: string; result: 'added' | 'present' } {
+  const quoted = (s: string) => JSON.stringify(s).slice(1, -1)
+  const fresh = src.split(OLD_GUARD).join(GUARD).split(quoted(OLD_GUARD)).join(quoted(GUARD))
+  return { src: fresh, result: fresh === src ? 'present' : 'added' }
+}
 
 /** Add the tag before </body> in a plain HTML page. */
 export function wireHtml(src: string): { src: string; result: 'added' | 'present' | 'manual' } {
-  if (src.includes('inspeck.js')) return { src, result: 'present' }
+  if (src.includes('inspeck.js')) return already(src)
   /* </body> on a line of its own: the tag goes on the line above, indented one step in. */
   const body = /^([ \t]*)<\/body>/im.exec(src)
   if (body) return { src: src.slice(0, body.index) + `${body[1]}  ${HTML_TAG}\n` + src.slice(body.index), result: 'added' }
@@ -333,7 +345,7 @@ const TAG_CODE = HTML_TAG.replace(/^<script>/, '').replace(/<\/script>$/, '')
 
 /** Add the local-only tag to Docusaurus's headTags (it builds every page's <head> from them). */
 export function wireDocusaurus(src: string): { src: string; result: 'added' | 'present' | 'manual' } {
-  if (src.includes('inspeck.js')) return { src, result: 'present' }
+  if (src.includes('inspeck.js')) return already(src)
   const item = `{ tagName: 'script', attributes: {}, innerHTML: ${JSON.stringify(TAG_CODE)} }`
   const list = /\bheadTags\s*:\s*\[/.exec(src)
   if (list) {
@@ -353,7 +365,7 @@ export function wireDocusaurus(src: string): { src: string; result: 'added' | 'p
 
 /** Add the tag to a Storybook preview head (the file's text, or null if it doesn't exist yet). */
 export function wireStorybookHead(src: string | null): { src: string; result: 'added' | 'present' } {
-  if (src?.includes('inspeck.js')) return { src, result: 'present' }
+  if (src?.includes('inspeck.js')) return already(src)
   return { src: `${src ? `${src.replace(/\s*$/, '')}\n` : ''}${HTML_TAG}\n`, result: 'added' }
 }
 

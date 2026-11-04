@@ -7198,6 +7198,7 @@ var require_dist = __commonJS({
 // server/src/index.ts
 import { readFileSync as readFileSync7, writeFileSync as writeFileSync6, mkdirSync as mkdirSync6 } from "fs";
 import { extname, join as join8 } from "path";
+import { homedir as homedir4 } from "os";
 
 // node_modules/zod/v3/helpers/util.js
 var util;
@@ -37117,6 +37118,17 @@ function unclaimed(to, live = liveSessions()) {
   if (to.pid && alive(to.pid)) return false;
   return !to.cwd || !live.some((s) => sameProject(s.cwd, to.cwd));
 }
+function fromOtherProjects(notes, myCwd) {
+  const projects = /* @__PURE__ */ new Map();
+  const theirs = /* @__PURE__ */ new Map();
+  for (const c of notes) {
+    const site = originKey(c.page) ?? c.page;
+    if (!projects.has(site)) projects.set(site, projectOf(c.page));
+    const project = projects.get(site) ?? c.to?.cwd;
+    if (project && !sameProject(myCwd, project)) theirs.set(c.id, project);
+  }
+  return theirs;
+}
 function guessedInProject(to, myCwd) {
   return !!to && (to.how === "only" || to.how === "project") && !!to.cwd && sameProject(myCwd, to.cwd);
 }
@@ -38067,7 +38079,7 @@ Setting up, once per session, when you open the person's app in your browser pan
 Notes wait on the page until the person asks you for them ("check my Inspeck notes"), unless they've turned on Auto-send notes to Claude in Inspeck's settings; then each comes as it's placed. The watcher wakes you only for notes that have come; pending reads waiting ones too, so asking for the notes is how they're sent.
 When the person says "Listen for my Inspeck notes on <address>" (Inspeck's settings give them that line to send once per chat when they turn Auto-send on), call bind with page set to that address, so every note from that site comes to this chat; call pending once to take any already waiting and handle them; then start the watcher as a background task and confirm in one short line that you're listening. Keep starting it again after each batch.
 Any local app you open in your browser pane later in this chat (another port, Storybook, a new project's dev server), you link the same way: run bind's line in its tab. If that app's project doesn't load Inspeck itself, offer once per project to add it (as above), so it stays after reloads.
-If the person uses their own browser (Chrome, Safari) instead of your pane, call bind with page set to the app's address instead of running a line: every note from that site, in any browser, then comes here. Saying "check my Inspeck notes" (pending) also takes notes no other session could have picked up, and links their site to you.
+If the person uses their own browser (Chrome, Safari) instead of your pane, call bind with page set to the app's address instead of running a line: every note from that site, in any browser, then comes here. Saying "check my Inspeck notes" (pending) also takes notes no other session could have picked up from this project's apps, and links their site to you; notes waiting for another project's chat are only mentioned (bind with that site's address takes them, if the person wants them here).
 
 Working through notes: pending gives every new note in full (and lists ones read before), get opens one again, watch waits for new ones in the foreground. Reading a note (pending, get, watch or the watcher) clears its marker from the page, so the person never clears notes by hand. resolve closes a note with one line saying what changed, dismiss declines with a reason.
 
@@ -38115,18 +38127,26 @@ server.registerTool("pending", {
   inputSchema: { page: external_exports.string().optional().describe("Only this page, as a URL") },
   annotations: { readOnlyHint: true }
 }, async ({ page }) => {
-  const adopted = ME ? adopt((c) => c.status === "new" && (unclaimed(c.to) || c.to?.pid !== ME && guessedInProject(c.to, MY_CWD)), { pid: ME, cwd: MY_CWD, how: "claimed" }) : [];
-  const sites = [...new Set(adopted.map((c) => {
+  const waiting = ME ? open2().filter((c) => c.status === "new" && unclaimed(c.to)) : [];
+  const theirs = fromOtherProjects(waiting, MY_CWD);
+  const adopted = ME ? adopt((c) => c.status === "new" && (unclaimed(c.to) && !theirs.has(c.id) || c.to?.pid !== ME && guessedInProject(c.to, MY_CWD)), { pid: ME, cwd: MY_CWD, how: "claimed" }) : [];
+  const siteOf = (c) => {
     try {
       return new URL(c.page).origin;
     } catch {
       return c.page;
     }
-  }))];
+  };
+  const sites = [...new Set(adopted.map(siteOf))];
   for (const c of adopted) bindSite(c.page, ME);
-  const took = adopted.length ? `Took ${adopted.length} note${adopted.length === 1 ? "" : "s"} no other session had, from ${sites.join(", ")}. Notes from ${sites.length === 1 ? "there" : "those sites"} now come to this session, in any browser.
+  const left = waiting.filter((c) => theirs.has(c.id));
+  const leftSites = [...new Set(left.map(siteOf))];
+  const leftFolders = [...new Set(left.map((c) => theirs.get(c.id).replace(homedir4(), "~")))];
+  const took = (adopted.length ? `Took ${adopted.length} note${adopted.length === 1 ? "" : "s"} no other session had, from ${sites.join(", ")}. Notes from ${sites.length === 1 ? "there" : "those sites"} now come to this session, in any browser.
 
-` : "";
+` : "") + (left.length ? `${left.length} note${left.length === 1 ? " is" : "s are"} waiting from ${leftSites.join(", ")}, an app in another project (${leftFolders.join(", ")}): left for a chat opened there. If the person wants ${left.length === 1 ? "it" : "them"} here instead, link that site with bind and its address.
+
+` : "");
   const list = open2(page).filter(mine);
   if (!list.length) return portBlocked() ? { ...text(portBlocked()), isError: true } : text(took + (page ? `Nothing open on ${pageLabel(page)}.` : "Nothing open. When the person places a comment, it will show up here."));
   const fresh = list.filter((c) => c.status === "new");
@@ -38187,7 +38207,10 @@ server.registerTool("bind", {
   if (!SESSION) return { ...text("This session could not be identified, so notes go to whichever session checks first. They will still arrive."), isError: true };
   if (page) {
     bindSite(page, SESSION.pid);
-    return text(`Notes from ${new URL(page).origin} now come to this session, in any browser.
+    const site = originKey(page);
+    const taken = adopt((c) => c.status === "new" && originKey(c.page) === site && unclaimed(c.to), { pid: SESSION.pid, cwd: MY_CWD, how: "claimed" });
+    const waiting = taken.length ? ` ${taken.length} note${taken.length === 1 ? " was" : "s were"} waiting there: read ${taken.length === 1 ? "it" : "them"} with pending.` : "";
+    return text(`Notes from ${new URL(page).origin} now come to this session, in any browser.${waiting}
 
 Start the watcher in the background: ${WAIT_COMMAND}`);
   }

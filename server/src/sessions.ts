@@ -261,6 +261,24 @@ export function unclaimed(to: Route | undefined, live: Session[] = liveSessions(
 }
 
 /**
+ * Waiting notes from another project's app, by id, with that project's folder. Their app runs from a folder
+ * outside `myCwd`'s project (or, with its dev server stopped, they were placed under one), so they're left
+ * for a chat opened there. A page whose project can't be told belongs to no one yet: whoever asks may take it.
+ * Each site is looked up once.
+ */
+export function fromOtherProjects(notes: Array<{ id: string; page: string; to?: Route }>, myCwd: string): Map<string, string> {
+  const projects = new Map<string, string | null>()
+  const theirs = new Map<string, string>()
+  for (const c of notes) {
+    const site = originKey(c.page) ?? c.page
+    if (!projects.has(site)) projects.set(site, projectOf(c.page))
+    const project = projects.get(site) ?? c.to?.cwd
+    if (project && !sameProject(myCwd, project)) theirs.set(c.id, project)
+  }
+  return theirs
+}
+
+/**
  * Whether a note went to a chat only by guess (the one session open, or the newest in its project), not
  * because the person linked their tab or site to it, and that chat is in `myCwd`'s project. With two chats
  * open in a project the guess can be the wrong one: the chat the person asks for their notes takes it.

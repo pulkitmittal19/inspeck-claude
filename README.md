@@ -124,7 +124,7 @@ Your notes stay on the page as numbered markers. Hover one to read it, click it 
 
 When Claude opens your app in its browser pane, it links that tab to its session (`bind`) and starts a small background watcher. From then on each note you place arrives in that session by itself, even with other sessions open. You can also just say **"check my Inspeck notes"**.
 
-In your own browser (Chrome, Safari, Arc), Inspeck works the same way. To tell Claude which session your notes are for, say **"check my Inspeck notes"** in that session once: it takes the notes no other session would, and from then on every note from that site comes to it, in any browser. Or ask Claude to link the site (`bind` with the page's address).
+In your own browser (Chrome, Safari, Arc), Inspeck works the same way. To tell Claude which session your notes are for, say **"check my Inspeck notes"** in that session once: it takes the notes no other session would from that project's apps, and from then on every note from that site comes to it, in any browser. Or ask Claude to link the site (`bind` with the page's address).
 
 | Shown as | Tool | |
 |---|---|---|
@@ -137,7 +137,7 @@ In your own browser (Chrome, Safari, Arc), Inspeck works the same way. To tell C
 
 Claude talks to you only in the chat. The page shows your notes, never Claude's answers.
 
-Which session gets a note: the session its tab is bound to; else the session its site is linked to; else the only open session; else the session opened in the project that's serving the page. If none of those, it waits, and the first session where you check your notes takes it (and its site).
+Which session gets a note: the session its tab is bound to; else the session its site is linked to; else the only open session; else the session opened in the project that's serving the page. If none of those, it waits, and the first session in that project where you check your notes takes it (and its site); a session in another project only mentions it. To send a site's notes to a particular session anyway, link the site to it.
 
 ## Safety
 

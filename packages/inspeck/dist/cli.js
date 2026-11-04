@@ -263,9 +263,16 @@ ${src.slice(own.index)}`, result: "added" };
   if (inline >= 0) return { src: `${src.slice(0, inline)}${NEXT_TAG}${src.slice(inline)}`, result: "added" };
   return { src, result: "manual" };
 }
-var HTML_TAG = `<script>/* Inspeck: loads on this computer only, never on the live site */ if (/^(localhost|127\\.0\\.0\\.1|\\[::1\\])$|\\.localhost$/.test(location.hostname)) document.head.appendChild(Object.assign(document.createElement('script'), { src: '${TAG_SRC}', async: true }))</script>`;
+var GUARD = String.raw`/^(localhost|127\.0\.0\.1|\[::1\])$|\.(localhost|test)$/`;
+var OLD_GUARD = String.raw`/^(localhost|127\.0\.0\.1|\[::1\])$|\.localhost$/`;
+var HTML_TAG = `<script>/* Inspeck: loads on this computer only, never on the live site */ if (${GUARD}.test(location.hostname)) document.head.appendChild(Object.assign(document.createElement('script'), { src: '${TAG_SRC}', async: true }))</script>`;
+function already(src) {
+  const quoted = (s) => JSON.stringify(s).slice(1, -1);
+  const fresh = src.split(OLD_GUARD).join(GUARD).split(quoted(OLD_GUARD)).join(quoted(GUARD));
+  return { src: fresh, result: fresh === src ? "present" : "added" };
+}
 function wireHtml(src) {
-  if (src.includes("inspeck.js")) return { src, result: "present" };
+  if (src.includes("inspeck.js")) return already(src);
   const body = /^([ \t]*)<\/body>/im.exec(src);
   if (body) return { src: src.slice(0, body.index) + `${body[1]}  ${HTML_TAG}
 ` + src.slice(body.index), result: "added" };
@@ -292,7 +299,7 @@ function printTag() {
 }
 var TAG_CODE = HTML_TAG.replace(/^<script>/, "").replace(/<\/script>$/, "");
 function wireDocusaurus(src) {
-  if (src.includes("inspeck.js")) return { src, result: "present" };
+  if (src.includes("inspeck.js")) return already(src);
   const item = `{ tagName: 'script', attributes: {}, innerHTML: ${JSON.stringify(TAG_CODE)} }`;
   const list = /\bheadTags\s*:\s*\[/.exec(src);
   if (list) {
@@ -307,7 +314,7 @@ function wireDocusaurus(src) {
 ${src.slice(at)}`, result: "added" };
 }
 function wireStorybookHead(src) {
-  if (src?.includes("inspeck.js")) return { src, result: "present" };
+  if (src?.includes("inspeck.js")) return already(src);
   return { src: `${src ? `${src.replace(/\s*$/, "")}
 ` : ""}${HTML_TAG}
 `, result: "added" };

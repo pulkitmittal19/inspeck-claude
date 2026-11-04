@@ -26,7 +26,7 @@ If you have a browser pane (the preview or browser tools), open each app there, 
 
   ```html
 <script>/* Inspeck: loads on this computer only, never on the live site */
-if (/^(localhost|127\.0\.0\.1|\[::1\])$|\.localhost$/.test(location.hostname)) document.head.appendChild(Object.assign(document.createElement('script'), { src: 'http://127.0.0.1:4848/inspeck.js', async: true }))</script>
+if (/^(localhost|127\.0\.0\.1|\[::1\])$|\.(localhost|test)$/.test(location.hostname)) document.head.appendChild(Object.assign(document.createElement('script'), { src: 'http://127.0.0.1:4848/inspeck.js', async: true }))</script>
   ```
 
 Never write anything that belongs to this chat into their code: no session token, no `bind(...)` call. The tab stays linked to this chat across reloads by itself (Inspeck remembers its tab), and in a new chat `/inspeck:start` links it again. On no, carry on without it: the bind line adds Inspeck to the open page, and after a full reload you run the line again.

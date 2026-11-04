@@ -155,19 +155,30 @@ test('bind with a page links that whole site to the session', async () => {
   assert.doesNotMatch(await B.tool('pending'), /Site linked to A/)
 })
 
-test('when a chat closes, the next one gets its unread notes, not the ones it already read', async () => {
-  const C = await session('c')
-  assert.match(await C.tool('bind', { page: 'http://localhost:5197' }), /now come to this session/)
-  await post('/comments', note('Read by C', { page: 'http://localhost:5197/a' }), 'http://localhost:5197')
+test('when a chat closes, the next one in its project gets its unread notes, not the ones it already read; a chat in another project leaves them', async () => {
+  /* C's app runs from this project folder. */
+  const project = mkdtempSync(join(tmpdir(), 'inspeck-proj-'))
+  cleanup.push(() => rmSync(project, { recursive: true, force: true }))
+  const devPort = port + 4
+  const dev = spawn(process.execPath, ['-e', `require('http').createServer((q, s) => s.end('ok')).listen(${devPort}, '127.0.0.1')`], { cwd: project, stdio: 'ignore' })
+  cleanup.push(() => dev.kill())
+  const site = `http://localhost:${devPort}`
+  const C = await session('c', project)
+  assert.match(await C.tool('bind', { page: site }), /now come to this session/)
+  await post('/comments', note('Read by C', { page: `${site}/a` }), site)
   assert.match(await C.tool('pending'), /Read by C/)
-  await post('/comments', note('Never read', { page: 'http://localhost:5197/b' }), 'http://localhost:5197')
+  await post('/comments', note('Never read', { page: `${site}/b` }), site)
   /* C's chat closes. */
   process.kill(C.pid)
   await new Promise(r => setTimeout(r, 200))
-  const next = await A.tool('pending')
-  assert.match(next, /Never read/, 'an unread note is handed over')
+  const elsewhere = await A.tool('pending')
+  assert.doesNotMatch(elsewhere, /\nNever read\n/, 'a chat in another project leaves it')
+  assert.match(elsewhere, /1 note is waiting from http:\/\/localhost:\d+, an app in another project/, 'and says so')
+  const Next = await session('next', project)
+  const next = await Next.tool('pending')
+  assert.match(next, /Never read/, 'the next chat in its project is handed the unread note')
   assert.doesNotMatch(next, /Read by C/, 'a note the closed chat read is not listed again')
-  assert.match(await A.tool('pending'), /Never read/, 'and what this chat read stays listed for it')
+  assert.match(await Next.tool('pending'), /Never read/, 'and what this chat read stays listed for it')
 })
 
 test('with two chats open in one project, the chat the person asks takes the notes placed on that project’s page', async () => {
