@@ -69,7 +69,7 @@ claude plugin marketplace update inspeck
 claude plugin update inspeck@inspeck
 ```
 
-Then say, in one line, that the new version starts in their next chat, that reloading their app's page brings it there, and that their notes are kept. Never change Claude's settings files.
+Then say, in one line, that the new version reaches a chat when it starts or restarts (a new chat, or one Claude reopens after pausing it), that reloading their app's page brings it there, and that their notes are kept. Never change Claude's settings files.
 
 ## Questions people ask
 

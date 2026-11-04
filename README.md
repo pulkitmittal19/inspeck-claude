@@ -81,7 +81,7 @@ Nothing to do: Inspeck updates itself, and your notes are kept.
 - Installed with `npx inspeck init`, Claude Code's own auto-update is on for Inspeck, so new versions arrive by themselves.
 - Installed any other way, Inspeck does the same: when a chat starts, at most once a week, it reads the latest version number from GitHub (only that: nothing about you or your code is sent) and, if there's a newer one, installs it in the background with Claude Code's own commands.
 
-A new version runs from your next chat; reload your app's page to get it there. When a new version starts while an older one is still running in another chat, the older one hands it the port, so no chat has to close. To update right away, ask Claude to **update Inspeck**. To turn self-updating off (a team that decides what gets installed), set `INSPECK_AUTO_UPDATE=off`.
+A new version reaches a chat when the chat starts or restarts: a new chat, or one Claude reopens after pausing it; reload your app's page to get it there. When a new version starts while an older one is still running in another chat, the older one hands it the port, so no chat has to close. To update right away, ask Claude to **update Inspeck**. To turn self-updating off (a team that decides what gets installed), set `INSPECK_AUTO_UPDATE=off`.
 
 ## Removing it
 
