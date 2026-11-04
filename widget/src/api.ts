@@ -39,12 +39,18 @@ export interface Note {
 
 export class ApiError extends Error {}
 
-/* A page open since before Inspeck updated runs the old widget against the new server: say so, once. */
+/* A page open since before Inspeck updated runs the old widget against a newer server: said once. An older
+   server (a newer one has gone, and an older chat's answers again) isn't a reason to change anything. */
 let outdated: ((version: string) => void) | null = null
 export const onServerUpdated = (fn: (version: string) => void) => { outdated = fn }
+const newer = (a: string, b: string) => {
+  const x = a.split('.').map(Number), y = b.split('.').map(Number)
+  for (let i = 0; i < 3; i++) if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0)
+  return false
+}
 const checkVersion = (res: Response) => {
   const theirs = res.headers.get('x-inspeck-version')
-  if (theirs && theirs !== VERSION && outdated) { outdated(theirs); outdated = null }
+  if (theirs && newer(theirs, VERSION) && outdated) { outdated(theirs); outdated = null }
 }
 
 async function call<T>(method: string, path: string, body?: unknown): Promise<T> {

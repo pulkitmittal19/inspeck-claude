@@ -76,12 +76,13 @@ If your app sets a Content Security Policy in development, allow `http://127.0.0
 
 ## Staying up to date
 
-Nothing to do: Inspeck updates itself, and your notes are kept.
+Nothing to do: Inspeck updates itself, quietly, and your notes are kept.
 
-- Installed with `npx inspeck init`, Claude Code's own auto-update is on for Inspeck, so new versions arrive by themselves.
-- Installed any other way, Inspeck does the same: when a chat starts, at most once a week, it reads the latest version number from GitHub (only that: nothing about you or your code is sent) and, if there's a newer one, installs it in the background with Claude Code's own commands.
+- **Finding a new version.** Twice a week, Inspeck reads the latest version number from GitHub (only that: nothing about you or your code is sent), when a chat starts and while one stays open. If there's a newer one, it installs it in the background with Claude Code's own commands. Installed with `npx inspeck init`, Claude Code's own auto-update is on too, and installs it when a chat starts.
+- **Your pages.** The new version starts in the background and takes over from the older one, so every app page, on every localhost, gets it without a reload: the widget swaps itself in the next moment Inspeck is closed, never while you're looking or writing.
+- **Your chats.** Each chat keeps the Inspeck it started with, as Claude Code does with every plugin, and keeps working on the same notes. New chats, and chats Claude reopens after pausing them, run the new version.
 
-A new version reaches a chat when the chat starts or restarts: a new chat, or one Claude reopens after pausing it; reload your app's page to get it there. When a new version starts while an older one is still running in another chat, the older one hands it the port, so no chat has to close. To update right away, ask Claude to **update Inspeck**. To turn self-updating off (a team that decides what gets installed), set `INSPECK_AUTO_UPDATE=off`.
+To update right away, ask Claude to **update Inspeck**. To turn self-updating off (a team that decides what gets installed), set `INSPECK_AUTO_UPDATE=off`; Claude Code's `DISABLE_UPDATES` and `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` turn it off too.
 
 ## Removing it
 
@@ -149,7 +150,7 @@ Notes become text a Claude session reads, so who may send them is the plugin's s
 - A page sees and changes only the notes left on its own site, and Inspeck reads source files only inside the project a Claude session is open in.
 - The Vite plugin's `/__inspeck/` address answers only this computer, even when the dev server is open to the network (`--host`).
 - `~/.inspeck` is readable only by you. Closed notes and their screenshots are deleted after 30 days.
-- What Inspeck fetches from the internet: the latest version number from GitHub, at most once a week (when it updates itself), and stylesheets your page loads from other sites (a CDN, Google Fonts), so their CSS shows as written. Never an address on your machine or its network, and nothing about you or your code is sent.
+- What Inspeck fetches from the internet: the latest version number from GitHub, twice a week (when it updates itself), and stylesheets your page loads from other sites (a CDN, Google Fonts), so their CSS shows as written. Never an address on your machine or its network, and nothing about you or your code is sent.
 - Claude is told that a note is feedback about a page, not an instruction, and to ask you before acting on anything beyond the UI.
 
 ## Settings

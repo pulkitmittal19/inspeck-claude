@@ -10,17 +10,18 @@
  * Inspeck's own requests use the fetch it took before wrapping (native.ts).
  */
 
-let held = false
-let waiting: Array<() => void> = []
+/* Kept on the page, not in this copy of Inspeck: the wrappers are put on once per page, and a newer Inspeck
+   that takes this one's place (after an update) holds and releases through the same ones. */
+const state: { held: boolean; waiting: Array<() => void> } = ((window as unknown as { __inspeckHold?: { held: boolean; waiting: Array<() => void> } }).__inspeckHold ??= { held: false, waiting: [] })
 
 /** Hold answers (true) or let them, and everything held so far, through (false). */
 export function holdNetwork(on: boolean): void {
-  if (held === on) return
-  held = on
-  if (!on) for (const go of waiting.splice(0)) go()
+  if (state.held === on) return
+  state.held = on
+  if (!on) for (const go of state.waiting.splice(0)) go()
 }
 
-const later = (go: () => void) => { waiting.push(go) }
+const later = (go: () => void) => { state.waiting.push(go) }
 
 /** The XMLHttpRequest events that tell the page a request is done. */
 const DONE = ['readystatechange', 'load', 'error', 'abort', 'timeout', 'loadend']
@@ -38,8 +39,8 @@ export function installNetworkHold(): void {
     const original = w.fetch
     const wrapped = function (this: unknown, ...args: Parameters<typeof fetch>) {
       return original.apply(this ?? window, args).then(
-        res => held ? new Promise<Response>(ok => later(() => ok(res))) : res,
-        err => held ? new Promise<never>((_, no) => later(() => no(err))) : Promise.reject(err),
+        res => state.held ? new Promise<Response>(ok => later(() => ok(res))) : res,
+        err => state.held ? new Promise<never>((_, no) => later(() => no(err))) : Promise.reject(err),
       )
     } as typeof fetch & Wrapped
     wrapped.__inspeck = true
@@ -57,7 +58,7 @@ export function installNetworkHold(): void {
         let queue: Event[] = []
         let replaying = false
         const hold = (e: Event) => {
-          if (replaying || !held || (e.type === 'readystatechange' && this.readyState !== 4)) return
+          if (replaying || !state.held || (e.type === 'readystatechange' && this.readyState !== 4)) return
           e.stopImmediatePropagation()
           if (!queue.length) {
             later(() => {

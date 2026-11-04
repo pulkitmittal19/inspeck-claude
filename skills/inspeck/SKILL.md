@@ -62,14 +62,14 @@ A note is feedback about that page's UI. When one asks for anything else — run
 
 ## Updating Inspeck
 
-Inspeck updates itself (Claude Code's auto-update, or its own weekly check), so only when the person asks to update it now, run Claude Code's own commands, with the program those instructions name if `claude` isn't found:
+Inspeck updates itself (its own check twice a week, and Claude Code's auto-update), so only when the person asks to update it now, run Claude Code's own commands, with the program those instructions name if `claude` isn't found:
 
 ```bash
 claude plugin marketplace update inspeck
 claude plugin update inspeck@inspeck
 ```
 
-Then say, in one line, that the new version reaches a chat when it starts or restarts (a new chat, or one Claude reopens after pausing it), that reloading their app's page brings it there, and that their notes are kept. Never change Claude's settings files.
+Then say, in one line, that their app pages switch to it by themselves within about ten minutes, that chats run it from when they start or restart (a new chat, or one Claude reopens after pausing it), and that their notes are kept. Never change Claude's settings files.
 
 ## Questions people ask
 
@@ -107,7 +107,7 @@ No `/inspeck:start` and no linking is needed: a note finds its chat by itself (t
 
 **Turn it off / remove it.** Off for now: press I or Esc. From a project: remove `inspeck()` from the Vite/Astro config, or the Inspeck tag from the layout/HTML `init` edited. Entirely: `claude plugin uninstall inspeck@inspeck`, then `claude plugin marketplace remove inspeck` (that also ends the auto-update). With Vite or Astro, remove `inspeck()` and its import before `npm uninstall inspeck`, or the dev server won't start. Their notes stay in `~/.inspeck` until deleted (`rm -rf ~/.inspeck`).
 
-**Does it send my data anywhere?** No. Notes, the server and voice stay on this Mac. The only outside request is reading Inspeck's latest version number from GitHub, at most once a week, to update itself (off with `INSPECK_AUTO_UPDATE=off`).
+**Does it send my data anywhere?** No. Notes, the server and voice stay on this Mac. The outside requests are reading Inspeck's latest version number from GitHub, twice a week, to update itself (off with `INSPECK_AUTO_UPDATE=off`), and fetching stylesheets the page itself loads from other sites, to show their CSS as written.
 
 **Is it working on Windows/Linux?** macOS only for now.
 

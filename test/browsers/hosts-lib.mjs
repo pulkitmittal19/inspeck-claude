@@ -37,18 +37,18 @@ export function world() {
     },
     /** A Claude chat opened in a folder: a live stand-in for the `claude` process, and the plugin's server as Claude starts it.
         `version` makes its Inspeck say it's that version (a newer one, say). */
-    async chat(name, cwd, { version } = {}) {
+    async chat(name, cwd, { version, env: extra = {} } = {}) {
       const stand = spawn('sleep', ['900'], { stdio: 'ignore' })
       kids.push(stand)
       const dir = mkdtempSync(join(base, `chat-${name}-`))
       copyFileSync(join(ROOT, 'server/dist/inspeck.mjs'), join(dir, 'inspeck.mjs'))
-      if (version) {
-        const ours = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')).version
-        writeFileSync(join(dir, 'inspeck.mjs'), readFileSync(join(dir, 'inspeck.mjs'), 'utf8').split(`"${ours}"`).join(`"${version}"`))
-      }
       mkdirSync(join(dir, 'widget'))
       copyFileSync(join(ROOT, 'server/dist/widget/inspeck.js'), join(dir, 'widget/inspeck.js'))
-      const env = { ...process.env, INSPECK_HOME: home, INSPECK_PORT: String(PORT), INSPECK_SESSION_PID: String(stand.pid), INSPECK_LATEST_URL: 'off', INSPECK_AUTO_UPDATE: 'off', CLAUDE_PLUGIN_ROOT: '' }
+      if (version) {
+        const ours = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')).version
+        for (const f of ['inspeck.mjs', 'widget/inspeck.js']) writeFileSync(join(dir, f), readFileSync(join(dir, f), 'utf8').split(`"${ours}"`).join(`"${version}"`))
+      }
+      const env = { ...process.env, INSPECK_HOME: home, INSPECK_PORT: String(PORT), INSPECK_SESSION_PID: String(stand.pid), INSPECK_LATEST_URL: 'off', INSPECK_AUTO_UPDATE: 'off', CLAUDE_PLUGIN_ROOT: '', ...extra }
       const client = new Client({ name: `claude-${name}`, version: '0' })
       await client.connect(new StdioClientTransport({ command: process.execPath, args: [join(dir, 'inspeck.mjs')], cwd, env, stderr: 'ignore' }))
       const c = {

@@ -464,7 +464,7 @@ export const portState: { owner: 'me' | 'inspeck' | 'other' | 'unknown' } = { ow
  * port is an older Inspeck (an update arrived while a chat was open), it's asked
  * to step aside, so pages get the newest widget without closing any chat.
  */
-export function listen(version: string, log: (msg: string) => void, onNew: (c: Comment) => void = () => {}): Promise<boolean> {
+export function listen(version: string, log: (msg: string) => void, onNew: (c: Comment) => void = () => {}, { standby = true }: { standby?: boolean } = {}): Promise<boolean> {
   let attempt = () => {}
   const server = createServer((req, res) => {
     const origin = req.headers.origin
@@ -480,6 +480,8 @@ export function listen(version: string, log: (msg: string) => void, onNew: (c: C
       if (origin || !newer(theirs, version) || !sameKey(key, handoverKey())) return send(res, 409, { error: 'Only a newer Inspeck can take over' })
       log(`Inspeck ${theirs} has started: handing it the port and sharing its inbox.`)
       res.on('finish', () => {
+        /* Only answering pages (serve), it has nothing left to do. */
+        if (!standby) process.exit(0)
         portState.owner = 'inspeck'
         server.close()
         server.closeIdleConnections()
@@ -523,9 +525,11 @@ export function listen(version: string, log: (msg: string) => void, onNew: (c: C
               ? `Port ${PORT} is used by another program, not Inspeck. Pages can't reach Inspeck until it's free; or set INSPECK_PORT to another port.`
               : `Port ${PORT} is taken by another Claude session's Inspeck. Sharing its inbox.`)
           }
-          resolve(false)
+          if (standby) resolve(false)
           /* An older Inspeck on the port is asked to hand it over; then it's ours in a moment. */
           const ok = there?.inspeck ? await handover(version, there.version) : false
+          /* Only answering pages, and the one there is as new: it answers them, so this one goes. */
+          if (!standby && !ok) { resolve(false); return }
           setTimeout(attempt, ok ? 300 : RETRY_MS).unref()
         })
       }

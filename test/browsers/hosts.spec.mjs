@@ -1,6 +1,6 @@
 /* One chat, several localhosts; several chats, one machine. Notes reach the right chat whichever local address a
  * page is on, the same tab keeps its chat when it moves to another port, localhost and 127.0.0.1 are one app,
- * deleting and reading work across them, and a page left open across an update says to reload. */
+ * deleting and reading work across them, and a page left open across an update swaps to it by itself. */
 import { test, expect } from '@playwright/test'
 import { readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -86,14 +86,24 @@ test('the chat running the server closes: another takes over, and nothing is los
   expect(await two.tool('pending')).toContain('after chat one closed')
 })
 
-test('a page left open across an update says to reload it', async ({ context }) => {
+test('a page left open across an update swaps to the new version by itself, with nothing to read or reload', async ({ context }) => {
   const A = w.app('alpha', 5301)
   const c = await w.chat('one', A.dir)
   await w.up()
-  const file = join(c.dir, 'widget', 'inspeck.js')
   const v = JSON.parse(readFileSync(join(import.meta.dirname, '..', '..', 'package.json'), 'utf8')).version
-  writeFileSync(file, readFileSync(file, 'utf8').split(`"${v}"`).join('"0.0.1"'))
+  /* The page opened before the update: its first load of Inspeck got the older widget. */
+  const older = readFileSync(join(c.dir, 'widget', 'inspeck.js'), 'utf8').split(`"${v}"`).join('"0.0.1"')
+  let first = true
+  await context.route('**/inspeck.js*', route => {
+    if (!first) return route.continue()
+    first = false
+    return route.fulfill({ status: 200, contentType: 'text/javascript', body: older })
+  })
   const p = await context.newPage(); await p.goto(A.url); await ready(p)
+  await expect.poll(() => p.evaluate(() => window.__INSPECK__?.version), { timeout: 15_000, message: 'swapped by itself' }).toBe(v)
   await p.evaluate(() => window.__INSPECK__.app.setOpen(true))
-  await expect.poll(() => p.evaluate(() => document.querySelector('inspeck-root').shadowRoot.querySelector('.bar-status')?.textContent), { timeout: 8000 }).toBe('Inspeck was updated: reload this page')
+  await p.waitForTimeout(500)
+  expect(await p.evaluate(() => document.querySelector('inspeck-root').shadowRoot.querySelector('.bar-status')?.textContent ?? '')).not.toContain('reload')
+  expect(await p.evaluate(() => document.querySelectorAll('inspeck-root').length)).toBe(1)
+  await context.unroute('**/inspeck.js*')
 })

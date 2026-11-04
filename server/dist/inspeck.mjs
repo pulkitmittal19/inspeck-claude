@@ -37140,7 +37140,7 @@ function belongsTo(to, me, myCwd) {
 }
 
 // server/src/updates.ts
-import { execFile } from "child_process";
+import { execFile, spawn } from "child_process";
 import { mkdirSync as mkdirSync3, readFileSync as readFileSync3, rmSync as rmSync3, statSync as statSync2, writeFileSync as writeFileSync3 } from "fs";
 import { homedir as homedir2 } from "os";
 import { join as join3 } from "path";
@@ -37149,9 +37149,12 @@ var run = promisify(execFile);
 var REPO = "pulkitmittal19/inspeck-claude";
 var MARKETPLACE = "inspeck";
 var LATEST_URL = process.env.INSPECK_LATEST_URL ?? `https://raw.githubusercontent.com/${REPO}/main/.claude-plugin/plugin.json`;
-var WEEK_MS = 7 * 24 * 3600 * 1e3;
+var CHECK_EVERY_MS = 3.5 * 24 * 3600 * 1e3;
+var TICK_MS = 10 * 60 * 1e3;
 var LATEST = () => join3(HOME, "latest.json");
 var LOCK2 = () => join3(HOME, "updating.lock");
+var SERVING = () => join3(HOME, "serving.json");
+var configDir = () => process.env.CLAUDE_CONFIG_DIR || join3(homedir2(), ".claude");
 var readJson2 = (p) => {
   try {
     return JSON.parse(readFileSync3(p, "utf8"));
@@ -37175,14 +37178,42 @@ function newer(a, b) {
   }
   return false;
 }
-function updater(config2 = process.env.CLAUDE_CONFIG_DIR || join3(homedir2(), ".claude")) {
-  if (process.env.INSPECK_AUTO_UPDATE === "off" || LATEST_URL === "off") return "none";
+function turnedOff() {
+  const on = (v) => !!v && v !== "0" && v.toLowerCase() !== "false";
+  if (process.env.INSPECK_AUTO_UPDATE === "off" || LATEST_URL === "off") return true;
+  const claudeOff = on(process.env.DISABLE_UPDATES) || on(process.env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC);
+  return claudeOff && !on(process.env.FORCE_AUTOUPDATE_PLUGINS);
+}
+function updater(config2 = configDir()) {
+  if (turnedOff()) return "none";
   if (!(process.env.CLAUDE_PLUGIN_ROOT ?? "").includes(`${join3("plugins", "cache")}`)) return "none";
   const known = readJson2(join3(config2, "plugins", "known_marketplaces.json"))?.[MARKETPLACE];
   const extra = readJson2(join3(config2, "settings.json"))?.extraKnownMarketplaces?.[MARKETPLACE];
-  if (known?.autoUpdate === true || extra?.autoUpdate === true) return "claude";
   const source = known?.source ?? extra?.source;
   return source?.source === "github" && source.repo === REPO ? "inspeck" : "none";
+}
+function installed(config2 = configDir()) {
+  const entries = readJson2(join3(config2, "plugins", "installed_plugins.json"))?.plugins?.[`inspeck@${MARKETPLACE}`];
+  if (!Array.isArray(entries)) return null;
+  let best = null;
+  for (const e of entries) {
+    if (typeof e?.version !== "string" || typeof e?.installPath !== "string") continue;
+    try {
+      statSync2(join3(e.installPath, "server", "dist", "inspeck.mjs"));
+    } catch {
+      continue;
+    }
+    if (!best || newer(e.version, best.version)) best = { version: e.version, path: e.installPath };
+  }
+  return best;
+}
+function checkEvery() {
+  try {
+    const minutes = Number(readFileSync3(join3(HOME, "update-check-minutes"), "utf8").trim());
+    if (minutes > 0) return minutes * 6e4;
+  } catch {
+  }
+  return CHECK_EVERY_MS;
 }
 function busy() {
   try {
@@ -37191,10 +37222,9 @@ function busy() {
     return false;
   }
 }
-async function keepCurrent(current2, claude) {
-  if (updater() !== "inspeck") return "skipped";
+async function checkNow(current2, claude) {
   const kept = readJson2(LATEST());
-  if (kept?.checkedAt && Date.now() - Date.parse(kept.checkedAt) < WEEK_MS) return "skipped";
+  if (kept?.checkedAt && Date.now() - Date.parse(kept.checkedAt) < checkEvery()) return "skipped";
   if (busy()) return "skipped";
   let latest;
   try {
@@ -37207,7 +37237,8 @@ async function keepCurrent(current2, claude) {
     writeJson2(LATEST(), { checkedAt: (/* @__PURE__ */ new Date()).toISOString() });
     return "failed";
   }
-  if (!newer(latest, current2)) {
+  const have = installed()?.version ?? current2;
+  if (!newer(latest, have)) {
     writeJson2(LATEST(), { checkedAt: (/* @__PURE__ */ new Date()).toISOString(), version: latest });
     return "current";
   }
@@ -37226,6 +37257,53 @@ async function keepCurrent(current2, claude) {
     } catch {
     }
   }
+}
+var alive2 = (pid) => {
+  try {
+    process.kill(Number(pid), 0);
+    return true;
+  } catch {
+    return false;
+  }
+};
+async function serveNewer(port, log2) {
+  const ready = installed();
+  if (!ready) return null;
+  let answering;
+  try {
+    answering = (await (await fetch(`http://127.0.0.1:${port}/health`, { signal: AbortSignal.timeout(1500) })).json()).version;
+  } catch {
+  }
+  if (answering && !newer(ready.version, answering)) return null;
+  const serving = readJson2(SERVING());
+  if (serving && alive2(serving.pid) && !newer(ready.version, String(serving.version))) return null;
+  const kid = spawn(process.execPath, [join3(ready.path, "server", "dist", "inspeck.mjs"), "serve"], { detached: true, stdio: "ignore", env: { ...process.env, CLAUDE_PLUGIN_ROOT: ready.path } });
+  kid.unref();
+  writeJson2(SERVING(), { pid: kid.pid, version: ready.version, at: (/* @__PURE__ */ new Date()).toISOString() });
+  log2(`Inspeck ${ready.version} is installed: started it to answer pages.`);
+  return ready.version;
+}
+function keepCurrent(current2, claude, port, log2) {
+  if (updater() !== "inspeck") return;
+  let going = false;
+  const tick = async () => {
+    if (going) return;
+    going = true;
+    try {
+      await checkNow(current2, claude);
+      const v = installed()?.version;
+      if (v && newer(v, current2)) await serveNewer(port, log2);
+    } catch {
+    } finally {
+      going = false;
+    }
+  };
+  void tick();
+  const every = () => Math.max(1e3, Math.min(TICK_MS, checkEvery() / 2));
+  const next = () => setTimeout(() => {
+    void tick().finally(next);
+  }, every()).unref();
+  next();
 }
 
 // server/src/sourcemap.ts
@@ -37362,7 +37440,7 @@ function findLines(sources, clue, may = () => true) {
 }
 
 // server/src/voice.ts
-import { spawn } from "child_process";
+import { spawn as spawn2 } from "child_process";
 import { existsSync as existsSync4 } from "fs";
 import { release as release2 } from "os";
 import { dirname as dirname2, join as join5 } from "path";
@@ -37382,7 +37460,7 @@ var Listener = class {
   replaced = false;
   on = null;
   constructor(standby) {
-    this.child = spawn(HELPER, standby ? ["--standby", "--wait", String(WARM_SECONDS)] : [], { stdio: ["pipe", "pipe", "ignore"] });
+    this.child = spawn2(HELPER, standby ? ["--standby", "--wait", String(WARM_SECONDS)] : [], { stdio: ["pipe", "pipe", "ignore"] });
     let rest = "";
     this.child.stdout.setEncoding("utf8");
     this.child.stdout.on("data", (chunk) => {
@@ -37862,7 +37940,7 @@ function unsaved(err) {
 }
 var portState = { owner: "unknown" };
 function listen(version2, log2, onNew = () => {
-}) {
+}, { standby = true } = {}) {
   let attempt = () => {
   };
   const server2 = createServer((req, res) => {
@@ -37876,6 +37954,7 @@ function listen(version2, log2, onNew = () => {
       if (origin || !newer(theirs, version2) || !sameKey(key, handoverKey())) return send(res, 409, { error: "Only a newer Inspeck can take over" });
       log2(`Inspeck ${theirs} has started: handing it the port and sharing its inbox.`);
       res.on("finish", () => {
+        if (!standby) process.exit(0);
         portState.owner = "inspeck";
         server2.close();
         server2.closeIdleConnections();
@@ -37917,8 +37996,12 @@ function listen(version2, log2, onNew = () => {
             warned = owner;
             log2(owner === "other" ? `Port ${PORT} is used by another program, not Inspeck. Pages can't reach Inspeck until it's free; or set INSPECK_PORT to another port.` : `Port ${PORT} is taken by another Claude session's Inspeck. Sharing its inbox.`);
           }
-          resolve(false);
+          if (standby) resolve(false);
           const ok = there?.inspeck ? await handover(version2, there.version) : false;
+          if (!standby && !ok) {
+            resolve(false);
+            return;
+          }
           setTimeout(attempt, ok ? 300 : RETRY_MS).unref();
         });
       };
@@ -37972,8 +38055,8 @@ function candidates(cwd) {
   return out.slice(0, 80);
 }
 function versionIn(dir, spec) {
-  const installed = readJson3(join7(dir, "node_modules", "inspeck", "package.json"))?.version;
-  if (typeof installed === "string") return installed;
+  const installed2 = readJson3(join7(dir, "node_modules", "inspeck", "package.json"))?.version;
+  if (typeof installed2 === "string") return installed2;
   return /(\d+\.\d+\.\d+)/.exec(spec)?.[1] ?? null;
 }
 function updateCommand(dir) {
@@ -38061,13 +38144,22 @@ if (process.argv[2] === "wait") {
   await runWait(process.argv.slice(3));
   process.exit(0);
 }
-var VERSION = "0.19.5";
-var CLAUDE = JSON.stringify(claudeCommand());
-void keepCurrent(VERSION, claudeCommand());
-var OUTDATED = outdatedPackage(process.cwd());
-if (OUTDATED) markOffered(OUTDATED.dir);
+var VERSION = "0.20.0";
 var log = (msg) => process.stderr.write(`inspeck: ${msg}
 `);
+if (process.argv[2] === "serve") {
+  if (!await listen(VERSION, log, () => {
+  }, { standby: false })) process.exit(0);
+  setInterval(() => {
+    if (!liveSessions().length) process.exit(0);
+  }, 15e3);
+  await new Promise(() => {
+  });
+}
+var CLAUDE = JSON.stringify(claudeCommand());
+keepCurrent(VERSION, claudeCommand(), PORT, log);
+var OUTDATED = outdatedPackage(process.cwd());
+if (OUTDATED) markOffered(OUTDATED.dir);
 var INSTRUCTIONS = `Inspeck lets a person hover any element of their web app to see its CSS, and click it to leave a note for you. Their notes arrive here.
 
 Each note carries the element's selector, the React component that rendered it, its key CSS exactly as written (tokens as var(--x), with the resolved value), and, for things inside a menu, the buttons that open it ("inside More \u203A Share"). A note on a dragged area lists each element inside it (or says it's empty space) with the area's position; treat it as one request about all of them.
@@ -38093,7 +38185,7 @@ Before you click in the browser pane yourself, close Inspeck there (press Escape
 
 Notes arrive at http://127.0.0.1:${PORT}.
 
-If the person asks to update Inspeck: run ${CLAUDE} plugin marketplace update inspeck, then ${CLAUDE} plugin update inspeck@inspeck. Then tell them the new version reaches a chat when it starts or restarts (a new chat, or one Claude reopens after pausing it), reloading the page brings it there, and their notes are kept. (Inspeck also updates itself; this is only for now.)${OUTDATED ? `
+If the person asks to update Inspeck: run ${CLAUDE} plugin marketplace update inspeck, then ${CLAUDE} plugin update inspeck@inspeck. Then tell them their app pages switch to it by themselves within about ten minutes, chats run it from when they start or restart (a new chat, or one Claude reopens after pausing it), and their notes are kept. (Inspeck also updates itself; this is only for now.)${OUTDATED ? `
 
 This project's Inspeck dev plugin (the inspeck npm package in ${OUTDATED.dir}) is ${OUTDATED.version}, older than ${NEEDED}, which some of Inspeck's fixes need (0.13.0 and older: in a TypeScript project, the type check before a build, such as \`tsc -b && vite build\`, rejects inspeck() in vite.config.ts, so the build fails; before 0.12.0, a security fix: other devices on the network could reach Inspeck when the dev server runs with --host) and which then keeps itself current through this plugin. Early on, at a natural moment, ask the person once in one line: "Update Inspeck's dev plugin in this project? It fixes a build error in TypeScript projects (one command)". On yes, run \`${OUTDATED.command}\` in ${OUTDATED.dir}, then restart their dev server if it's running. If they say no, don't ask again.` : ""}`;
 var MIME = { ".png": "image/png", ".jpg": "image/jpeg", ".webp": "image/webp" };

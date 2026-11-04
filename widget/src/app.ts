@@ -7,7 +7,7 @@ import { borrowSheetsWith } from './css/rules'
 import { framedByInspeck, peerIn, reachFrame, reachFrames } from './frames'
 import { h, isEditable, typingOnPage, visibleText } from './dom'
 import { isToggleKey, keyName } from './keys'
-import { pageHref, pageUrl, tabStore } from './env'
+import { pageHref, pageUrl, SERVER, tabStore } from './env'
 import { createFreeze, FROZEN_BLOCK, type Freeze } from './freeze'
 import { createHost, type Host } from './host'
 import { anchorOf, createNotes, type Notes } from './notes'
@@ -125,7 +125,20 @@ export class App {
     this.host.ui.appendChild(this.shield)
     this.toolbar = createToolbar(this.host.ui)
     this.toolbar.setPressed('css', this.cssOnHover)
-    onServerUpdated(() => this.toolbar.setStatus('Inspeck was updated: reload this page'))
+    /* A newer Inspeck answers now (it updated while this page was open): it takes this one's place on the page by
+       itself, the next moment Inspeck is closed, so nothing being looked at or written is interrupted. */
+    onServerUpdated(version => {
+      /* Once per version on a page: a widget that came back older than its server mustn't swap again and again. */
+      if (tabStore.get('swapped') === version) return
+      const swap = () => {
+        if (this.open) return false
+        tabStore.set('swapped', version)
+        window.__INSPECK__?.destroy()
+        document.head.appendChild(Object.assign(document.createElement('script'), { src: `${SERVER}/inspeck.js?v=${encodeURIComponent(version)}`, async: true }))
+        return true
+      }
+      if (!swap()) { const wait = setInterval(() => { if (swap()) clearInterval(wait) }, 2000) }
+    })
     this.tour = createTour(this.host.ui)
     this.settings = createSettings(this.host.ui, open => {
       this.toolbar.setPressed('settings', open)

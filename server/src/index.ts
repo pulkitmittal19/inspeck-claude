@@ -25,7 +25,7 @@ import { listen, PORT, portState } from './http.js'
 import { heading, originKey, pageLabel, render, summaryLine, type Comment } from './format.js'
 import { keepCurrent } from './updates.js'
 import { markOffered, NEEDED, outdatedPackage } from './outdated.js'
-import { belongsTo, bindSite, claudeCommand, claudePid, fromOtherProjects, guessedInProject, register, unclaimed } from './sessions.js'
+import { belongsTo, bindSite, claudeCommand, claudePid, fromOtherProjects, guessedInProject, liveSessions, register, unclaimed } from './sessions.js'
 import { runWait, WAIT_COMMAND } from './wait.js'
 
 /* `node inspeck.mjs wait`: the background watcher, not the MCP server. */
@@ -37,13 +37,24 @@ if (process.argv[2] === 'wait') {
 /* Stamped from package.json at build time, so there is one version to bump. */
 declare const __INSPECK_VERSION__: string
 const VERSION = __INSPECK_VERSION__
+const log = (msg: string) => process.stderr.write(`inspeck: ${msg}\n`)
+
+/* `node inspeck.mjs serve`: a newer Inspeck an older chat's started once it was installed (see updates.ts), only
+   to answer pages: no chat of its own. It takes the port from older ones, steps aside for a newer one, and goes
+   when no chat is left. */
+if (process.argv[2] === 'serve') {
+  if (!await listen(VERSION, log, () => {}, { standby: false })) process.exit(0)
+  setInterval(() => { if (!liveSessions().length) process.exit(0) }, 15_000)
+  /* Everything below is a chat's: this one only answers pages, until it exits. */
+  await new Promise(() => {})
+}
+
 const CLAUDE = JSON.stringify(claudeCommand())
-/* At most once a week, a newer Inspeck installs itself in the background, unless Claude Code does that already (see updates.ts). */
-void keepCurrent(VERSION, claudeCommand())
+/* Twice a week, a newer Inspeck installs itself in the background, and a newer installed one answers pages (see updates.ts). */
+keepCurrent(VERSION, claudeCommand(), PORT, log)
 /* A project still on an inspeck npm package from before it became a pass-through: offered an update, once. */
 const OUTDATED = outdatedPackage(process.cwd())
 if (OUTDATED) markOffered(OUTDATED.dir)
-const log = (msg: string) => process.stderr.write(`inspeck: ${msg}\n`)
 
 const INSTRUCTIONS = `Inspeck lets a person hover any element of their web app to see its CSS, and click it to leave a note for you. Their notes arrive here.
 
@@ -70,7 +81,7 @@ Before you click in the browser pane yourself, close Inspeck there (press Escape
 
 Notes arrive at http://127.0.0.1:${PORT}.
 
-If the person asks to update Inspeck: run ${CLAUDE} plugin marketplace update inspeck, then ${CLAUDE} plugin update inspeck@inspeck. Then tell them the new version reaches a chat when it starts or restarts (a new chat, or one Claude reopens after pausing it), reloading the page brings it there, and their notes are kept. (Inspeck also updates itself; this is only for now.)${OUTDATED ? `
+If the person asks to update Inspeck: run ${CLAUDE} plugin marketplace update inspeck, then ${CLAUDE} plugin update inspeck@inspeck. Then tell them their app pages switch to it by themselves within about ten minutes, chats run it from when they start or restart (a new chat, or one Claude reopens after pausing it), and their notes are kept. (Inspeck also updates itself; this is only for now.)${OUTDATED ? `
 
 This project's Inspeck dev plugin (the inspeck npm package in ${OUTDATED.dir}) is ${OUTDATED.version}, older than ${NEEDED}, which some of Inspeck's fixes need (0.13.0 and older: in a TypeScript project, the type check before a build, such as \`tsc -b && vite build\`, rejects inspeck() in vite.config.ts, so the build fails; before 0.12.0, a security fix: other devices on the network could reach Inspeck when the dev server runs with --host) and which then keeps itself current through this plugin. Early on, at a natural moment, ask the person once in one line: "Update Inspeck's dev plugin in this project? It fixes a build error in TypeScript projects (one command)". On yes, run \`${OUTDATED.command}\` in ${OUTDATED.dir}, then restart their dev server if it's running. If they say no, don't ask again.` : ''}`
 
