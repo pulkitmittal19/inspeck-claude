@@ -38144,7 +38144,7 @@ if (process.argv[2] === "wait") {
   await runWait(process.argv.slice(3));
   process.exit(0);
 }
-var VERSION = "0.20.0";
+var VERSION = "0.20.1";
 var log = (msg) => process.stderr.write(`inspeck: ${msg}
 `);
 if (process.argv[2] === "serve") {
