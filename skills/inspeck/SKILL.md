@@ -1,6 +1,6 @@
 ---
 name: inspeck
-description: Inspeck - a person hovers any element of their web app to see its CSS and clicks it to leave a note for Claude. Use when Inspeck notes arrive (from the inspeck wait watcher or <channel source="inspeck">), when asked to check, fix or watch for Inspeck notes or comments, when opening the person's app in the browser pane with Inspeck on it, and for ANY question about Inspeck - how to install, set up or use it, why it doesn't show or notes don't arrive, Auto-send, shortcuts, settings, copying notes, turning it off, updating or removing it.
+description: Hover any element of your web app to see its CSS, and click it to leave a note for Claude. Claude uses this when your notes arrive, when asked to check, fix or watch for them, when opening your app in the browser pane, and for any question about Inspeck, such as setup, it not showing, notes not arriving, Auto-send, shortcuts, settings, copying notes, turning it off, updating or removing it.
 ---
 
 # Inspeck
