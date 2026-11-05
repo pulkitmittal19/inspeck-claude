@@ -1,6 +1,6 @@
 # inspeck
 
-Hover any element of your app to see its CSS, written the way your code writes it. Click it to leave a note for Claude. Claude, in the same desktop session, picks the note up and fixes the code.
+Hover any element of your app to see its CSS, written the way your code writes it. Click it to leave a note for Claude. Claude, in the same desktop session, picks the note up and fixes the code. See it at [inspeck.in](https://www.inspeck.in).
 
 ## Set up
 
@@ -47,6 +47,10 @@ The widget's script tag is added only while `vite` serves your app, never to a b
 |---|---|---|
 | `port` | `4848`, or `INSPECK_PORT` | where the Inspeck plugin serves the widget |
 | `enabled` | `true` | turn the tag off without removing the plugin, e.g. `enabled: !process.env.CI` |
+
+## What it counts
+
+The Inspeck plugin sends an install count: a random id made on your Mac, the version, and how it was installed. Never your notes, page addresses, file paths or code, and IP addresses aren't kept. To turn it off: `touch ~/.inspeck/telemetry-off`, or set `INSPECK_TELEMETRY=off` or `DO_NOT_TRACK=1`.
 
 ## License
 

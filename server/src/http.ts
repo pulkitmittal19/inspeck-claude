@@ -486,6 +486,9 @@ export const portState: { owner: 'me' | 'inspeck' | 'other' | 'unknown' } = { ow
 export function listen(version: string, log: (msg: string) => void, onNew: (c: Comment) => void = () => {}, { standby = true }: { standby?: boolean } = {}): Promise<boolean> {
   let attempt = () => {}
   const server = createServer((req, res) => {
+    /* It handed over the port, but a browser can still hold a connection here (Chromium keeps a spare), and a page's
+       polls would keep it open for good, so the page would never meet the newer Inspeck. This answer is its last. */
+    if (!server.listening) res.setHeader('connection', 'close')
     const origin = req.headers.origin
     if (!hostAllowed(req.headers.host) || !originAllowed(origin)) {
       return send(res, 403, { error: 'Inspeck only accepts notes from pages on this computer' })
@@ -543,6 +546,8 @@ export function listen(version: string, log: (msg: string) => void, onNew: (c: C
         return
       }
       const onError = (err: NodeJS.ErrnoException) => {
+        /* This try is over: left attached, one would pile up with every retry for as long as a chat waits. */
+        server.off('listening', onListening)
         if (err.code !== 'EADDRINUSE') { log(`Could not listen on ${PORT}: ${err.message}`); portState.owner = 'other'; resolve(false); return }
         void onPort().then(async there => {
           const owner = there?.inspeck ? 'inspeck' : there ? 'other' : 'unknown'
@@ -571,13 +576,14 @@ export function listen(version: string, log: (msg: string) => void, onNew: (c: C
           again()
         })
       }
-      server.once('error', onError)
-      server.listen(PORT, '127.0.0.1', () => {
+      const onListening = () => {
         server.off('error', onError)
         portState.owner = 'me'
         log(`Listening for comments on http://127.0.0.1:${PORT}`)
         resolve(true)
-      })
+      }
+      server.once('error', onError)
+      server.listen(PORT, '127.0.0.1', onListening)
     }
     attempt()
   })

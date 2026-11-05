@@ -11,7 +11,7 @@ import { build } from 'esbuild'
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 const home = mkdtempSync(join(tmpdir(), 'inspeck-projects-home-'))
 process.env.INSPECK_HOME = home
-let sessions, store
+let sessions, store, format
 
 before(async () => {
   const out = mkdtempSync(join(tmpdir(), 'inspeck-projects-'))
@@ -22,6 +22,24 @@ before(async () => {
   }
   sessions = await bundle('server/src/sessions.ts')
   store = await bundle('server/src/store.ts')
+  format = await bundle('server/src/format.ts')
+})
+
+test('a note\'s code line names the file in its app\'s folder, when that\'s where the file is', () => {
+  const app = realpathSync(mkdtempSync(join(tmpdir(), 'inspeck-app-')))
+  mkdirSync(join(app, 'src'))
+  writeFileSync(join(app, 'src', 'App.tsx'), '')
+  const elsewhere = realpathSync(mkdtempSync(join(tmpdir(), 'inspeck-elsewhere-')))
+  writeFileSync(join(elsewhere, 'Card.tsx'), '')
+  const outside = join(dirname(app), 'outside.tsx')
+  writeFileSync(outside, '')
+  const code = (file, project = app) => /^code\s+(.*)$/m.exec(format.render({ id: 'x', n: 1, kind: 'fix', status: 'new', note: 'n', page: 'http://localhost:5173/', element: { selector: '#a', tag: 'a' }, measured: [], thread: [], source: [{ file, line: 19 }], ...(project ? { project } : {}) }))[1]
+  assert.equal(code('/src/App.tsx'), `${join(app, 'src', 'App.tsx')}:19`, 'from the app\'s folder, as Vite gives it')
+  assert.equal(code('src/App.tsx'), `${join(app, 'src', 'App.tsx')}:19`, 'relative, as Vue and Svelte give it')
+  assert.equal(code(join(elsewhere, 'Card.tsx')), `${join(elsewhere, 'Card.tsx')}:19`, 'a full path to a real file stays')
+  assert.equal(code('/src/Gone.tsx'), '/src/Gone.tsx:19', 'not there: as the page gave it')
+  assert.equal(code('../outside.tsx'), '../outside.tsx:19', 'a page can\'t have a file outside the app named')
+  assert.equal(code('/src/App.tsx', null), '/src/App.tsx:19', 'folder not known: as the page gave it')
 })
 
 /** A repository as git lays it out: a main checkout with a .git folder, a worktree inside it as Claude makes them

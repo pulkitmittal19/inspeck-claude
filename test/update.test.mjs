@@ -10,9 +10,13 @@ import { tmpdir } from 'node:os'
 import { execFileSync, spawn } from 'node:child_process'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { connect } from 'node:net'
 import http from 'node:http'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
+
+/* These run like real installs: none of them may count as one. */
+process.env.INSPECK_TELEMETRY = 'off'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 const VERSION = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).version
@@ -110,7 +114,8 @@ test('a look or an install that failed tries again within the hour; a good look 
   const port = 49800 + Math.floor(Math.random() * 90)
   const gh = await github('0.0.0')
   const anHourAgo = () => writeFileSync(file, JSON.stringify({ ...readJsonFile(file), checkedAt: new Date(Date.now() - 61 * 60_000).toISOString() }))
-  const chat = async (latest, claude = '') => { const c = await start({ port, home, config, pluginRoot: INSTALLED, latest, claude }); await new Promise(r => setTimeout(r, 800)); await c.stop() }
+  /* With a claude to run, a look also waits for its commands, which can take longer on a busy machine. */
+  const chat = async (latest, claude = '') => { const c = await start({ port, home, config, pluginRoot: INSTALLED, latest, claude }); await new Promise(r => setTimeout(r, claude ? 4000 : 800)); await c.stop() }
 
   /* Offline: GitHub can't be read. */
   await chat('http://127.0.0.1:9/plugin.json')
@@ -274,6 +279,69 @@ test('with older chats waiting for the port (real 0.19.5 code), a newer Inspeck 
   }
 })
 
+test('counting installs: once when new, then twice a week, only the id, version and install type; never with a switch off or from a checkout', async () => {
+  const seen = []
+  let refuse = 0
+  const stub = http.createServer((req, res) => {
+    let b = ''
+    req.on('data', c => { b += c })
+    req.on('end', () => { if (refuse > 0) { refuse--; res.statusCode = 500 } else seen.push(JSON.parse(b)); res.end('{}') })
+  })
+  await new Promise(r => stub.listen(0, '127.0.0.1', r))
+  const url = `http://127.0.0.1:${stub.address().port}/capture/`
+  const tmp = mkdtempSync(join(tmpdir(), 'inspeck-count-'))
+  const home = join(tmp, 'home'), config = join(tmp, 'claude'), port = 49900 + Math.floor(Math.random() * 90)
+  marketplace(config, GITHUB)
+  const gh = await github('0.0.0')
+  /* A chat that opens, and stays until `expected` have come, or long enough to see nothing does. */
+  const chat = async (expected, more = {}, pluginRoot = INSTALLED) => {
+    const c = await start({ port, home, config, pluginRoot, latest: gh.url, env: { INSPECK_TELEMETRY: '', DO_NOT_TRACK: '', INSPECK_TELEMETRY_URL: url, ...more } })
+    await until(() => seen.length >= expected, 5000)
+    await new Promise(r => setTimeout(r, 800))
+    await c.stop()
+    assert.equal(seen.length, expected)
+  }
+  const kept = join(home, 'telemetry.json')
+  const halfAWeekOn = () => writeFileSync(kept, JSON.stringify({ ...readJsonFile(kept), lastActive: Date.now() - 4 * 24 * 3600 * 1000 }))
+  try {
+    await chat(0, { INSPECK_TELEMETRY: 'off' })
+    await chat(0, { DO_NOT_TRACK: '1' })
+    assert.equal(existsSync(kept), false, 'switched off, it doesn\'t even make an id')
+
+    /* Couldn't send (offline, say): it tries again. */
+    refuse = 1
+    await chat(0)
+    await chat(2)
+    assert.deepEqual(seen.map(e => e.event), ['inspeck_installed', 'inspeck_active'])
+    for (const e of seen) {
+      assert.deepEqual(Object.keys(e).sort(), ['api_key', 'distinct_id', 'event', 'properties'])
+      assert.match(e.api_key, /^phc_/)
+      assert.match(e.distinct_id, /^[0-9a-f]{32}$/)
+      assert.deepEqual(e.properties, { version: VERSION, install: 'plugin', surface: 'plugin', $process_person_profile: false, $geoip_disable: true })
+    }
+
+    await chat(2)
+    halfAWeekOn()
+    await chat(3)
+    assert.equal(seen[2].event, 'inspeck_active')
+    assert.equal(seen[2].distinct_id, seen[0].distinct_id, 'the same install')
+
+    halfAWeekOn()
+    writeFileSync(join(home, 'telemetry-off'), '')
+    await chat(3)
+    rmSync(join(home, 'telemetry-off'))
+    await chat(3, {}, '')
+
+    writeFileSync(join(config, 'settings.json'), JSON.stringify({ extraKnownMarketplaces: { inspeck: GITHUB } }))
+    await chat(4)
+    assert.equal(seen[3].properties.install, 'init')
+  } finally {
+    gh.close()
+    stub.close()
+    rmSync(tmp, { recursive: true, force: true })
+  }
+})
+
 test('a newer Inspeck takes the port from an older one; the older takes it back if the newer goes', async () => {
   const port = 49700 + Math.floor(Math.random() * 90)
   /* The older Inspeck: answers /health with an old version, and steps aside when asked. */
@@ -308,6 +376,37 @@ test('a newer Inspeck takes the port from an older one; the older takes it back 
   assert.ok(await until(async () => (await health(port))?.version === VERSION, 9000), 'and taken back when no one took it')
   await s.stop()
   rmSync(tmp, { recursive: true, force: true })
+})
+
+test('a connection a browser still holds to an Inspeck that handed over the port answers once and closes, so the page\'s next call reaches the newer one', async () => {
+  const port = 49800 + Math.floor(Math.random() * 90)
+  const tmp = mkdtempSync(join(tmpdir(), 'inspeck-held-'))
+  mkdirSync(join(tmp, 'home'))
+  writeFileSync(join(tmp, 'home', 'handover-key'), 'the-key')
+  const s = await start({ port, home: join(tmp, 'home'), config: join(tmp, 'claude'), pluginRoot: '' })
+  try {
+    assert.ok(await until(async () => (await health(port))?.version === VERSION))
+    /* The spare connection Chromium keeps: open, nothing asked on it yet, so it isn't idle and survives the handover. */
+    const spare = connect(port, '127.0.0.1')
+    let reset = null
+    spare.on('error', e => { reset = e })
+    await new Promise(r => spare.once('connect', r))
+    /* Connected isn't accepted: one still queued when the port is let go gets reset, and a browser just connects again. */
+    await new Promise(r => setTimeout(r, 300))
+    const stepped = await new Promise(resolve => http.request({ host: '127.0.0.1', port, path: '/handover', method: 'POST', headers: { 'x-inspeck-version': '999.0.0', 'x-inspeck-key': 'the-key' } }, res => { res.resume(); res.on('end', () => resolve(res.statusCode)) }).end())
+    assert.equal(stepped, 200)
+    let said = ''
+    spare.on('data', d => { said += d })
+    const closed = new Promise(r => spare.once('close', () => r(true)))
+    spare.write(`GET /health HTTP/1.1\r\nHost: 127.0.0.1:${port}\r\n\r\n`)
+    assert.equal(await Promise.race([closed, new Promise(r => setTimeout(() => r(false), 3000))]), true, 'the connection closes, rather than waiting on the next call')
+    assert.equal(reset, null)
+    assert.match(said, /^HTTP\/1\.1 200/, 'and it answered first')
+    spare.destroy()
+  } finally {
+    await s.stop()
+    rmSync(tmp, { recursive: true, force: true })
+  }
 })
 
 test('a project on an inspeck npm package older than the one needed is offered the update once, in its own package manager', async () => {

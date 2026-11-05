@@ -7196,8 +7196,8 @@ var require_dist = __commonJS({
 });
 
 // server/src/index.ts
-import { readFileSync as readFileSync7, writeFileSync as writeFileSync6, mkdirSync as mkdirSync6 } from "fs";
-import { extname, join as join8 } from "path";
+import { readFileSync as readFileSync8, writeFileSync as writeFileSync7, mkdirSync as mkdirSync7 } from "fs";
+import { extname, join as join10 } from "path";
 import { homedir as homedir4 } from "os";
 
 // node_modules/zod/v3/helpers/util.js
@@ -36480,11 +36480,13 @@ var StdioServerTransport = class {
 
 // server/src/store.ts
 import { randomBytes } from "crypto";
-import { chmodSync, closeSync, existsSync, mkdirSync, openSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "fs";
+import { chmodSync, closeSync, existsSync as existsSync2, mkdirSync, openSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "fs";
 import { homedir } from "os";
-import { join } from "path";
+import { join as join2 } from "path";
 
 // server/src/format.ts
+import { existsSync } from "fs";
+import { isAbsolute, join, sep } from "path";
 var KINDS = ["fix", "reference"];
 var GROUPS = ["text", "color", "spacing", "other"];
 var Measurement = external_exports.object({
@@ -36508,7 +36510,12 @@ var CssLine = external_exports.object({
   resolved: external_exports.string().max(160).optional()
 });
 var SourceAt = external_exports.object({ file: external_exports.string().max(500), line: external_exports.number().int().min(0), column: external_exports.number().int().optional() });
-var sourceText = (s) => s.line ? `${s.file}:${s.line}` : s.file;
+function sourceText(s, project) {
+  const inApp = project && join(project, s.file);
+  const named = inApp && inApp.startsWith(project + sep) && !(isAbsolute(s.file) && existsSync(s.file)) && existsSync(inApp);
+  const file2 = named ? inApp : s.file;
+  return s.line ? `${file2}:${s.line}` : file2;
+}
 var GroupMember = external_exports.object({
   selector: external_exports.string().max(1e3),
   name: external_exports.string().max(200).optional(),
@@ -36631,7 +36638,7 @@ function render(c) {
     const r = c.rect;
     lines.push(row("area", `${r ? `${r.w} \xD7 ${r.h} at ${r.x}, ${r.y} on the page` : "a dragged area"}${c.group.length ? `, inside ${c.element.selector}` : ", empty space"}`));
     for (const m of c.group) {
-      lines.push(row("element", [m.name && m.name !== m.selector ? `${m.name}  (${m.selector})` : m.selector, ...m.text ? [`"${m.text}"`] : [], ...m.source ? [sourceText(m.source)] : []].join(" \xB7 ")));
+      lines.push(row("element", [m.name && m.name !== m.selector ? `${m.name}  (${m.selector})` : m.selector, ...m.text ? [`"${m.text}"`] : [], ...m.source ? [sourceText(m.source, c.project)] : []].join(" \xB7 ")));
     }
   } else {
     const where = [c.element.name && c.element.name !== c.element.selector ? `${c.element.name}  (${c.element.selector})` : c.element.selector];
@@ -36641,8 +36648,8 @@ function render(c) {
   if (c.element.within) lines.push(row("inside", `${c.element.within} (closed now? open it from ${c.element.anchor ?? "the page"})`));
   if (c.element.trail?.length) lines.push(row("source", c.element.trail.join(" \u203A ")));
   if (c.source?.length) {
-    lines.push(row("code", sourceText(c.source[0])));
-    for (const s of c.source.slice(1)) lines.push(row("used in", sourceText(s)));
+    lines.push(row("code", sourceText(c.source[0], c.project)));
+    for (const s of c.source.slice(1)) lines.push(row("used in", sourceText(s, c.project)));
   } else if (!c.group) {
     const by = [c.element.trail?.length ? `where ${c.element.trail[c.element.trail.length - 1]} is declared` : null, "the classes in the selector", c.element.text ? "the words shown" : null].filter(Boolean);
     lines.push(row("code", `not given by the page: search the project for ${by.join(", then ")}`));
@@ -36664,14 +36671,14 @@ function render(c) {
 function summaryLine(c) {
   const note = c.note.trim() || "(no note)";
   const short = note.length > 64 ? note.slice(0, 63) + "\u2026" : note;
-  return `  ${String(c.n).padStart(2)}  ${KIND_LABEL[c.kind].padEnd(9)} ${short}   \xB7 ${c.status} \xB7 id ${c.id}`;
+  return `  ${String(c.n).padStart(2)}  ${KIND_LABEL[c.kind].padEnd(9)} ${short}   \xB7 ${pageLabel(c.page)} \xB7 ${c.status} \xB7 id ${c.id}`;
 }
 
 // server/src/store.ts
-var HOME = process.env.INSPECK_HOME || join(homedir(), ".inspeck");
-var FILE = join(HOME, "inbox.json");
-var SHOTS = join(HOME, "shots");
-var LOCK = join(HOME, "inbox.lock");
+var HOME = process.env.INSPECK_HOME || join2(homedir(), ".inspeck");
+var FILE = join2(HOME, "inbox.json");
+var SHOTS = join2(HOME, "shots");
+var LOCK = join2(HOME, "inbox.lock");
 var STALE_LOCK_MS = 5e3;
 var MAX_SHOT_BYTES = 3 * 1024 * 1024;
 function inboxPath() {
@@ -36690,7 +36697,7 @@ function ensureDirs() {
 }
 var KEEP_CLOSED_MS = 30 * 24 * 3600 * 1e3;
 function read() {
-  if (!existsSync(FILE)) return { version: 1, comments: [] };
+  if (!existsSync2(FILE)) return { version: 1, comments: [] };
   const raw = readFileSync(FILE, "utf8");
   try {
     const parsed = JSON.parse(raw);
@@ -36699,7 +36706,7 @@ function read() {
   } catch {
     ensureDirs();
     try {
-      renameSync(FILE, join(HOME, `inbox.unreadable-${Date.now()}-${process.pid}.json`));
+      renameSync(FILE, join2(HOME, `inbox.unreadable-${Date.now()}-${process.pid}.json`));
     } catch {
     }
     return { version: 1, comments: [] };
@@ -36767,7 +36774,7 @@ function saveShot(id, dataUrl) {
   }
   ensureDirs();
   const ext = m[1] === "jpeg" ? "jpg" : m[1];
-  const path = join(SHOTS, `${id}.${ext}`);
+  const path = join2(SHOTS, `${id}.${ext}`);
   writeFileSync(path, bytes);
   return path;
 }
@@ -36914,26 +36921,26 @@ function closeGap(inbox, gone) {
 }
 
 // server/src/http.ts
-import { existsSync as existsSync5, mkdirSync as mkdirSync4, readFileSync as readFileSync5, statSync as statSync5, writeFileSync as writeFileSync4 } from "fs";
-import { randomBytes as randomBytes3, timingSafeEqual } from "crypto";
+import { existsSync as existsSync7, mkdirSync as mkdirSync5, readFileSync as readFileSync6, statSync as statSync5, writeFileSync as writeFileSync5 } from "fs";
+import { randomBytes as randomBytes4, timingSafeEqual } from "crypto";
 import { lookup } from "dns/promises";
 import { isIP } from "net";
 import { createServer } from "http";
 import { homedir as homedir3, hostname as hostname3, networkInterfaces } from "os";
 import { execFileSync as execFileSync2 } from "child_process";
-import { dirname as dirname4, isAbsolute as isAbsolute3, join as join6, normalize, relative as relative2 } from "path";
+import { dirname as dirname4, isAbsolute as isAbsolute4, join as join8, normalize, relative as relative2 } from "path";
 import { fileURLToPath as fileURLToPath3 } from "url";
 
 // server/src/sessions.ts
 import { execFileSync } from "child_process";
 import { randomBytes as randomBytes2 } from "crypto";
-import { existsSync as existsSync2, mkdirSync as mkdirSync2, readdirSync, readFileSync as readFileSync2, realpathSync, renameSync as renameSync2, rmSync as rmSync2, statSync as statSync2, writeFileSync as writeFileSync2 } from "fs";
-import { basename, dirname, join as join2, relative, isAbsolute } from "path";
-var DIR = join2(HOME, "sessions");
-var HEARD = join2(HOME, "listening");
+import { existsSync as existsSync3, mkdirSync as mkdirSync2, readdirSync, readFileSync as readFileSync2, realpathSync, renameSync as renameSync2, rmSync as rmSync2, statSync as statSync2, writeFileSync as writeFileSync2 } from "fs";
+import { basename, dirname, join as join3, relative, isAbsolute as isAbsolute2 } from "path";
+var DIR = join3(HOME, "sessions");
+var HEARD = join3(HOME, "listening");
 var HEARD_MS = 75e3;
 function heartbeat(pid, on, ms = HEARD_MS) {
-  const file2 = join2(HEARD, `${pid}.json`);
+  const file2 = join3(HEARD, `${pid}.json`);
   try {
     if (!on) {
       rmSync2(file2, { force: true });
@@ -36946,13 +36953,13 @@ function heartbeat(pid, on, ms = HEARD_MS) {
 }
 function listening(pid) {
   try {
-    const { until } = JSON.parse(readFileSync2(join2(HEARD, `${pid}.json`), "utf8"));
+    const { until } = JSON.parse(readFileSync2(join3(HEARD, `${pid}.json`), "utf8"));
     return until > Date.now() && alive(pid);
   } catch {
     return false;
   }
 }
-var BINDINGS = join2(HOME, "bindings.json");
+var BINDINGS = join3(HOME, "bindings.json");
 function ps(pid, field = "comm") {
   try {
     const out = execFileSync("ps", ["-o", `ppid=,${field}=`, "-p", String(pid)], { encoding: "utf8", timeout: 1500 }).trim();
@@ -37016,25 +37023,25 @@ function register(folder) {
   const cwd = real(folder);
   const pid = claudePid();
   if (!pid) return null;
-  const path = join2(DIR, `${pid}.json`);
+  const path = join3(DIR, `${pid}.json`);
   const existing = readJson(path);
   const s = existing && existing.pid === pid ? { ...existing, cwd } : { pid, cwd, startedAt: (/* @__PURE__ */ new Date()).toISOString(), token: randomBytes2(9).toString("base64url") };
   writeJson(path, s);
   return s;
 }
 function liveSessions() {
-  if (!existsSync2(DIR)) return [];
+  if (!existsSync3(DIR)) return [];
   const out = [];
   for (const f of readdirSync(DIR)) {
     if (!f.endsWith(".json")) continue;
-    const s = readJson(join2(DIR, f));
+    const s = readJson(join3(DIR, f));
     if (s && alive(s.pid)) out.push(s);
-    else rmSync2(join2(DIR, f), { force: true });
+    else rmSync2(join3(DIR, f), { force: true });
   }
   return out;
 }
 function sessionOf(pid) {
-  return readJson(join2(DIR, `${pid}.json`));
+  return readJson(join3(DIR, `${pid}.json`));
 }
 function bindTab(tabId, token) {
   const s = liveSessions().find((x) => x.token === token);
@@ -37115,7 +37122,7 @@ function worktreeOf(path) {
   if (worktrees.has(start)) return worktrees.get(start);
   let found2 = null;
   for (let d = start; ; d = dirname(d)) {
-    const git = join2(d, ".git");
+    const git = join3(d, ".git");
     let isDir = false, isFile = false;
     try {
       const st = statSync2(git);
@@ -37141,7 +37148,7 @@ function worktreeOf(path) {
 function sameProject(a, b) {
   const inside = (child, parent) => {
     const r = relative(parent, child);
-    return r === "" || !r.startsWith("..") && !isAbsolute(r);
+    return r === "" || !r.startsWith("..") && !isAbsolute2(r);
   };
   a = real(a);
   b = real(b);
@@ -37192,10 +37199,66 @@ function belongsTo(to, me, myCwd) {
 
 // server/src/updates.ts
 import { execFile, spawn } from "child_process";
-import { mkdirSync as mkdirSync3, readFileSync as readFileSync3, rmSync as rmSync3, statSync as statSync3, writeFileSync as writeFileSync3 } from "fs";
+import { mkdirSync as mkdirSync4, readFileSync as readFileSync4, rmSync as rmSync3, statSync as statSync3, writeFileSync as writeFileSync4 } from "fs";
 import { homedir as homedir2 } from "os";
-import { join as join3 } from "path";
+import { join as join5 } from "path";
 import { promisify } from "util";
+
+// server/src/telemetry.ts
+import { randomBytes as randomBytes3 } from "crypto";
+import { existsSync as existsSync4, mkdirSync as mkdirSync3, readFileSync as readFileSync3, writeFileSync as writeFileSync3 } from "fs";
+import { join as join4 } from "path";
+var KEY = "phc_qhCwzGBjT45ap9Htagx9ne5KXXtuheQoZ52kvTeWiSGo";
+var ENDPOINT = process.env.INSPECK_TELEMETRY_URL ?? "https://us.i.posthog.com/capture/";
+var EVERY_MS = 3.5 * 24 * 3600 * 1e3;
+var FILE2 = () => join4(HOME, "telemetry.json");
+function off() {
+  const on = (v) => !!v && v !== "0" && v.toLowerCase() !== "false";
+  const said = (process.env.INSPECK_TELEMETRY ?? "").toLowerCase();
+  return said === "off" || said === "0" || said === "false" || on(process.env.DO_NOT_TRACK) || existsSync4(join4(HOME, "telemetry-off"));
+}
+var read2 = () => {
+  try {
+    const k = JSON.parse(readFileSync3(FILE2(), "utf8"));
+    return typeof k?.id === "string" ? k : null;
+  } catch {
+    return null;
+  }
+};
+var write2 = (k) => {
+  try {
+    mkdirSync3(HOME, { recursive: true });
+    writeFileSync3(FILE2(), JSON.stringify(k, null, 2));
+  } catch {
+  }
+};
+async function send(event, id, version2, install) {
+  try {
+    const r = await fetch(ENDPOINT, {
+      method: "POST",
+      signal: AbortSignal.timeout(5e3),
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ api_key: KEY, event, distinct_id: id, properties: { version: version2, install, surface: "plugin", $process_person_profile: false, $geoip_disable: true } })
+    });
+    return r.ok;
+  } catch {
+    return false;
+  }
+}
+async function countInstall(version2, install) {
+  if (off()) return;
+  const kept = read2() ?? { id: randomBytes3(16).toString("hex") };
+  if (!kept.told) {
+    write2({ ...kept, told: true });
+    if (!await send("inspeck_installed", kept.id, version2, install)) return write2({ ...kept, told: false });
+    kept.told = true;
+  }
+  if (Date.now() - (kept.lastActive ?? 0) < EVERY_MS) return;
+  write2({ ...kept, lastActive: Date.now() });
+  if (!await send("inspeck_active", kept.id, version2, install)) write2(kept);
+}
+
+// server/src/updates.ts
 var run = promisify(execFile);
 var REPO = "pulkitmittal19/inspeck-claude";
 var MARKETPLACE = "inspeck";
@@ -37203,21 +37266,21 @@ var LATEST_URL = process.env.INSPECK_LATEST_URL ?? `https://raw.githubuserconten
 var CHECK_EVERY_MS = 3.5 * 24 * 3600 * 1e3;
 var TICK_MS = 10 * 60 * 1e3;
 var RETRY_MS = 60 * 60 * 1e3;
-var LATEST = () => join3(HOME, "latest.json");
-var LOCK2 = () => join3(HOME, "updating.lock");
-var SERVING = () => join3(HOME, "serving.json");
-var configDir = () => process.env.CLAUDE_CONFIG_DIR || join3(homedir2(), ".claude");
+var LATEST = () => join5(HOME, "latest.json");
+var LOCK2 = () => join5(HOME, "updating.lock");
+var SERVING = () => join5(HOME, "serving.json");
+var configDir = () => process.env.CLAUDE_CONFIG_DIR || join5(homedir2(), ".claude");
 var readJson2 = (p) => {
   try {
-    return JSON.parse(readFileSync3(p, "utf8"));
+    return JSON.parse(readFileSync4(p, "utf8"));
   } catch {
     return null;
   }
 };
 var writeJson2 = (p, v) => {
   try {
-    mkdirSync3(HOME, { recursive: true });
-    writeFileSync3(p, JSON.stringify(v, null, 2));
+    mkdirSync4(HOME, { recursive: true });
+    writeFileSync4(p, JSON.stringify(v, null, 2));
   } catch {
   }
 };
@@ -37238,20 +37301,20 @@ function turnedOff() {
 }
 function updater(config2 = configDir()) {
   if (turnedOff()) return "none";
-  if (!(process.env.CLAUDE_PLUGIN_ROOT ?? "").includes(`${join3("plugins", "cache")}`)) return "none";
-  const known = readJson2(join3(config2, "plugins", "known_marketplaces.json"))?.[MARKETPLACE];
-  const extra = readJson2(join3(config2, "settings.json"))?.extraKnownMarketplaces?.[MARKETPLACE];
+  if (!(process.env.CLAUDE_PLUGIN_ROOT ?? "").includes(`${join5("plugins", "cache")}`)) return "none";
+  const known = readJson2(join5(config2, "plugins", "known_marketplaces.json"))?.[MARKETPLACE];
+  const extra = readJson2(join5(config2, "settings.json"))?.extraKnownMarketplaces?.[MARKETPLACE];
   const source = known?.source ?? extra?.source;
   return source?.source === "github" && source.repo === REPO ? "inspeck" : "none";
 }
 function installed(config2 = configDir()) {
-  const entries = readJson2(join3(config2, "plugins", "installed_plugins.json"))?.plugins?.[`inspeck@${MARKETPLACE}`];
+  const entries = readJson2(join5(config2, "plugins", "installed_plugins.json"))?.plugins?.[`inspeck@${MARKETPLACE}`];
   if (!Array.isArray(entries)) return null;
   let best = null;
   for (const e of entries) {
     if (typeof e?.version !== "string" || typeof e?.installPath !== "string") continue;
     try {
-      statSync3(join3(e.installPath, "server", "dist", "inspeck.mjs"));
+      statSync3(join5(e.installPath, "server", "dist", "inspeck.mjs"));
     } catch {
       continue;
     }
@@ -37261,7 +37324,7 @@ function installed(config2 = configDir()) {
 }
 function checkEvery() {
   try {
-    const minutes = Number(readFileSync3(join3(HOME, "update-check-minutes"), "utf8").trim());
+    const minutes = Number(readFileSync4(join5(HOME, "update-check-minutes"), "utf8").trim());
     if (minutes > 0) return minutes * 6e4;
   } catch {
   }
@@ -37330,7 +37393,7 @@ async function serveNewer(port, log2) {
   if (answering && !newer(ready.version, answering)) return null;
   const serving = readJson2(SERVING());
   if (serving && alive2(serving.pid) && !newer(ready.version, String(serving.version))) return null;
-  const kid = spawn(process.execPath, [join3(ready.path, "server", "dist", "inspeck.mjs"), "serve"], { detached: true, stdio: "ignore", env: { ...process.env, CLAUDE_PLUGIN_ROOT: ready.path } });
+  const kid = spawn(process.execPath, [join5(ready.path, "server", "dist", "inspeck.mjs"), "serve"], { detached: true, stdio: "ignore", env: { ...process.env, CLAUDE_PLUGIN_ROOT: ready.path } });
   kid.on("error", () => {
   });
   kid.unref();
@@ -37338,6 +37401,7 @@ async function serveNewer(port, log2) {
   log2(`Inspeck ${ready.version} is installed: started it to answer pages.`);
   return ready.version;
 }
+var howInstalled = (config2 = configDir()) => readJson2(join5(config2, "settings.json"))?.extraKnownMarketplaces?.[MARKETPLACE] ? "init" : "plugin";
 function keepCurrent(current2, claude, port, log2) {
   if (updater() !== "inspeck") return;
   let going = false;
@@ -37348,6 +37412,7 @@ function keepCurrent(current2, claude, port, log2) {
       await checkNow(current2, claude);
       const v = installed()?.version;
       if (v && newer(v, current2)) await serveNewer(port, log2);
+      await countInstall(v ?? current2, howInstalled());
     } catch {
     } finally {
       going = false;
@@ -37362,8 +37427,8 @@ function keepCurrent(current2, claude, port, log2) {
 }
 
 // server/src/sourcemap.ts
-import { existsSync as existsSync3, readFileSync as readFileSync4, statSync as statSync4 } from "fs";
-import { dirname as dirname2, isAbsolute as isAbsolute2, join as join4, resolve as resolvePath } from "path";
+import { existsSync as existsSync5, readFileSync as readFileSync5, statSync as statSync4 } from "fs";
+import { dirname as dirname2, isAbsolute as isAbsolute3, join as join6, resolve as resolvePath } from "path";
 import { fileURLToPath } from "url";
 var B64 = new Map([..."ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"].map((c, i) => [c, i]));
 function lineSegments(mappings, line) {
@@ -37403,28 +37468,28 @@ function sourcePath(name, map2, mapFile) {
   if (name.startsWith("file://")) return fileURLToPath(name);
   const project = /^(?:turbopack|webpack|webpack-internal):\/\/\/(?:\[project\]\/|\(\w[\w-]*\)\/)?\.?\/?(.*)$/.exec(name);
   if (project) return project[1].replace(/\s*\[[^\]]*\]\s*\(.*\)$/, "");
-  if (isAbsolute2(name)) return name;
+  if (isAbsolute3(name)) return name;
   return resolvePath(dirname2(mapFile), map2.sourceRoot ?? "", name);
 }
 function readMap(chunk) {
-  const code = readFileSync4(chunk, "utf8");
+  const code = readFileSync5(chunk, "utf8");
   let ref = null;
   for (const m of code.matchAll(/\/[/*][#@]\s*sourceMappingURL=([^\s*]+)/g)) ref = m[1];
   if (ref?.startsWith("data:")) {
     return { map: JSON.parse(Buffer.from(ref.slice(ref.indexOf(",") + 1), "base64").toString("utf8")), file: chunk };
   }
-  const file2 = ref ? join4(dirname2(chunk), decodeURIComponent(ref)) : `${chunk}.map`;
-  return existsSync3(file2) ? { map: JSON.parse(readFileSync4(file2, "utf8")), file: file2 } : null;
+  const file2 = ref ? join6(dirname2(chunk), decodeURIComponent(ref)) : `${chunk}.map`;
+  return existsSync5(file2) ? { map: JSON.parse(readFileSync5(file2, "utf8")), file: file2 } : null;
 }
 function resolveSource(at, may = () => true) {
   try {
     const chunk = at.file.startsWith("file://") ? fileURLToPath(at.file.split("?")[0]) : at.file;
-    if (!isAbsolute2(chunk) || !/\.(c|m)?js$/.test(chunk) || !may(chunk) || !existsSync3(chunk) || !statSync4(chunk).isFile() || !at.line) {
+    if (!isAbsolute3(chunk) || !/\.(c|m)?js$/.test(chunk) || !may(chunk) || !existsSync5(chunk) || !statSync4(chunk).isFile() || !at.line) {
       return at.file.startsWith("file://") ? { ...at, file: chunk } : at;
     }
-    const read2 = readMap(chunk);
-    if (!read2) return { ...at, file: chunk };
-    let { map: map2 } = read2;
+    const read3 = readMap(chunk);
+    if (!read3) return { ...at, file: chunk };
+    let { map: map2 } = read3;
     let line = at.line - 1, column = (at.column ?? 1) - 1;
     if (map2.sections) {
       const sec = [...map2.sections].reverse().find((s) => s.offset.line < line || s.offset.line === line && s.offset.column <= column);
@@ -37442,7 +37507,7 @@ function resolveSource(at, may = () => true) {
     }
     const name = map2.sources?.[best[1]];
     if (!name) return { ...at, file: chunk };
-    return { file: sourcePath(name, map2, read2.file), line: best[2] + 1, column: best[3] + 1 };
+    return { file: sourcePath(name, map2, read3.file), line: best[2] + 1, column: best[3] + 1 };
   } catch {
     return at;
   }
@@ -37475,11 +37540,11 @@ function elementLine(src, clue) {
 }
 function findLines(sources, clue, may = () => true) {
   return sources.map((at, i) => {
-    if (at.line || !isAbsolute2(at.file) || !/\.(vue|svelte|html?|astro|[jt]sx?)$/.test(at.file) || !may(at.file)) return at;
+    if (at.line || !isAbsolute3(at.file) || !/\.(vue|svelte|html?|astro|[jt]sx?)$/.test(at.file) || !may(at.file)) return at;
     let src;
     try {
       if (!statSync4(at.file).isFile() || statSync4(at.file).size > 2e6) return at;
-      src = readFileSync4(at.file, "utf8");
+      src = readFileSync5(at.file, "utf8");
     } catch {
       return at;
     }
@@ -37496,16 +37561,16 @@ function findLines(sources, clue, may = () => true) {
 
 // server/src/voice.ts
 import { spawn as spawn2 } from "child_process";
-import { existsSync as existsSync4 } from "fs";
+import { existsSync as existsSync6 } from "fs";
 import { release as release2 } from "os";
-import { dirname as dirname3, join as join5 } from "path";
+import { dirname as dirname3, join as join7 } from "path";
 import { fileURLToPath as fileURLToPath2 } from "url";
-var HELPER = process.env.INSPECK_LISTEN || join5(dirname3(fileURLToPath2(import.meta.url)), "..", "bin", "inspeck-listen");
+var HELPER = process.env.INSPECK_LISTEN || join7(dirname3(fileURLToPath2(import.meta.url)), "..", "bin", "inspeck-listen");
 var WARM_SECONDS = 90;
 function voiceAvailable() {
   if (process.platform !== "darwin") return { available: false, reason: "Voice needs a Mac for now." };
   if (Number(release2().split(".")[0]) < 25) return { available: false, reason: "Voice needs macOS 26 or later." };
-  if (!existsSync4(HELPER)) return { available: false, reason: "The voice listener isn't built (npm run build:listen)." };
+  if (!existsSync6(HELPER)) return { available: false, reason: "The voice listener isn't built (npm run build:listen)." };
   return { available: true };
 }
 var Listener = class {
@@ -37662,7 +37727,7 @@ function hostAllowed(host) {
   const name = host.replace(/:\d+$/, "");
   return name === "127.0.0.1" || name === "localhost" || name === "[::1]";
 }
-function send(res, status, body2) {
+function send2(res, status, body2) {
   res.writeHead(status, { "content-type": "application/json" });
   res.end(JSON.stringify(body2));
 }
@@ -37701,7 +37766,7 @@ function body(req) {
   });
 }
 var HERE = dirname4(fileURLToPath3(import.meta.url));
-var WIDGET = process.env.INSPECK_WIDGET || join6(HERE, "widget", "inspeck.js");
+var WIDGET = process.env.INSPECK_WIDGET || join8(HERE, "widget", "inspeck.js");
 function sendFile(req, res, path, type) {
   let stat;
   try {
@@ -37723,14 +37788,14 @@ function sendFile(req, res, path, type) {
     res.writeHead(304, headers).end();
     return;
   }
-  res.writeHead(200, headers).end(readFileSync5(path));
+  res.writeHead(200, headers).end(readFileSync6(path));
 }
 var DEV = process.env.INSPECK_DEV === "1";
-var DEV_DIR = join6(HERE, "..", "..", "widget", "dev");
+var DEV_DIR = join8(HERE, "..", "..", "widget", "dev");
 function devFile(req, res, name) {
-  const path = normalize(join6(DEV_DIR, name || "index.html"));
+  const path = normalize(join8(DEV_DIR, name || "index.html"));
   if (!path.startsWith(DEV_DIR)) {
-    send(res, 404, { error: "Not found" });
+    send2(res, 404, { error: "Not found" });
     return;
   }
   const type = path.endsWith(".html") ? "text/html; charset=utf-8" : path.endsWith(".css") ? "text/css" : "text/javascript";
@@ -37744,7 +37809,7 @@ function ownSite(origin, page) {
 function inProject(file2, page) {
   const inside = (f2, dir) => {
     const r = relative2(dir, f2);
-    return !!r && !r.startsWith("..") && !isAbsolute3(r);
+    return !!r && !r.startsWith("..") && !isAbsolute4(r);
   };
   const f = real(file2);
   const served = projectOf(page);
@@ -37753,9 +37818,9 @@ function inProject(file2, page) {
 function inProjectFiles(page, list, fn) {
   const root = projectOf(page) ?? process.cwd();
   const full = list.map((at) => {
-    if (isAbsolute3(at.file) || /^[a-z]+:/i.test(at.file)) return at;
-    const f = join6(root, at.file);
-    return existsSync5(f) ? { ...at, file: f } : at;
+    if (isAbsolute4(at.file) || /^[a-z]+:/i.test(at.file)) return at;
+    const f = join8(root, at.file);
+    return existsSync7(f) ? { ...at, file: f } : at;
   });
   return fn(full).map((at, i) => full[i] !== list[i] && at.file === full[i].file ? { ...at, file: list[i].file } : at);
 }
@@ -37768,7 +37833,7 @@ async function route2(req, res, version2, onNew) {
   const parts = url2.pathname.split("/").filter(Boolean);
   const origin = req.headers.origin;
   if (req.method === "GET" && url2.pathname === "/health") {
-    return send(res, 200, { ok: true, name: "inspeck", version: version2 });
+    return send2(res, 200, { ok: true, name: "inspeck", version: version2 });
   }
   if (req.method === "GET" && url2.pathname === "/inspeck.js") {
     return sendFile(req, res, WIDGET, "text/javascript; charset=utf-8");
@@ -37776,68 +37841,68 @@ async function route2(req, res, version2, onNew) {
   if (DEV && req.method === "GET" && parts[0] === "__dev") {
     return devFile(req, res, parts.slice(1).join("/"));
   }
-  if (!req.headers[CALL_HEADER]) return send(res, 403, { error: "Inspeck was updated: reload the page." });
+  if (!req.headers[CALL_HEADER]) return send2(res, 403, { error: "Inspeck was updated: reload the page." });
   if (url2.pathname === "/tour" && (req.method === "GET" || req.method === "POST")) {
-    const flag2 = join6(HOME, "tour-seen");
+    const flag2 = join8(HOME, "tour-seen");
     if (req.method === "POST") {
-      mkdirSync4(HOME, { recursive: true });
-      writeFileSync4(flag2, (/* @__PURE__ */ new Date()).toISOString());
+      mkdirSync5(HOME, { recursive: true });
+      writeFileSync5(flag2, (/* @__PURE__ */ new Date()).toISOString());
     }
-    return send(res, 200, { seen: existsSync5(flag2) });
+    return send2(res, 200, { seen: existsSync7(flag2) });
   }
   if (url2.pathname === "/settings" && (req.method === "GET" || req.method === "POST")) {
-    const file2 = join6(HOME, "settings.json");
-    const read2 = () => {
+    const file2 = join8(HOME, "settings.json");
+    const read3 = () => {
       try {
-        return JSON.parse(readFileSync5(file2, "utf8"));
+        return JSON.parse(readFileSync6(file2, "utf8"));
       } catch {
         return {};
       }
     };
     if (req.method === "POST") {
       const b = await body(req);
-      const next = read2();
+      const next = read3();
       for (const [key, allowed] of Object.entries(SETTINGS)) {
         const v = b?.[key];
         if (typeof v === "string" && allowed.includes(v)) next[key] = v;
       }
-      mkdirSync4(HOME, { recursive: true });
-      writeFileSync4(file2, JSON.stringify(next, null, 2));
-      return send(res, 200, next);
+      mkdirSync5(HOME, { recursive: true });
+      writeFileSync5(file2, JSON.stringify(next, null, 2));
+      return send2(res, 200, next);
     }
-    return send(res, 200, read2());
+    return send2(res, 200, read3());
   }
   if (url2.pathname === "/listening" && req.method === "GET") {
     const page = url2.searchParams.get("page") ?? "";
-    if (!ownSite(origin, page)) return send(res, 403, { error: "A page can only ask about its own site" });
+    if (!ownSite(origin, page)) return send2(res, 403, { error: "A page can only ask about its own site" });
     const to = route(page, url2.searchParams.get("tab") ?? void 0);
-    return send(res, 200, { listening: !!to.pid && listening(to.pid) });
+    return send2(res, 200, { listening: !!to.pid && listening(to.pid) });
   }
-  if (url2.pathname === "/voice" && req.method === "GET") return send(res, 200, voiceAvailable());
+  if (url2.pathname === "/voice" && req.method === "GET") return send2(res, 200, voiceAvailable());
   if (url2.pathname === "/voice/listen" && req.method === "POST") return listenStream(req, res);
-  if (url2.pathname === "/voice/stop" && req.method === "POST") return send(res, 200, { stopping: stopListening() });
-  if (url2.pathname === "/voice/warm" && req.method === "POST") return send(res, 200, { warm: warmVoice() });
+  if (url2.pathname === "/voice/stop" && req.method === "POST") return send2(res, 200, { stopping: stopListening() });
+  if (url2.pathname === "/voice/warm" && req.method === "POST") return send2(res, 200, { warm: warmVoice() });
   if (url2.pathname === "/css" && req.method === "GET") {
     const target = url2.searchParams.get("url") ?? "";
-    if (!/^https?:\/\//i.test(target)) return send(res, 400, { error: "Send ?url= with an http(s) stylesheet address" });
+    if (!/^https?:\/\//i.test(target)) return send2(res, 400, { error: "Send ?url= with an http(s) stylesheet address" });
     try {
-      return send(res, 200, { css: await stylesheet(target) });
+      return send2(res, 200, { css: await stylesheet(target) });
     } catch (err) {
-      return send(res, 502, { error: err.message });
+      return send2(res, 502, { error: err.message });
     }
   }
   if (req.method === "POST" && url2.pathname === "/bind") {
     const b = await body(req);
-    if (typeof b.tabId !== "string" || typeof b.token !== "string" || b.tabId.length > 64) return send(res, 400, { error: "Send { tabId, token }" });
+    if (typeof b.tabId !== "string" || typeof b.token !== "string" || b.tabId.length > 64) return send2(res, 400, { error: "Send { tabId, token }" });
     const s = bindTab(b.tabId, b.token);
-    return s ? send(res, 200, { ok: true, project: s.cwd }) : send(res, 404, { error: "That code belongs to no open Claude session" });
+    return s ? send2(res, 200, { ok: true, project: s.cwd }) : send2(res, 404, { error: "That code belongs to no open Claude session" });
   }
-  if (parts[0] !== "comments") return send(res, 404, { error: "Not found" });
+  if (parts[0] !== "comments") return send2(res, 404, { error: "Not found" });
   const id = parts[1];
   if (id && id !== "send") {
     const c = get(id);
-    if (!c) return send(res, 404, { error: "No such comment" });
-    if (!ownSite(origin, c.page)) return send(res, 403, { error: "That note is on another site" });
+    if (!c) return send2(res, 404, { error: "No such comment" });
+    if (!ownSite(origin, c.page)) return send2(res, 403, { error: "That note is on another site" });
   }
   if (id === "send" && req.method === "POST") {
     const b = await body(req);
@@ -37851,52 +37916,52 @@ async function route2(req, res, version2, onNew) {
       const o = siteOf(b.site);
       which = (c) => siteOf(c.page) === o && sameApp(c, here);
     }
-    if (!which) return send(res, 400, { error: "Send { page } or { site }" });
-    if (!ownSite(origin, String(b.page ?? b.site))) return send(res, 403, { error: "A page can only send its own site's notes" });
+    if (!which) return send2(res, 400, { error: "Send { page } or { site }" });
+    if (!ownSite(origin, String(b.page ?? b.site))) return send2(res, 403, { error: "A page can only send its own site's notes" });
     const sent = release(which);
     for (const c of sent) onNew(c);
-    return send(res, 200, { sent: sent.length });
+    return send2(res, 200, { sent: sent.length });
   }
   if (!id && req.method === "GET") {
     const page = url2.searchParams.get("page");
     const list = (page ? forPage(page, projectOf(page)) : open2()).filter((c) => ownSite(origin, c.page));
-    return send(res, 200, { comments: list.map(forPage2) });
+    return send2(res, 200, { comments: list.map(forPage2) });
   }
   if (!id && req.method === "POST") {
     const parsed = NewComment.safeParse(await body(req));
     if (!parsed.success) {
-      return send(res, 400, { error: "Comment is not in the Inspeck format", issues: parsed.error.issues });
+      return send2(res, 400, { error: "Comment is not in the Inspeck format", issues: parsed.error.issues });
     }
     const note = parsed.data;
-    if (!ownSite(origin, note.page)) return send(res, 403, { error: "A page can only leave notes on its own site" });
+    if (!ownSite(origin, note.page)) return send2(res, 403, { error: "A page can only leave notes on its own site" });
     const may = (file2) => inProject(file2, note.page);
     const clue = { text: note.element.text, tag: note.element.tag, selector: note.element.selector };
     if (note.source) note.source = inProjectFiles(note.page, note.source.map((at) => resolveSource(at, may)), (list) => findLines(list, clue, may));
     for (const m of note.group ?? []) if (m.source) m.source = resolveSource(m.source, may);
     const created = add(note, route(note.page, note.tabId), projectOf(note.page));
     onNew(created);
-    return send(res, 201, { comment: forPage2(created) });
+    return send2(res, 201, { comment: forPage2(created) });
   }
   if (id && req.method === "PATCH") {
     const b = await body(req);
-    if (typeof b.note !== "string") return send(res, 400, { error: "Send { note: string }" });
-    if (b.note.length > NOTE_MAX) return send(res, 400, { error: `A note holds up to ${NOTE_MAX.toLocaleString("en")} characters` });
-    if (!b.note.trim()) return send(res, 400, { error: "A note needs some words (delete it instead)" });
+    if (typeof b.note !== "string") return send2(res, 400, { error: "Send { note: string }" });
+    if (b.note.length > NOTE_MAX) return send2(res, 400, { error: `A note holds up to ${NOTE_MAX.toLocaleString("en")} characters` });
+    if (!b.note.trim()) return send2(res, 400, { error: "A note needs some words (delete it instead)" });
     const c = editNote(id, b.note);
-    if (c === "read") return send(res, 409, { error: "Claude has already read this note, so this change wouldn\u2019t reach it. Add it as a new note." });
-    return c ? send(res, 200, { comment: forPage2(c) }) : send(res, 404, { error: "No such comment" });
+    if (c === "read") return send2(res, 409, { error: "Claude has already read this note, so this change wouldn\u2019t reach it. Add it as a new note." });
+    return c ? send2(res, 200, { comment: forPage2(c) }) : send2(res, 404, { error: "No such comment" });
   }
   if (id && parts[2] === "replies" && req.method === "POST") {
     const b = await body(req);
-    if (typeof b.text !== "string" || !b.text.trim()) return send(res, 400, { error: "Send { text: string }" });
-    if (b.text.length > NOTE_MAX) return send(res, 400, { error: `A reply holds up to ${NOTE_MAX.toLocaleString("en")} characters` });
+    if (typeof b.text !== "string" || !b.text.trim()) return send2(res, 400, { error: "Send { text: string }" });
+    if (b.text.length > NOTE_MAX) return send2(res, 400, { error: `A reply holds up to ${NOTE_MAX.toLocaleString("en")} characters` });
     const c = say(id, "you", b.text.trim());
-    return c ? send(res, 201, { comment: forPage2(c) }) : send(res, 404, { error: "No such comment" });
+    return c ? send2(res, 201, { comment: forPage2(c) }) : send2(res, 404, { error: "No such comment" });
   }
   if (id && req.method === "DELETE") {
-    return remove(id) ? send(res, 200, { ok: true }) : send(res, 404, { error: "No such comment" });
+    return remove(id) ? send2(res, 200, { ok: true }) : send2(res, 404, { error: "No such comment" });
   }
-  return send(res, 405, { error: "Method not allowed" });
+  return send2(res, 405, { error: "Method not allowed" });
 }
 var CSS_MAX = 5 * 1024 * 1024;
 var CSS_KEPT_MAX = 40 * 1024 * 1024;
@@ -37958,7 +38023,7 @@ function stylesheet(href) {
 }
 var RETRY_MS2 = 5e3;
 var QUICK_MS = 20;
-var CLAIM = () => join6(HOME, "port-claim.json");
+var CLAIM = () => join8(HOME, "port-claim.json");
 var alive3 = (pid) => {
   try {
     process.kill(Number(pid), 0);
@@ -37969,7 +38034,7 @@ var alive3 = (pid) => {
 };
 function claimedByNewer(version2) {
   try {
-    const c = JSON.parse(readFileSync5(CLAIM(), "utf8"));
+    const c = JSON.parse(readFileSync6(CLAIM(), "utf8"));
     return c.pid !== process.pid && newer(String(c.version), version2) && alive3(c.pid);
   } catch {
     return false;
@@ -37977,24 +38042,24 @@ function claimedByNewer(version2) {
 }
 function claim2(version2) {
   try {
-    mkdirSync4(HOME, { recursive: true });
-    writeFileSync4(CLAIM(), JSON.stringify({ pid: process.pid, version: version2 }));
+    mkdirSync5(HOME, { recursive: true });
+    writeFileSync5(CLAIM(), JSON.stringify({ pid: process.pid, version: version2 }));
   } catch {
   }
 }
 function handoverKey() {
-  const file2 = join6(HOME, "handover-key");
+  const file2 = join8(HOME, "handover-key");
   try {
-    const k2 = readFileSync5(file2, "utf8").trim();
+    const k2 = readFileSync6(file2, "utf8").trim();
     if (k2) return k2;
   } catch {
   }
-  mkdirSync4(HOME, { recursive: true });
-  const k = randomBytes3(24).toString("base64url");
+  mkdirSync5(HOME, { recursive: true });
+  const k = randomBytes4(24).toString("base64url");
   try {
-    writeFileSync4(file2, k, { flag: "wx", mode: 384 });
+    writeFileSync5(file2, k, { flag: "wx", mode: 384 });
   } catch {
-    return readFileSync5(file2, "utf8").trim();
+    return readFileSync6(file2, "utf8").trim();
   }
   return k;
 }
@@ -38029,14 +38094,15 @@ function listen(version2, log2, onNew = () => {
   let attempt = () => {
   };
   const server2 = createServer((req, res) => {
+    if (!server2.listening) res.setHeader("connection", "close");
     const origin = req.headers.origin;
     if (!hostAllowed(req.headers.host) || !originAllowed(origin)) {
-      return send(res, 403, { error: "Inspeck only accepts notes from pages on this computer" });
+      return send2(res, 403, { error: "Inspeck only accepts notes from pages on this computer" });
     }
     if (req.method === "POST" && req.url === "/handover") {
       const theirs = String(req.headers["x-inspeck-version"] ?? "");
       const key = String(req.headers["x-inspeck-key"] ?? "");
-      if (origin || !newer(theirs, version2) || !sameKey(key, handoverKey())) return send(res, 409, { error: "Only a newer Inspeck can take over" });
+      if (origin || !newer(theirs, version2) || !sameKey(key, handoverKey())) return send2(res, 409, { error: "Only a newer Inspeck can take over" });
       log2(`Inspeck ${theirs} has started: handing it the port and sharing its inbox.`);
       res.on("finish", () => {
         if (!standby) process.exit(0);
@@ -38045,7 +38111,7 @@ function listen(version2, log2, onNew = () => {
         server2.closeIdleConnections();
         setTimeout(attempt, RETRY_MS2).unref();
       });
-      return send(res, 200, { stepping: true });
+      return send2(res, 200, { stepping: true });
     }
     res.setHeader("x-inspeck-version", version2);
     if (origin) {
@@ -38062,7 +38128,7 @@ function listen(version2, log2, onNew = () => {
       res.writeHead(204).end();
       return;
     }
-    route2(req, res, version2, onNew).catch((err) => send(res, err instanceof HttpError ? err.status : unsaved(err) ? 507 : 400, { error: unsaved(err) ?? err.message }));
+    route2(req, res, version2, onNew).catch((err) => send2(res, err instanceof HttpError ? err.status : unsaved(err) ? 507 : 400, { error: unsaved(err) ?? err.message }));
   });
   return new Promise((resolve) => {
     let warned = "";
@@ -38075,6 +38141,7 @@ function listen(version2, log2, onNew = () => {
         return;
       }
       const onError = (err) => {
+        server2.off("listening", onListening);
         if (err.code !== "EADDRINUSE") {
           log2(`Could not listen on ${PORT}: ${err.message}`);
           portState.owner = "other";
@@ -38104,23 +38171,24 @@ function listen(version2, log2, onNew = () => {
           again();
         });
       };
-      server2.once("error", onError);
-      server2.listen(PORT, "127.0.0.1", () => {
+      const onListening = () => {
         server2.off("error", onError);
         portState.owner = "me";
         log2(`Listening for comments on http://127.0.0.1:${PORT}`);
         resolve(true);
-      });
+      };
+      server2.once("error", onError);
+      server2.listen(PORT, "127.0.0.1", onListening);
     };
     attempt();
   });
 }
 
 // server/src/outdated.ts
-import { existsSync as existsSync6, mkdirSync as mkdirSync5, readFileSync as readFileSync6, readdirSync as readdirSync2, writeFileSync as writeFileSync5 } from "fs";
-import { dirname as dirname5, join as join7 } from "path";
+import { existsSync as existsSync8, mkdirSync as mkdirSync6, readFileSync as readFileSync7, readdirSync as readdirSync2, writeFileSync as writeFileSync6 } from "fs";
+import { dirname as dirname5, join as join9 } from "path";
 var NEEDED = "0.13.4";
-var OFFERED = () => join7(HOME, "package-update-offered.json");
+var OFFERED = () => join9(HOME, "package-update-offered.json");
 var offerKey = (dir) => `${dir} ${NEEDED}`;
 var older = (a, b) => {
   const pa = a.split(".").map((n) => parseInt(n, 10) || 0), pb = b.split(".").map((n) => parseInt(n, 10) || 0);
@@ -38129,7 +38197,7 @@ var older = (a, b) => {
 };
 var readJson3 = (p) => {
   try {
-    return JSON.parse(readFileSync6(p, "utf8"));
+    return JSON.parse(readFileSync7(p, "utf8"));
   } catch {
     return null;
   }
@@ -38143,7 +38211,7 @@ function candidates(cwd) {
     for (const dir of level) {
       try {
         for (const d of readdirSync2(dir, { withFileTypes: true })) {
-          if (d.isDirectory() && !SKIP.has(d.name) && !d.name.startsWith(".")) next.push(join7(dir, d.name));
+          if (d.isDirectory() && !SKIP.has(d.name) && !d.name.startsWith(".")) next.push(join9(dir, d.name));
         }
       } catch {
       }
@@ -38154,16 +38222,16 @@ function candidates(cwd) {
   return out.slice(0, 80);
 }
 function versionIn(dir, spec) {
-  const installed2 = readJson3(join7(dir, "node_modules", "inspeck", "package.json"))?.version;
+  const installed2 = readJson3(join9(dir, "node_modules", "inspeck", "package.json"))?.version;
   if (typeof installed2 === "string") return installed2;
   return /(\d+\.\d+\.\d+)/.exec(spec)?.[1] ?? null;
 }
 function updateCommand(dir) {
   for (let d = dir, i = 0; i < 5; i++, d = dirname5(d)) {
-    if (existsSync6(join7(d, "pnpm-lock.yaml"))) return `pnpm add -D inspeck@latest`;
-    if (existsSync6(join7(d, "yarn.lock"))) return `yarn add -D inspeck@latest`;
-    if (existsSync6(join7(d, "bun.lockb")) || existsSync6(join7(d, "bun.lock"))) return `bun add -d inspeck@latest`;
-    if (existsSync6(join7(d, "package-lock.json"))) break;
+    if (existsSync8(join9(d, "pnpm-lock.yaml"))) return `pnpm add -D inspeck@latest`;
+    if (existsSync8(join9(d, "yarn.lock"))) return `yarn add -D inspeck@latest`;
+    if (existsSync8(join9(d, "bun.lockb")) || existsSync8(join9(d, "bun.lock"))) return `bun add -d inspeck@latest`;
+    if (existsSync8(join9(d, "package-lock.json"))) break;
     if (dirname5(d) === d) break;
   }
   return `npm install -D inspeck@latest`;
@@ -38171,7 +38239,7 @@ function updateCommand(dir) {
 function outdatedPackage(cwd) {
   const offered = readJson3(OFFERED()) ?? {};
   for (const dir of candidates(cwd)) {
-    const pkg = readJson3(join7(dir, "package.json"));
+    const pkg = readJson3(join9(dir, "package.json"));
     const spec = pkg?.devDependencies?.inspeck ?? pkg?.dependencies?.inspeck;
     if (typeof spec !== "string" || /^(file:|link:|workspace:|git|https?:)/.test(spec)) continue;
     const version2 = versionIn(dir, spec);
@@ -38184,8 +38252,8 @@ function markOffered(dir) {
   try {
     const offered = readJson3(OFFERED()) ?? {};
     offered[offerKey(dir)] = (/* @__PURE__ */ new Date()).toISOString();
-    mkdirSync5(HOME, { recursive: true });
-    writeFileSync5(OFFERED(), JSON.stringify(offered, null, 2));
+    mkdirSync6(HOME, { recursive: true });
+    writeFileSync6(OFFERED(), JSON.stringify(offered, null, 2));
   } catch {
   }
 }
@@ -38243,7 +38311,7 @@ if (process.argv[2] === "wait") {
   await runWait(process.argv.slice(3));
   process.exit(0);
 }
-var VERSION = "0.20.3";
+var VERSION = "0.20.5";
 var log = (msg) => process.stderr.write(`inspeck: ${msg}
 `);
 if (process.argv[2] === "serve") {
@@ -38284,7 +38352,7 @@ Before you click in the browser pane yourself, close Inspeck there (press Escape
 
 Notes arrive at http://127.0.0.1:${PORT}.
 
-If the person asks to update Inspeck: run ${CLAUDE} plugin marketplace update inspeck, then ${CLAUDE} plugin update inspeck@inspeck. Then tell them their app pages switch to it by themselves within about ten minutes, chats run it from when they start or restart (a new chat, or one Claude reopens after pausing it), and their notes are kept. (Inspeck also updates itself; this is only for now.)${OUTDATED ? `
+If the person asks to update Inspeck: run ${CLAUDE} plugin marketplace update inspeck, then ${CLAUDE} plugin update inspeck@inspeck. If that installed a newer version, tell them their app pages switch to it by themselves within about ten minutes, chats run it from when they start or restart (a new chat, or one Claude reopens after pausing it), and their notes are kept. If it was already the latest, just say so. (Inspeck also updates itself; this is only for now.)${OUTDATED ? `
 
 This project's Inspeck dev plugin (the inspeck npm package in ${OUTDATED.dir}) is ${OUTDATED.version}, older than ${NEEDED}, which some of Inspeck's fixes need (0.13.0 and older: in a TypeScript project, the type check before a build, such as \`tsc -b && vite build\`, rejects inspeck() in vite.config.ts, so the build fails; before 0.12.0, a security fix: other devices on the network could reach Inspeck when the dev server runs with --host) and which then keeps itself current through this plugin. Early on, at a natural moment, ask the person once in one line: "Update Inspeck's dev plugin in this project? It fixes a build error in TypeScript projects (one command)". On yes, run \`${OUTDATED.command}\` in ${OUTDATED.dir}, then restart their dev server if it's running. If they say no, don't ask again.` : ""}`;
 var MIME = { ".png": "image/png", ".jpg": "image/jpeg", ".webp": "image/webp" };
@@ -38294,7 +38362,7 @@ function contentFor(c) {
   ];
   if (c.screenshot) {
     try {
-      out.push({ type: "image", data: readFileSync7(c.screenshot).toString("base64"), mimeType: MIME[extname(c.screenshot)] ?? "image/png" });
+      out.push({ type: "image", data: readFileSync8(c.screenshot).toString("base64"), mimeType: MIME[extname(c.screenshot)] ?? "image/png" });
     } catch {
       out.push({ type: "text", text: "(The screenshot for this comment is missing from disk.)" });
     }
@@ -38388,6 +38456,14 @@ function paneLine(token) {
   const src = `http://127.0.0.1:${PORT}/inspeck.js`;
   return `(async () => { const src = ${JSON.stringify(src)}; if (!window.__INSPECK__) { if (![...document.scripts].some(s => s.src === src)) await new Promise((ok, no) => { const s = document.createElement('script'); s.src = src; s.async = true; s.onload = ok; s.onerror = () => no(new Error('Inspeck isn\\'t answering on ' + src + ': is a Claude session with the Inspeck plugin open?')); document.head.appendChild(s) }); for (let i = 0; i < 60 && !window.__INSPECK__; i++) await new Promise(r => setTimeout(r, 100)); if (!window.__INSPECK__) return 'Inspeck did not start here. The page may block outside scripts (a Content-Security-Policy), or not be on this machine. Add <script src=' + JSON.stringify(src) + '></script> to its dev HTML instead.' } return window.__INSPECK__.bind(${JSON.stringify(token)}) })()`;
 }
+function autoSendLine() {
+  let on = false;
+  try {
+    on = JSON.parse(readFileSync8(join10(HOME, "settings.json"), "utf8")).send === "live";
+  } catch {
+  }
+  return on ? "Auto-send is on: each note comes here as it's placed." : "Auto-send is off: notes wait on the page until the person asks you for them.";
+}
 server.registerTool("bind", {
   title: "Link browser tab",
   description: "Link the person's app to this session, so the notes they place on it come here. With no page: returns one line of JavaScript to run in the browser pane tab showing the app. With page (its URL): links that whole site, for when the person uses their own browser (Chrome, Safari) instead of the pane.",
@@ -38403,14 +38479,18 @@ server.registerTool("bind", {
     const waiting = taken.length ? ` ${taken.length} note${taken.length === 1 ? " was" : "s were"} waiting there: read ${taken.length === 1 ? "it" : "them"} with pending.` : "";
     return text(`Notes from ${new URL(page).origin} now come to this session, in any browser.${waiting}
 
-Start the watcher in the background: ${WAIT_COMMAND}`);
+Start the watcher in the background: ${WAIT_COMMAND}
+
+${autoSendLine()}`);
   }
   return text([
     "Run this in the browser pane tab showing the app. It links the tab to this session (the link survives reloads). If the app doesn't load Inspeck itself, it also adds it to the page, but only until a full reload: offer once to add it to the app (npx inspeck init --skip-plugin --yes, development only). Never copy this line, or its token, into their code.",
     "",
     paneLine(SESSION.token),
     "",
-    `Then start the watcher in the background: ${WAIT_COMMAND}`
+    `Then start the watcher in the background: ${WAIT_COMMAND}`,
+    "",
+    autoSendLine()
   ].join("\n"));
 });
 server.registerTool("resolve", {
@@ -38431,8 +38511,8 @@ server.registerTool("dismiss", {
 });
 function noteClient() {
   try {
-    mkdirSync6(HOME, { recursive: true });
-    writeFileSync6(join8(HOME, "last-client.json"), JSON.stringify({
+    mkdirSync7(HOME, { recursive: true });
+    writeFileSync7(join10(HOME, "last-client.json"), JSON.stringify({
       at: (/* @__PURE__ */ new Date()).toISOString(),
       client: server.server.getClientVersion(),
       capabilities: server.server.getClientCapabilities()

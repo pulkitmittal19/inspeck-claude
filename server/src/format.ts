@@ -8,6 +8,8 @@
  * Claude reads — Fix and Reference, Text, Color and Spacing, "raw → nearest"
  * — are defined once, here, and match what the person saw on the page.
  */
+import { existsSync } from 'node:fs'
+import { isAbsolute, join, sep } from 'node:path'
 import { z } from 'zod'
 
 export const KINDS = ['fix', 'reference'] as const
@@ -48,7 +50,14 @@ export type CssLine = z.infer<typeof CssLine>
 /** A place in the code: where an element is written, or where a component that rendered it is used. */
 const SourceAt = z.object({ file: z.string().max(500), line: z.number().int().min(0), column: z.number().int().optional() })
 export type SourceAt = z.infer<typeof SourceAt>
-const sourceText = (s: SourceAt) => s.line ? `${s.file}:${s.line}` : s.file
+/** A place in words. A path the page gave from its app's folder (`/src/App.tsx`, all it knows) is named in that folder
+    when the file is there: with several apps open, nothing else says which one it's in. */
+function sourceText(s: SourceAt, project?: string): string {
+  const inApp = project && join(project, s.file)
+  const named = inApp && inApp.startsWith(project + sep) && !(isAbsolute(s.file) && existsSync(s.file)) && existsSync(inApp)
+  const file = named ? inApp : s.file
+  return s.line ? `${file}:${s.line}` : file
+}
 
 const GroupMember = z.object({
   selector: z.string().max(1000),
@@ -261,7 +270,7 @@ export function render(c: Comment): string {
     const r = c.rect
     lines.push(row('area', `${r ? `${r.w} × ${r.h} at ${r.x}, ${r.y} on the page` : 'a dragged area'}${c.group.length ? `, inside ${c.element.selector}` : ', empty space'}`))
     for (const m of c.group) {
-      lines.push(row('element', [m.name && m.name !== m.selector ? `${m.name}  (${m.selector})` : m.selector, ...(m.text ? [`"${m.text}"`] : []), ...(m.source ? [sourceText(m.source)] : [])].join(' · ')))
+      lines.push(row('element', [m.name && m.name !== m.selector ? `${m.name}  (${m.selector})` : m.selector, ...(m.text ? [`"${m.text}"`] : []), ...(m.source ? [sourceText(m.source, c.project)] : [])].join(' · ')))
     }
   } else {
     const where = [c.element.name && c.element.name !== c.element.selector ? `${c.element.name}  (${c.element.selector})` : c.element.selector]
@@ -272,8 +281,8 @@ export function render(c: Comment): string {
   if (c.element.trail?.length) lines.push(row('source', c.element.trail.join(' › ')))
   /* The element's own line first; "used in" is where the component around it is placed. */
   if (c.source?.length) {
-    lines.push(row('code', sourceText(c.source[0])))
-    for (const s of c.source.slice(1)) lines.push(row('used in', sourceText(s)))
+    lines.push(row('code', sourceText(c.source[0], c.project)))
+    for (const s of c.source.slice(1)) lines.push(row('used in', sourceText(s, c.project)))
   } else if (!c.group) {
     /* The page couldn't say (Angular, a page Django or Rails rendered, plain HTML): how to find it instead. */
     const by = [c.element.trail?.length ? `where ${c.element.trail[c.element.trail.length - 1]} is declared` : null, 'the classes in the selector', c.element.text ? 'the words shown' : null].filter(Boolean)
@@ -302,5 +311,5 @@ export function render(c: Comment): string {
 export function summaryLine(c: Comment): string {
   const note = c.note.trim() || '(no note)'
   const short = note.length > 64 ? note.slice(0, 63) + '…' : note
-  return `  ${String(c.n).padStart(2)}  ${KIND_LABEL[c.kind].padEnd(9)} ${short}   · ${c.status} · id ${c.id}`
+  return `  ${String(c.n).padStart(2)}  ${KIND_LABEL[c.kind].padEnd(9)} ${short}   · ${pageLabel(c.page)} · ${c.status} · id ${c.id}`
 }

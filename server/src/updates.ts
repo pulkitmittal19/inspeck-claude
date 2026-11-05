@@ -27,6 +27,7 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
 import { HOME } from './store.js'
+import { countInstall } from './telemetry.js'
 
 const run = promisify(execFile)
 const REPO = 'pulkitmittal19/inspeck-claude'
@@ -155,6 +156,9 @@ export async function serveNewer(port: number, log: (msg: string) => void): Prom
   return ready.version
 }
 
+/** How it was installed, for the count: `npx inspeck init` names the marketplace in Claude's settings, /plugin doesn't. */
+const howInstalled = (config = configDir()) => readJson(join(config, 'settings.json'))?.extraKnownMarketplaces?.[MARKETPLACE] ? 'init' : 'plugin'
+
 /**
  * In every chat: a look when it starts, then a tick every ten minutes (or sooner, when trying it out with a few
  * minutes) that looks when one is due and serves a newer installed version. Never throws; never holds up the chat.
@@ -169,6 +173,7 @@ export function keepCurrent(current: string, claude: string, port: number, log: 
       await checkNow(current, claude)
       const v = installed()?.version
       if (v && newer(v, current)) await serveNewer(port, log)
+      await countInstall(v ?? current, howInstalled())
     } catch { /* at the next tick */ } finally { going = false }
   }
   void tick()

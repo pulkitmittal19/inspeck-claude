@@ -4,6 +4,9 @@ import { defineConfig, devices } from '@playwright/test'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
+/* Some tests run like real installs: none of them may count as one. */
+process.env.INSPECK_TELEMETRY = 'off'
+
 export const PORT = 4870
 const home = join(tmpdir(), 'inspeck-browser-tests')
 

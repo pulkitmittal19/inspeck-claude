@@ -69,7 +69,7 @@ claude plugin marketplace update inspeck
 claude plugin update inspeck@inspeck
 ```
 
-Then say, in one line, that their app pages switch to it by themselves within about ten minutes, that chats run it from when they start or restart (a new chat, or one Claude reopens after pausing it), and that their notes are kept. Never change Claude's settings files.
+If that installed a newer version, say, in one line, that their app pages switch to it by themselves within about ten minutes, that chats run it from when they start or restart (a new chat, or one Claude reopens after pausing it), and that their notes are kept. If it was already the latest, just say so. Never change Claude's settings files.
 
 ## Questions people ask
 
@@ -83,6 +83,8 @@ Answer in a line or two, then offer to do it. Check before you claim: if a fix d
 - Default: notes wait on the page; "check my Inspeck notes" hands over all of them (call `pending`).
 - **Auto-send** on: each note comes as it's placed. If a chat is already listening for that tab (your watcher is running), Settings tells them it's going to their Claude chat and that's all; if not (typically their own browser), Settings gives them "Listen for my Inspeck notes on <address>" to send once per chat, and you start listening as described above.
 No `/inspeck:start` and no linking is needed: a note finds its chat by itself (the only chat open, or the chat in the app's project folder; a git worktree is its own project), and the chat that asks for notes takes any nobody else had.
+
+**Does Inspeck send anything?** An install count to PostHog: a random id made on this Mac, the version and how it was installed, once when new and then twice a week. Never notes, addresses, paths or code, and IP addresses aren't kept. Off with `touch ~/.inspeck/telemetry-off`, `INSPECK_TELEMETRY=off` or `DO_NOT_TRACK=1`.
 
 **What's `/inspeck:start`?** A shortcut for "open my app in your browser pane with Inspeck on". Optional.
 

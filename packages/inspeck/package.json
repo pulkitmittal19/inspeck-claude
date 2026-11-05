@@ -1,6 +1,6 @@
 {
   "name": "inspeck",
-  "version": "0.13.4",
+  "version": "0.13.5",
   "description": "Inspeck for your app: hover any element to see its CSS, click it to leave a note for Claude. `npx inspeck init` sets it all up.",
   "license": "MIT",
   "author": "Pulkit Mittal",
@@ -49,6 +49,6 @@
     "url": "git+https://github.com/pulkitmittal19/inspeck-claude.git",
     "directory": "packages/inspeck"
   },
-  "homepage": "https://github.com/pulkitmittal19/inspeck-claude#readme",
+  "homepage": "https://www.inspeck.in",
   "bugs": "https://github.com/pulkitmittal19/inspeck-claude/issues"
 }

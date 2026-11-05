@@ -352,7 +352,7 @@ test('Check comments hands over every new note in full, and that clears them fro
   assert.equal(after.json.comments[0].status, 'seen', 'read: its marker leaves the page')
   const again = allText(await s.client.callTool({ name: 'pending', arguments: {} }))
   assert.match(again, /^No new notes\./m)
-  assert.match(again, /Read before, still open:[\s\S]*Row padding is tight/)
+  assert.match(again, /Read before, still open:[\s\S]*Row padding is tight.*· localhost:5173\/v2\/conversations · seen · id /, 'naming the app: each has its own Fix 1')
 })
 
 test('Open comment gives Claude the words and the picture', async () => {

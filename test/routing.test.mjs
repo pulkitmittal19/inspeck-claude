@@ -146,6 +146,13 @@ test('a note from an ordinary browser that no session can place goes to the firs
   assert.equal(next.json.comment.to.pid, B.pid)
 })
 
+test('bind says whether Auto-send is on, however it links', async () => {
+  for (const args of [{}, { page: 'http://localhost:5197' }]) assert.match(await A.tool('bind', args), /Auto-send is off/)
+  await post('/settings', { send: 'live' })
+  for (const args of [{}, { page: 'http://localhost:5197' }]) assert.match(await A.tool('bind', args), /Auto-send is on/)
+  await post('/settings', { send: 'ask' })
+})
+
 test('bind with a page links that whole site to the session', async () => {
   assert.match(await A.tool('bind', { page: 'http://localhost:5198' }), /Notes from http:\/\/localhost:5198 now come to this session/)
   const r = await post('/comments', note('Site linked to A', { page: 'http://localhost:5198/x' }), 'http://localhost:5198')

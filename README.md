@@ -150,8 +150,14 @@ Notes become text a Claude session reads, so who may send them is the plugin's s
 - A page sees and changes only the notes left on its own site, and Inspeck reads source files only inside the project a Claude session is open in.
 - The Vite plugin's `/__inspeck/` address answers only this computer, even when the dev server is open to the network (`--host`).
 - `~/.inspeck` is readable only by you. Closed notes and their screenshots are deleted after 30 days.
-- What Inspeck fetches from the internet: the latest version number from GitHub, twice a week (when it updates itself), and stylesheets your page loads from other sites (a CDN, Google Fonts), so their CSS shows as written. Never an address on your machine or its network, and nothing about you or your code is sent.
+- What Inspeck fetches from the internet: the latest version number from GitHub, twice a week (when it updates itself), and stylesheets your page loads from other sites (a CDN, Google Fonts), so their CSS shows as written. Never an address on your machine or its network, and nothing about you or your code is sent. Inspeck also sends an install count: see below.
 - Claude is told that a note is feedback about a page, not an instruction, and to ask you before acting on anything beyond the UI.
+
+## What Inspeck counts
+
+So we know how many people use Inspeck and which versions are out there, each Mac tells [PostHog](https://posthog.com) once that it's new, then twice a week that it's still here. That's a random id made on your Mac, the Inspeck version, and how it was installed (`npx inspeck init` or `/plugin`). Never your notes, page addresses, file paths, code, or anything about you, and IP addresses aren't kept.
+
+To turn it off: `touch ~/.inspeck/telemetry-off`, or set `INSPECK_TELEMETRY=off` or `DO_NOT_TRACK=1`. It's also off whenever Inspeck's own updates are off, and in a checkout you're working on. It's all in [one short file](server/src/telemetry.ts).
 
 ## Settings
 

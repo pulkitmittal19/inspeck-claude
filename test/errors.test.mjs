@@ -20,14 +20,17 @@ async function start(env = {}) {
   copyFileSync(join(root, 'server/dist/inspeck.mjs'), join(dir, 'inspeck.mjs'))
   mkdirSync(join(dir, 'widget'))
   copyFileSync(join(root, 'server/dist/widget/inspeck.js'), join(dir, 'widget/inspeck.js'))
-  const port = 48100 + Math.floor(Math.random() * 800)
-  const kid = spawn(process.execPath, [join(dir, 'inspeck.mjs')], { cwd: dir, stdio: ['pipe', 'ignore', 'ignore'], env: { ...process.env, INSPECK_HOME: join(dir, 'home'), INSPECK_PORT: String(port), INSPECK_LATEST_URL: 'off', CLAUDE_PLUGIN_ROOT: '', ...env } })
+  const port = Number(env.INSPECK_PORT) || 48100 + Math.floor(Math.random() * 800)
+  const kid = spawn(process.execPath, [join(dir, 'inspeck.mjs')], { cwd: dir, stdio: ['pipe', 'ignore', 'pipe'], env: { ...process.env, INSPECK_HOME: join(dir, 'home'), INSPECK_PORT: String(port), INSPECK_LATEST_URL: 'off', CLAUDE_PLUGIN_ROOT: '', ...env } })
   started.push(kid)
+  let said = ''
+  kid.stderr.on('data', d => { said += d })
   const up = async () => { try { return (await fetch(`http://127.0.0.1:${port}/health`, { signal: AbortSignal.timeout(800) })).ok } catch { return false } }
   for (let i = 0; i < 50 && !await up(); i++) await new Promise(r => setTimeout(r, 100))
   const exited = new Promise(r => kid.once('exit', () => r(true)))
   return {
     dir, port, up, exited,
+    said: () => said,
     listen: () => fetch(`http://127.0.0.1:${port}/voice/listen`, { method: 'POST', headers, signal: AbortSignal.timeout(6000) }),
     end: () => kid.stdin.end(),
     stop: () => { kid.kill(); rmSync(dir, { recursive: true, force: true }) },
@@ -64,6 +67,19 @@ test('a speech helper that can\'t start: the page is told why, and the session e
   assert.match(await (await s.listen()).text(), /Couldn't start the voice listener/)
   assert.equal(await s.up(), true)
   s.stop()
+})
+
+test('a chat waiting for the port leaves nothing behind from its tries: when it gets the port, it says so once (each leftover would run then, and hold memory until then)', async () => {
+  const first = await start()
+  const waiting = await start({ INSPECK_PORT: String(first.port) })
+  /* Long enough for a second try, which also fails. */
+  await new Promise(r => setTimeout(r, 6000))
+  first.stop()
+  const listening = () => waiting.said().match(/Listening for comments/g)?.length ?? 0
+  for (let i = 0; i < 100 && !listening(); i++) await new Promise(r => setTimeout(r, 100))
+  await new Promise(r => setTimeout(r, 300))
+  assert.equal(listening(), 1)
+  waiting.stop()
 })
 
 test('a chat that ends without stopping its Inspeck (a crash, a force-quit): stdin closes, and it goes, freeing the port', async () => {
