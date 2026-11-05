@@ -131,6 +131,9 @@ export interface Comment {
   tabId?: string
   /** The session it's for, decided by the server when it arrives. */
   to?: { pid?: number; cwd?: string; how: 'bound' | 'site' | 'only' | 'project' | 'waiting' | 'claimed' }
+  /** The folder the app was served from when the note was placed (its dev server's), when known: a port can
+      serve another project later, and the note stays with its own. */
+  project?: string
   /** Absolute path to the PNG on this machine. */
   screenshot?: string
   thread: Message[]

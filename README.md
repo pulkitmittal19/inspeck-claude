@@ -78,7 +78,7 @@ If your app sets a Content Security Policy in development, allow `http://127.0.0
 
 Nothing to do: Inspeck updates itself, quietly, and your notes are kept.
 
-- **Finding a new version.** Twice a week, Inspeck reads the latest version number from GitHub (only that: nothing about you or your code is sent), when a chat starts and while one stays open. If there's a newer one, it installs it in the background with Claude Code's own commands. Installed with `npx inspeck init`, Claude Code's own auto-update is on too, and installs it when a chat starts.
+- **Finding a new version.** Twice a week, Inspeck reads the latest version number from GitHub (only that: nothing about you or your code is sent), when a chat starts and while one stays open. If there's a newer one, it installs it in the background with Claude Code's own commands. If it couldn't look or couldn't install (offline, say), it tries again within the hour. Installed with `npx inspeck init`, Claude Code's own auto-update is on too, and installs it when a chat starts.
 - **Your pages.** The new version starts in the background and takes over from the older one, so every app page, on every localhost, gets it without a reload: the widget swaps itself in the next moment Inspeck is closed, never while you're looking or writing.
 - **Your chats.** Each chat keeps the Inspeck it started with, as Claude Code does with every plugin, and keeps working on the same notes. New chats, and chats Claude reopens after pausing them, run the new version.
 
@@ -94,8 +94,8 @@ To update right away, ask Claude to **update Inspeck**. To turn self-updating of
    claude plugin marketplace remove inspeck
    ```
 
-   The second line also turns off the auto-update `init` set up. Chats already open keep Inspeck until they close.
-3. **Your notes** stay in `~/.inspeck` in case you come back. To delete them too: `rm -rf ~/.inspeck`.
+   The second line also turns off the auto-update `init` set up. Chats already open keep Inspeck until they close; then it stops by itself. To turn it off for a while instead, `claude plugin disable inspeck@inspeck` (`enable` brings it back): updates leave it off.
+3. **Your notes** stay in `~/.inspeck` in case you come back. To delete them too, with your chats closed: `rm -rf ~/.inspeck`.
 
 ## Use
 
@@ -138,7 +138,7 @@ In your own browser (Chrome, Safari, Arc), Inspeck works the same way. To tell C
 
 Claude talks to you only in the chat. The page shows your notes, never Claude's answers.
 
-Which session gets a note: the session its tab is bound to; else the session its site is linked to; else the only open session; else the session opened in the project that's serving the page. If none of those, it waits, and the first session in that project where you check your notes takes it (and its site); a session in another project only mentions it. To send a site's notes to a particular session anyway, link the site to it.
+Which session gets a note: the session its tab is bound to; else the session its site is linked to; else the only open session; else the session opened in the project that's serving the page. If none of those, it waits, and the first session in that project where you check your notes takes it (and its site); a session in another project only mentions it. To send a site's notes to a particular session anyway, link the site to it. A git worktree is its own project, apart from the main checkout around it. And notes and links belong to the app, not the port: another project starting on the same port starts with none of them.
 
 ## Safety
 

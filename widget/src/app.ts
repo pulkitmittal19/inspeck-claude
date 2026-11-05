@@ -52,6 +52,18 @@ function commonAncestor(els: Element[]): Element | null {
   return a && a !== document.documentElement ? a : null
 }
 
+/** The widget at this version, trying until it's on the page: the port may be changing hands this very instant,
+    and with the old one gone, nothing else would bring Inspeck back to this tab. */
+function loadWidget(version: string, wait = 3000): void {
+  const script = Object.assign(document.createElement('script'), { src: `${SERVER}/inspeck.js?v=${encodeURIComponent(version)}`, async: true })
+  document.head.appendChild(script)
+  setTimeout(() => {
+    if (window.__INSPECK__) return
+    script.remove()
+    loadWidget(version, Math.min(wait * 2, 30_000))
+  }, wait)
+}
+
 export class App {
   readonly host: Host
   readonly toolbar: Toolbar
@@ -134,7 +146,7 @@ export class App {
         if (this.open) return false
         tabStore.set('swapped', version)
         window.__INSPECK__?.destroy()
-        document.head.appendChild(Object.assign(document.createElement('script'), { src: `${SERVER}/inspeck.js?v=${encodeURIComponent(version)}`, async: true }))
+        loadWidget(version)
         return true
       }
       if (!swap()) { const wait = setInterval(() => { if (swap()) clearInterval(wait) }, 2000) }
@@ -204,6 +216,7 @@ export class App {
       window.dispatchEvent(new CustomEvent('inspeck:open', { detail: open }))
     }
     if (open) {
+      void this.notes.refresh()
       prefs.sync()
       void checkVoice()
       if (!this.quietIn) this.tour.start()
@@ -242,7 +255,7 @@ export class App {
     if (!n) { this.toolbar.say('clear', 'No notes on this page'); return }
     if (!this.toolbar.armed('clear')) { this.toolbar.arm('clear', `Click again to clear ${n} note${n === 1 ? '' : 's'}`); return }
     this.unpin()
-    void this.notes.clear().then(() => this.toolbar.say('clear', 'Cleared'))
+    void this.notes.clear().then(all => this.toolbar.say('clear', all ? 'Cleared' : 'Couldn’t clear. Is a Claude chat open?'))
   }
 
   /**

@@ -6,6 +6,7 @@ import { createRequire } from 'node:module'
 import { execFileSync } from 'node:child_process'
 import { join, dirname } from 'node:path'
 import { mkdtempSync, writeFileSync } from 'node:fs'
+import http from 'node:http'
 import { tmpdir } from 'node:os'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
@@ -52,4 +53,32 @@ test('inspeck() type-checks in a TypeScript vite.config, against Vite\'s own typ
   const vite = join(dirname(fileURLToPath(import.meta.url)), '..', 'node_modules', 'vite')
   writeFileSync(join(dir, 'tsconfig.json'), JSON.stringify({ compilerOptions: { strict: true, noEmit: true, module: 'esnext', moduleResolution: 'bundler', target: 'es2022', skipLibCheck: true, types: [], paths: { vite: [vite] } }, files: ['vite.config.ts'] }))
   try { execFileSync(tsc, ['-p', dir], { encoding: 'utf8' }) } catch (e) { assert.fail(`vite.config.ts doesn't type-check:\n${e.stdout}`) }
+})
+
+test('with Inspeck away the real Vite stays quiet: no error in the terminal, an empty script for the tag, a bare 503 for the rest; with it back, calls pass on', async () => {
+  const { createServer, createLogger } = await import('vite')
+  const root = mkdtempSync(join(tmpdir(), 'inspeck-vite-'))
+  writeFileSync(join(root, 'index.html'), '<!doctype html><html><body><h1>app</h1></body></html>')
+  const port = 48900 + Math.floor(Math.random() * 90), at = port + 100
+  const errors = []
+  const customLogger = createLogger('silent')
+  customLogger.error = m => errors.push(m)
+  const vite = await createServer({ configFile: false, root, plugins: [esm({ port })], customLogger, server: { port: at, strictPort: true, host: '127.0.0.1' } })
+  await vite.listen()
+  try {
+    const get = path => fetch(`http://127.0.0.1:${at}${path}`)
+    const script = await get('/__inspeck/inspeck.js')
+    assert.equal(script.status, 200)
+    assert.match(script.headers.get('content-type'), /javascript/)
+    assert.equal(script.headers.get('cache-control'), 'no-store', 'the next load must find the real one')
+    assert.equal(await script.text(), '')
+    assert.equal((await get('/__inspeck/comments?page=x')).status, 503)
+    assert.match(await (await get('/')).text(), /<script[^>]+__inspeck\/inspeck\.js/, 'the page itself is unaffected')
+    assert.deepEqual(errors, [], 'nothing printed in the developer\'s terminal')
+    /* A chat opens: Inspeck answers, and calls go through as ever. */
+    const inspeck = http.createServer((q, r) => r.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ was: q.url }))).listen(port, '127.0.0.1')
+    await new Promise(r => inspeck.once('listening', r))
+    assert.deepEqual(await (await get('/__inspeck/comments?page=x')).json(), { was: '/comments?page=x' })
+    inspeck.close()
+  } finally { await vite.close() }
 })

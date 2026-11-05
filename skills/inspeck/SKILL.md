@@ -82,7 +82,7 @@ Answer in a line or two, then offer to do it. Check before you claim: if a fix d
 **How do my notes get to you?** Two ways, and they choose in Inspeck's settings:
 - Default: notes wait on the page; "check my Inspeck notes" hands over all of them (call `pending`).
 - **Auto-send** on: each note comes as it's placed. If a chat is already listening for that tab (your watcher is running), Settings tells them it's going to their Claude chat and that's all; if not (typically their own browser), Settings gives them "Listen for my Inspeck notes on <address>" to send once per chat, and you start listening as described above.
-No `/inspeck:start` and no linking is needed: a note finds its chat by itself (the only chat open, or the chat in the app's project folder), and the chat that asks for notes takes any nobody else had.
+No `/inspeck:start` and no linking is needed: a note finds its chat by itself (the only chat open, or the chat in the app's project folder; a git worktree is its own project), and the chat that asks for notes takes any nobody else had.
 
 **What's `/inspeck:start`?** A shortcut for "open my app in your browser pane with Inspeck on". Optional.
 
@@ -97,6 +97,8 @@ No `/inspeck:start` and no linking is needed: a note finds its chat by itself (t
 
 **My notes don't come.** With Auto-send off they wait until asked: call `pending`. If another chat took the site, `bind` with `page` set to the app's address brings it here. The watcher stops after a while with nothing to do: start it again.
 
+**A note says "Can't reach Inspeck".** No chat with the plugin is running, or Inspeck was restarting at that moment. The words stay in the note: with a Claude chat open, press Enter again. If this chat has Inspeck's tools and it keeps saying so, run the health check above.
+
 **Can I copy a note?** The copy button on a note's card copies the note, where the element is (page, element, component, file and line) and its CSS, to paste anywhere.
 
 **How do I open a menu while Inspeck is on?** Hold **Space** and click: clicks go to the app while Space is held. **F** freezes the page so tooltips and hover states stay put.
@@ -105,7 +107,7 @@ No `/inspeck:start` and no linking is needed: a note finds its chat by itself (t
 
 **Settings?** Auto-send, how sizes and colours are shown on the card (*As is*, the way the code writes each, or px/rem and hex/rgb/oklch; notes to you always carry the code as written), Keyboard shortcuts. Speaking a note: the mic in the note box (macOS 26+, on-device).
 
-**Turn it off / remove it.** Off for now: press I or Esc. From a project: remove `inspeck()` from the Vite/Astro config, or the Inspeck tag from the layout/HTML `init` edited. Entirely: `claude plugin uninstall inspeck@inspeck`, then `claude plugin marketplace remove inspeck` (that also ends the auto-update). With Vite or Astro, remove `inspeck()` and its import before `npm uninstall inspeck`, or the dev server won't start. Their notes stay in `~/.inspeck` until deleted (`rm -rf ~/.inspeck`).
+**Turn it off / remove it.** Off for now: press I or Esc. Off in every new chat for a while: `claude plugin disable inspeck@inspeck` (`enable` brings it back; updates leave it off). From a project: remove `inspeck()` from the Vite/Astro config, or the Inspeck tag from the layout/HTML `init` edited. Entirely: `claude plugin uninstall inspeck@inspeck`, then `claude plugin marketplace remove inspeck` (that also ends the auto-update). Chats already open keep it until they close, so the page may keep showing it until then; then it stops by itself. With Vite or Astro, remove `inspeck()` and its import before `npm uninstall inspeck`, or the dev server won't start. Their notes stay in `~/.inspeck` until deleted (`rm -rf ~/.inspeck`, with their chats closed).
 
 **Does it send my data anywhere?** No. Notes, the server and voice stay on this Mac. The outside requests are reading Inspeck's latest version number from GitHub, twice a week, to update itself (off with `INSPECK_AUTO_UPDATE=off`), and fetching stylesheets the page itself loads from other sites, to show their CSS as written.
 

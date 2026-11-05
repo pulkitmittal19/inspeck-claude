@@ -136,7 +136,11 @@ exit 0
   const plain = (...args) => exec(args)
   const settings = () => { try { return JSON.parse(readFileSync(join(config, 'settings.json'), 'utf8')) } catch { return null } }
   const calls = () => { try { return readFileSync(log, 'utf8').trim().split('\n') } catch { return [] } }
-  return { dir, run, plain, calls, settings, read: name => readFileSync(join(dir, name), 'utf8') }
+  /* As if on another system: node is told it's on that platform before init runs. */
+  const on = platform => spawnSync(process.execPath, ['--import', `data:text/javascript,Object.defineProperty(process,'platform',{value:'${platform}'})`, BIN, 'init'], {
+    cwd: join(dir, sub), encoding: 'utf8', env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, CLAUDE_CONFIG_DIR: config, NO_COLOR: '1' },
+  })
+  return { dir, config, run, plain, on, calls, settings, read: name => readFileSync(join(dir, name), 'utf8') }
 }
 
 test('a Vite app: the plugin is installed from GitHub and the config gets inspeck(); a second run does nothing', () => {
@@ -406,4 +410,62 @@ test('Storybook on Vite gets Inspeck from the app’s Vite setup, so no second t
   })
   assert.match(webpack.run('--skip-plugin', '--skip-install', '--yes'), /added Inspeck to Storybook \(\.storybook\/preview-head\.html\)/)
   assert.match(webpack.read('.storybook/preview-head.html'), /inspeck\.js/)
+})
+
+const viteApp = () => ({
+  'package.json': JSON.stringify({ devDependencies: { vite: '^8.0.0' } }),
+  'vite.config.ts': `import { defineConfig } from 'vite'\n\nexport default defineConfig({\n  plugins: [],\n})\n`,
+})
+
+test('the reminder to commit names only what changed: the install leaving package.json alone isn\'t a change, and a second run has nothing to say', () => {
+  const p = project(viteApp())
+  execFileSync('git', ['init', '-q'], { cwd: p.dir })
+  /* These package managers do nothing, as a real one does when the package is already there. */
+  assert.match(p.plain(), /Commit vite\.config\.ts so every copy/)
+  assert.doesNotMatch(p.plain(), /Commit /)
+})
+
+test('an install that does change the package files: they\'re named', () => {
+  const p = project(viteApp())
+  execFileSync('git', ['init', '-q'], { cwd: p.dir })
+  writeFileSync(join(p.dir, 'package-lock.json'), '{}\n')
+  const bin = mkdtempSync(join(tmpdir(), 'inspeck-npm-'))
+  writeFileSync(join(bin, 'npm'), `#!/bin/sh\necho '{"changed":true}' > package-lock.json\n`)
+  chmodSync(join(bin, 'npm'), 0o755)
+  const out = execFileSync(process.execPath, [BIN, 'init'], { cwd: p.dir, encoding: 'utf8', env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, CLAUDE_CONFIG_DIR: p.config, NO_COLOR: '1' } })
+  assert.match(out, /Commit package-lock\.json and vite\.config\.ts so every copy/)
+})
+
+test('Claude Code\'s settings can\'t be changed (read-only, damaged): that doesn\'t stop it, and the app is still wired', () => {
+  for (const [how, prepare] of [
+    ['read-only', file => { writeFileSync(file, '{}\n'); chmodSync(file, 0o400) }],
+    ['damaged', file => writeFileSync(file, '{ oops')],
+  ]) {
+    const p = project(viteApp())
+    prepare(join(p.config, 'settings.json'))
+    const out = p.plain('--skip-install')
+    assert.match(out, /auto-update stays off; Inspeck still updates itself/, how)
+    assert.match(out, /✓ Inspeck is ready/, how)
+    assert.match(p.read('vite.config.ts'), /inspeck\(\)/, how)
+  }
+})
+
+test('a file of the app it can\'t change: it says so plainly, not as a crash, with the plugin in place', () => {
+  const p = project(viteApp())
+  chmodSync(join(p.dir, 'vite.config.ts'), 0o400)
+  const out = p.plain('--skip-install')
+  assert.match(out, /couldn't add Inspeck to your app: .*vite\.config\.ts.*Fix that and run this again/)
+  assert.match(out, /Inspeck is almost ready: see above/)
+  assert.ok(p.calls().includes('plugin install inspeck@inspeck'))
+})
+
+test('not a Mac: it says so and changes nothing', () => {
+  for (const platform of ['linux', 'win32']) {
+    const p = project(viteApp())
+    const r = p.on(platform)
+    assert.equal(r.status, 1, platform)
+    assert.match(r.stdout, /Inspeck runs on macOS for now, so nothing was changed here/)
+    assert.deepEqual(p.calls(), [], 'Claude Code left alone')
+    assert.doesNotMatch(p.read('vite.config.ts'), /inspeck/)
+  }
 })

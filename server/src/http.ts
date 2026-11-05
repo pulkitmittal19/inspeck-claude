@@ -284,8 +284,9 @@ async function route(req: IncomingMessage, res: ServerResponse, version: string,
     const b = (await body(req)) as { page?: unknown; site?: unknown }
     const siteOf = originKey
     let which: ((c: Comment) => boolean) | null = null
-    if (typeof b.page === 'string') { const key = pageKey(b.page); which = c => pageKey(c.page) === key }
-    else if (typeof b.site === 'string' && siteOf(b.site)) { const o = siteOf(b.site); which = c => siteOf(c.page) === o }
+    const here = projectOf(String(b.page ?? b.site))
+    if (typeof b.page === 'string') { const key = pageKey(b.page); which = c => pageKey(c.page) === key && store.sameApp(c, here) }
+    else if (typeof b.site === 'string' && siteOf(b.site)) { const o = siteOf(b.site); which = c => siteOf(c.page) === o && store.sameApp(c, here) }
     if (!which) return send(res, 400, { error: 'Send { page } or { site }' })
     if (!ownSite(origin, String(b.page ?? b.site))) return send(res, 403, { error: 'A page can only send its own site\'s notes' })
     const sent = store.release(which)
@@ -295,7 +296,7 @@ async function route(req: IncomingMessage, res: ServerResponse, version: string,
 
   if (!id && req.method === 'GET') {
     const page = url.searchParams.get('page')
-    const list = (page ? store.forPage(page) : store.open()).filter(c => ownSite(origin, c.page))
+    const list = (page ? store.forPage(page, projectOf(page)) : store.open()).filter(c => ownSite(origin, c.page))
     return send(res, 200, { comments: list.map(forPage) })
   }
 
@@ -311,7 +312,7 @@ async function route(req: IncomingMessage, res: ServerResponse, version: string,
     const clue = { text: note.element.text, tag: note.element.tag, selector: note.element.selector }
     if (note.source) note.source = inProjectFiles(note.page, note.source.map(at => resolveSource(at, may)), list => findLines(list, clue, may))
     for (const m of note.group ?? []) if (m.source) m.source = resolveSource(m.source, may)
-    const created = store.add(note, routeNote(note.page, note.tabId))
+    const created = store.add(note, routeNote(note.page, note.tabId), projectOf(note.page))
     onNew(created)
     return send(res, 201, { comment: forPage(created) })
   }
@@ -322,6 +323,7 @@ async function route(req: IncomingMessage, res: ServerResponse, version: string,
     if (b.note.length > NOTE_MAX) return send(res, 400, { error: `A note holds up to ${NOTE_MAX.toLocaleString('en')} characters` })
     if (!b.note.trim()) return send(res, 400, { error: 'A note needs some words (delete it instead)' })
     const c = store.editNote(id, b.note)
+    if (c === 'read') return send(res, 409, { error: 'Claude has already read this note, so this change wouldn’t reach it. Add it as a new note.' })
     return c ? send(res, 200, { comment: forPage(c) }) : send(res, 404, { error: 'No such comment' })
   }
 

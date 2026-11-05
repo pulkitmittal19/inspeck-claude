@@ -60,6 +60,9 @@ class Listener {
       }
     })
     this.child.on('error', () => {})
+    /* Writing to a listener that has just died (macOS can kill it the moment it touches the mic): the session
+       ends through its exit; unheard, this error would end the whole server. */
+    this.child.stdin?.on('error', () => {})
   }
   onReady: (() => void) | null = null
   get alive() { return this.child.exitCode === null && this.child.signalCode === null }
@@ -103,7 +106,8 @@ export function listenStream(req: IncomingMessage, res: ServerResponse): void {
   }
   if (!l.alive) finish()
   else l.child.on('exit', finish)
-  l.child.on('error', err => { out({ type: 'error', code: 'failed', message: `Couldn't start the voice listener: ${err.message}` }); ended = true })
+  /* It never started, so it never exits: end the session here, or the page's connection stays open for good. */
+  l.child.on('error', err => { out({ type: 'error', code: 'failed', message: `Couldn't start the voice listener: ${err.message}` }); ended = true; res.end() })
   /* The page went away (or cancelled): stop listening now, no finishing. */
   res.on('close', () => l.kill())
   req.on('aborted', () => l.kill())

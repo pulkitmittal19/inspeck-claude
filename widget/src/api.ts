@@ -53,6 +53,12 @@ const checkVersion = (res: Response) => {
   if (theirs && newer(theirs, VERSION) && outdated) { outdated(theirs); outdated = null }
 }
 
+/* What the person sees whenever Inspeck doesn't answer. */
+const CANT_REACH = 'Can’t reach Inspeck. Open a Claude chat, then try again: your note stays here.'
+/* Past the slowest real answer (a stylesheet fetched for the page, 8 s at most). An Inspeck that's frozen, rather
+   than gone, accepts a call and never answers: without a limit a note would say nothing and stay "sending" for good. */
+const CALL_LIMIT_MS = 15_000
+
 async function call<T>(method: string, path: string, body?: unknown): Promise<T> {
   let res: Response
   try {
@@ -61,13 +67,16 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<T>
       credentials: 'omit',
       headers: { 'x-inspeck': '1', ...(body ? { 'content-type': 'application/json' } : {}) },
       body: body ? JSON.stringify(body) : undefined,
+      signal: AbortSignal.timeout?.(CALL_LIMIT_MS),
     })
   } catch {
-    throw new ApiError('Can’t reach Inspeck. Open a Claude chat, then try again: your note stays here.')
+    throw new ApiError(CANT_REACH)
   }
   checkVersion(res)
-  const data = await res.json().catch(() => ({})) as { error?: string } & T
-  if (!res.ok) throw new ApiError(data.error ?? `Inspeck answered ${res.status}`)
+  const data = await res.json().catch(() => null) as ({ error?: string } & T) | null
+  /* Inspeck always answers in JSON and says what's wrong. Anything else came from something in between (a dev
+     server passing the call on, with Inspeck away), which for the person is the same as no answer. */
+  if (!data || !res.ok) throw new ApiError(data?.error ?? (res.status >= 500 || res.ok ? CANT_REACH : `Inspeck answered ${res.status}`))
   return data
 }
 

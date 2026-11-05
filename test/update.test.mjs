@@ -49,6 +49,7 @@ async function github(version) {
   const seen = { asks: 0, version }
   const srv = http.createServer((req, res) => { seen.asks++; res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ name: 'inspeck', version: seen.version })) })
   await new Promise(r => srv.listen(0, '127.0.0.1', r))
+  srv.unref()
   return { url: `http://127.0.0.1:${srv.address().port}/plugin.json`, seen, close: () => srv.close() }
 }
 
@@ -98,6 +99,46 @@ test('installed from GitHub: a newer Inspeck installs itself, looked for twice a
   await b.stop()
   assert.equal(gh.seen.asks, 1, 'not again within the half week')
   assert.equal(claude.calls().length, 2)
+  gh.close()
+  rmSync(tmp, { recursive: true, force: true })
+})
+
+test('a look or an install that failed tries again within the hour; a good look waits the half week', async () => {
+  const tmp = mkdtempSync(join(tmpdir(), 'inspeck-up-'))
+  const home = join(tmp, 'home'), config = join(tmp, 'claude'), file = join(home, 'latest.json')
+  marketplace(config, GITHUB)
+  const port = 49800 + Math.floor(Math.random() * 90)
+  const gh = await github('0.0.0')
+  const anHourAgo = () => writeFileSync(file, JSON.stringify({ ...readJsonFile(file), checkedAt: new Date(Date.now() - 61 * 60_000).toISOString() }))
+  const chat = async (latest, claude = '') => { const c = await start({ port, home, config, pluginRoot: INSTALLED, latest, claude }); await new Promise(r => setTimeout(r, 800)); await c.stop() }
+
+  /* Offline: GitHub can't be read. */
+  await chat('http://127.0.0.1:9/plugin.json')
+  assert.equal(readJsonFile(file)?.failed, true)
+  /* Back online, within the hour: left for now. */
+  await chat(gh.url)
+  assert.equal(gh.seen.asks, 0)
+  /* An hour on: it looks. */
+  anHourAgo()
+  await chat(gh.url)
+  assert.equal(gh.seen.asks, 1)
+  assert.equal(readJsonFile(file)?.failed, undefined, 'a good look')
+  /* A good look an hour ago: not again for half a week. */
+  anHourAgo()
+  await chat(gh.url)
+  assert.equal(gh.seen.asks, 1)
+
+  /* A newer version that can't be installed (Claude's command fails): again within the hour too. */
+  gh.seen.version = '99.0.0'
+  rmSync(file)
+  const failing = join(tmp, 'claude-failing')
+  writeFileSync(failing, `#!/bin/sh\necho "$*" >> "${join(tmp, 'failing.log')}"\nexit 1\n`)
+  chmodSync(failing, 0o755)
+  await chat(gh.url, failing)
+  assert.equal(readJsonFile(file)?.failed, true)
+  anHourAgo()
+  await chat(gh.url, failing)
+  assert.equal(readFileSync(join(tmp, 'failing.log'), 'utf8').trim().split('\n').length, 2, 'tried twice')
   gh.close()
   rmSync(tmp, { recursive: true, force: true })
 })
@@ -291,13 +332,13 @@ test('a project on an inspeck npm package older than the one needed is offered t
     return said
   }
   const first = await open()
-  assert.match(first, /Inspeck dev plugin \(the inspeck npm package in .*apps\/admin\) is 0\.10\.2, older than 0\.13\.1/)
+  assert.match(first, /Inspeck dev plugin \(the inspeck npm package in .*apps\/admin\) is 0\.10\.2, older than 0\.13\.4/)
   assert.match(first, /`pnpm add -D inspeck@latest`/, "the project's own package manager")
   assert.doesNotMatch(await open(), /Inspeck dev plugin/, 'offered once')
 
   /* Up to date: nothing to offer. */
   rmSync(home, { recursive: true, force: true })
-  writeFileSync(join(project, 'apps', 'admin', 'node_modules', 'inspeck', 'package.json'), JSON.stringify({ name: 'inspeck', version: '0.13.1' }))
+  writeFileSync(join(project, 'apps', 'admin', 'node_modules', 'inspeck', 'package.json'), JSON.stringify({ name: 'inspeck', version: '0.13.4' }))
   assert.doesNotMatch(await open(), /Inspeck dev plugin/)
   rmSync(tmp, { recursive: true, force: true })
 })

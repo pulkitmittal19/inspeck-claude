@@ -3,6 +3,7 @@
  * thing a person does, checked with the real mouse and keyboard where a person would use them. */
 import { test, expect } from '@playwright/test'
 import { existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs'
+import { execSync } from 'node:child_process'
 import { join } from 'node:path'
 import { api, deleteNote, markers, note, noteBody, ready, world } from './hosts-lib.mjs'
 
@@ -75,6 +76,71 @@ test('a note left waiting by a closed chat: a chat in another project leaves it 
   const linked = await other.tool('bind', { page: A.url })
   expect(linked).toContain('1 note was waiting there')
   expect(await other.tool('pending')).toContain('second for alpha')
+})
+
+test('a port reused by another project: the new app shows none of the old one\'s notes, numbers its own from 1, and its notes go to its own chat', async ({ context }) => {
+  const A = w.app('alpha', 5301)
+  const a = await w.chat('a', A.dir)
+  await w.up()
+  await a.tool('bind', { page: A.url })
+  const p = await context.newPage(); await p.goto(A.url); await ready(p)
+  await note(p, '#title', 'alpha note left waiting')
+  /* Project A's dev server stops, and project B's starts on the same port, with its own chat. */
+  execSync('lsof -tiTCP:5301 -sTCP:LISTEN | xargs kill')
+  await new Promise(r => setTimeout(r, 500))
+  const B = w.app('beta', 5301)
+  const b = await w.chat('b', B.dir)
+  await new Promise(r => setTimeout(r, 2500))
+  await p.goto(B.url); await ready(p)
+  await p.evaluate(() => window.__INSPECK__.app.setOpen(true))
+  await p.waitForTimeout(1500)
+  expect(await markers(p), 'none of project A\'s notes on B\'s page').toEqual([])
+  await note(p, '#buy', 'beta note')
+  expect(await markers(p), 'B numbers its own from 1').toEqual(['1'])
+  const rb = await b.tool('pending')
+  expect(rb, 'B\'s note goes to B\'s chat').toContain('beta note')
+  expect(rb).not.toContain('alpha note left waiting')
+  /* A again on the same port: its waiting note is back on its page, and its link to chat A still holds. */
+  execSync('lsof -tiTCP:5301 -sTCP:LISTEN | xargs kill')
+  await new Promise(r => setTimeout(r, 500))
+  w.app('alpha', 5301)
+  await new Promise(r => setTimeout(r, 2500))
+  await p.goto(A.url); await ready(p)
+  await p.evaluate(() => window.__INSPECK__.app.setOpen(true))
+  await expect.poll(() => markers(p), { timeout: 8000 }).toEqual(['1'])
+  await note(p, '#buy', 'alpha again')
+  expect(await markers(p)).toEqual(['1', '2'])
+  const ra = await a.tool('pending')
+  expect(ra).toContain('alpha again'); expect(ra).toContain('alpha note left waiting')
+  expect(ra, 'and never B\'s').not.toContain('beta note')
+})
+
+test('a worktree and the main checkout are two projects: each app\'s notes go to the chat in its own copy, even when the other chat is newer', async ({ context }) => {
+  /* A repository with a worktree inside it, as Claude's desktop app makes them. */
+  const repo = join(w.base, 'repo')
+  mkdirSync(join(repo, '.git', 'worktrees', 'brave'), { recursive: true })
+  const tree = join(repo, '.claude', 'worktrees', 'brave')
+  mkdirSync(tree, { recursive: true })
+  writeFileSync(join(tree, '.git'), `gitdir: ${join(repo, '.git', 'worktrees', 'brave')}\n`)
+  const W = w.app('wt', 5302, { dir: join(tree, 'web') })
+  const M = w.app('main', 5303, { dir: join(repo, 'web') })
+  const inTree = await w.chat('tree', tree)
+  await w.up()
+  const inMain = await w.chat('main', repo)
+  const pw = await context.newPage(); await pw.goto(W.url); await ready(pw)
+  const pm = await context.newPage(); await pm.goto(M.url); await ready(pm)
+  await note(pw, '#title', 'note on the worktree app')
+  await note(pm, '#title', 'note on the main app')
+  /* Where each note was sent, as placed. */
+  const sentTo = async (page, url) => (await api(page, 'GET', `/comments?page=${encodeURIComponent(url + '/')}`)).json.comments.map(c => String(c.to?.pid))
+  expect(await sentTo(pw, W.url), 'the worktree app\'s note, to the worktree chat').toEqual([inTree.env.INSPECK_SESSION_PID])
+  expect(await sentTo(pm, M.url), 'the main app\'s note, to the main chat').toEqual([inMain.env.INSPECK_SESSION_PID])
+  /* The main chat asked first, as its listener would be: it neither has nor takes the worktree's note. */
+  const fromMain = await inMain.tool('pending'), fromTree = await inTree.tool('pending')
+  expect(fromTree).toContain('note on the worktree app')
+  expect(fromTree).not.toContain('note on the main app')
+  expect(fromMain).toContain('note on the main app')
+  expect(fromMain, 'the main chat would edit the wrong copy').not.toContain('note on the worktree app')
 })
 
 test('a monorepo: the chat at the repo root gets notes from an app served from a package folder', async ({ context }) => {
@@ -289,4 +355,62 @@ test('another program holds Inspeck\'s port: Claude can say so', async () => {
     const said = await c.tool('pending')
     expect(said).toMatch(/port|4880|another program|in use/i)
   } finally { squatter.close() }
+})
+
+/* ---------------- a dragged area, and the card's formats ---------------- */
+
+test('a note on a dragged area: one note lists every element inside it, and Claude gets them all', async ({ context }) => {
+  const A = w.app('alpha', 5301)
+  const c = await w.chat('one', A.dir)
+  await w.up()
+  const p = await context.newPage(); await p.goto(A.url); await ready(p)
+  await p.evaluate(() => window.__INSPECK__.app.setOpen(true)); await p.waitForTimeout(450)
+  /* Across the card's three parts, inside its padding (so the area is those three, not the card as one element). */
+  const b = await p.evaluate(() => { const r = document.querySelector('.card').getBoundingClientRect(); return { x0: r.left + 4, y0: r.top + 4, x1: r.right - 4, y1: r.bottom - 4 } })
+  await p.mouse.move(b.x0, b.y0); await p.mouse.down()
+  await p.mouse.move((b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2, { steps: 6 }); await p.mouse.move(b.x1, b.y1, { steps: 6 })
+  await p.mouse.up(); await p.waitForTimeout(500)
+  await p.keyboard.type('tighten this card', { delay: 5 }); await p.keyboard.press('Enter'); await p.waitForTimeout(900)
+  await p.keyboard.press('Escape'); await p.waitForTimeout(200)
+  expect(await markers(p), 'one note for the area').toEqual(['1'])
+  const read = await c.tool('pending')
+  expect(read).toContain('tighten this card')
+  for (const id of ['#card-title', '#card-price', '#buy']) expect(read, `${id} is listed`).toContain(id)
+})
+
+test('Settings formats: sizes in rem and colours in oklch on the CSS card, kept in another app; notes still carry the code as written', async ({ context }) => {
+  const A = w.app('alpha', 5301), B = w.app('beta', 5302)
+  const c = await w.chat('one', A.dir)
+  await w.up()
+  const pa = await context.newPage(); await pa.goto(A.url); await ready(pa)
+  const at = async (page, sel) => page.evaluate(sel => { const e = document.querySelector('inspeck-root').shadowRoot.querySelector(sel); const r = e.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 } }, sel)
+  await pa.evaluate(() => window.__INSPECK__.app.setOpen(true)); await pa.waitForTimeout(450)
+  for (const sel of ['[data-action="settings"]', '.settings [data-key="sizes"][data-value="rem"]', '.settings [data-key="colors"][data-value="oklch"]']) {
+    const x = await at(pa, sel); await pa.mouse.click(x.x, x.y); await pa.waitForTimeout(400)
+  }
+  await pa.keyboard.press('Escape'); await pa.waitForTimeout(300)
+  /* Hover the card's own box (its padding), with CSS on hover. */
+  const shown = async page => {
+    if (!await page.evaluate(() => window.__INSPECK__.app.open)) { await page.evaluate(() => window.__INSPECK__.app.setOpen(true)); await page.waitForTimeout(450) }
+    if (!await page.evaluate(() => window.__INSPECK__.app.cssOnHover)) { await page.mouse.move(5, 5); await page.keyboard.press('c'); await page.waitForTimeout(300) }
+    const r = await page.evaluate(() => { const r = document.querySelector('.card').getBoundingClientRect(); return { x: r.left + 5, y: r.top + 5 } })
+    await page.mouse.move(r.x, r.y, { steps: 3 }); await page.waitForTimeout(800)
+    return page.evaluate(() => [...document.querySelector('inspeck-root').shadowRoot.querySelectorAll('.card .decl')].map(d => d.textContent.replace(/\s+/g, ' ').trim()).join(' | '))
+  }
+  const inA = await shown(pa)
+  expect(inA, 'padding 14px in rem').toContain('0.875rem')
+  expect(inA, '#ddd in oklch').toMatch(/oklch\(/)
+  expect(inA).not.toContain('14px')
+  const pb = await context.newPage(); await pb.goto(B.url); await ready(pb)
+  const inB = await shown(pb)
+  expect(inB, 'the same choice in another app').toContain('0.875rem')
+  expect(inB).toMatch(/oklch\(/)
+  await pa.bringToFront()
+  await pa.keyboard.press('c'); await pa.waitForTimeout(200)
+  await note(pa, '.card', 'more room in this card')
+  const read = await c.tool('pending')
+  expect(read).toContain('more room in this card')
+  expect(read, 'Claude gets the code as written').toContain('14px')
+  expect(read.toLowerCase(), 'the hex colour (browsers give it to scripts as rgb(), so its case is Inspeck\'s)').toContain('#ddd')
+  expect(read, 'not the card\'s format').not.toMatch(/oklch|0\.875rem/)
 })

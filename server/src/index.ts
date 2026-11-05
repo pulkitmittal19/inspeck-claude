@@ -313,4 +313,7 @@ server.server.oninitialized = noteClient
 
 await listen(VERSION, log, push)
 await server.connect(new StdioServerTransport())
+/* The chat is over, however it ended (a crash or a force-quit stops nothing else): nothing can ask this one for
+   anything again. Closing stdin is how an MCP client ends a server, and the library doesn't act on it. */
+process.stdin.on('close', () => process.exit(0))
 log(`Ready. Inbox: ${store.inboxPath()}`)

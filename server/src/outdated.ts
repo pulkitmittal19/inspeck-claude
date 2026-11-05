@@ -1,7 +1,7 @@
 /* The `inspeck` npm package in a project (the Vite plugin, `npx inspeck init`) is a dependency of that
  * project: nothing updates it by itself. Since 0.11.0 it's a thin pass-through (and since 0.12.0 it answers only this computer) and everything that
  * changes lives in this plugin, which does update itself; so a project only needs bringing up to date
- * when a fix needs a newer package (0.13.1: its types). When a chat opens in a project still on an older one, Claude is asked to offer that, once.
+ * when a fix needs a newer package (0.13.1: its types; 0.13.4: no errors in the terminal with no chat open). When a chat opens in a project still on an older one, Claude is asked to offer that, once.
  *
  * Once per project for each version needed: a note in Inspeck's folder remembers it was offered, so a "no"
  * is respected until a newer fix needs a newer package.
@@ -11,8 +11,9 @@ import { dirname, join } from 'node:path'
 import { HOME } from './store.js'
 
 /** The first version with every fix a project needs: a pass-through (see above), closed to other devices on the
-    network (0.12.0), and typed so a TypeScript project's build accepts it (0.13.1). */
-export const NEEDED = '0.13.1'
+    network (0.12.0), typed so a TypeScript project's build accepts it (0.13.1), and quiet in the dev server's terminal
+    when no chat is open (0.13.4). */
+export const NEEDED = '0.13.4'
 const OFFERED = () => join(HOME, 'package-update-offered.json')
 /** What the offer is remembered under: the project, and the version it was offered for. */
 const offerKey = (dir: string) => `${dir} ${NEEDED}`

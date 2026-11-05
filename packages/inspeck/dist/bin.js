@@ -88,17 +88,20 @@ function turnOnAutoUpdate() {
     file = realpathSync(file);
   } catch {
   }
-  const { src, result } = withAutoUpdate(existsSync(file) ? readFileSync(file, "utf8") : null);
-  if (result === "added") {
-    mkdirSync(dirname(file), { recursive: true });
-    writeFileSync(file, src);
-    done(`auto-update on: new versions arrive by themselves (${file.replace(homedir(), "~")})`);
-  } else if (result === "present") {
-    done("auto-update on");
-  } else if (result === "other") {
-    note("auto-update left as it is: your inspeck marketplace isn't the GitHub one");
-  } else {
-    warn(`couldn't read ${file}; to get new versions by themselves, turn on auto-update in Claude: /plugin \u203A Marketplaces \u203A inspeck`);
+  const cant = () => note(`couldn't change ${file}, so Claude Code's auto-update stays off; Inspeck still updates itself`);
+  try {
+    const { src, result } = withAutoUpdate(existsSync(file) ? readFileSync(file, "utf8") : null);
+    if (result === "added") {
+      mkdirSync(dirname(file), { recursive: true });
+      writeFileSync(file, src);
+      done(`auto-update on: new versions arrive by themselves (${file.replace(homedir(), "~")})`);
+    } else if (result === "present") {
+      done("auto-update on");
+    } else if (result === "other") {
+      note("auto-update left as it is: your inspeck marketplace isn't the GitHub one");
+    } else cant();
+  } catch {
+    cant();
   }
 }
 function readJson(path) {
@@ -163,6 +166,21 @@ function lockfile(cwd) {
 }
 function packageManager(cwd) {
   return lockfile(cwd)?.add ?? ["npm", ["install", "-D", "inspeck"]];
+}
+function installPackage(cwd) {
+  const [pm, args] = packageManager(cwd);
+  const read = (file) => existsSync(file) ? readFileSync(file, "utf8") : null;
+  const files = () => [join(cwd, "package.json"), ...[lockfile(cwd)?.file ?? []].flat()];
+  const before = new Map(files().map((f) => [f, read(f)]));
+  const r = run(pm, args, cwd);
+  if (!r.ok) {
+    warn(`\`${pm} ${args.join(" ")}\` failed:
+${r.out.trim()}`);
+    return false;
+  }
+  for (const f of files()) if (read(f) !== (before.get(f) ?? null)) changed.push(f);
+  done(`installed inspeck with ${pm}`);
+  return true;
 }
 function afterImports(src, line) {
   const imports = [...src.matchAll(/^import[^\n]*?(?:from\s*)?['"][^'"]+['"];?[ \t]*$/gm)];
@@ -389,17 +407,7 @@ async function wireApp(flags) {
   const rel = (p) => relative(cwd, p) || p;
   if (verbose) say("Your app");
   if (app.kind === "astro") {
-    if (!flags.skipInstall) {
-      const [pm, args] = packageManager(cwd);
-      const r = run(pm, args, cwd);
-      if (!r.ok) {
-        warn(`\`${pm} ${args.join(" ")}\` failed:
-${r.out.trim()}`);
-        return;
-      }
-      changed.push(join(cwd, "package.json"), ...[lockfile(cwd)?.file ?? []].flat());
-      done(`installed inspeck with ${pm}`);
-    }
+    if (!flags.skipInstall && !installPackage(cwd)) return;
     const { src, result } = wireAstro(readFileSync(app.config, "utf8"));
     if (result === "present") done(`${rel(app.config)} already loads Inspeck`);
     else if (result === "added") {
@@ -425,17 +433,7 @@ ${r.out.trim()}`);
     return;
   }
   if (app.kind === "vite") {
-    if (!flags.skipInstall) {
-      const [pm, args] = packageManager(cwd);
-      const r = run(pm, args, cwd);
-      if (!r.ok) {
-        warn(`\`${pm} ${args.join(" ")}\` failed:
-${r.out.trim()}`);
-        return;
-      }
-      changed.push(join(cwd, "package.json"), ...[lockfile(cwd)?.file ?? []].flat());
-      done(`installed inspeck with ${pm}`);
-    }
+    if (!flags.skipInstall && !installPackage(cwd)) return;
     const { src, result } = wireVite(readFileSync(app.config, "utf8"), app.config);
     if (result === "present") done(`${rel(app.config)} already loads Inspeck`);
     else if (result === "added") {
@@ -546,11 +544,19 @@ async function main(argv) {
     say("  --verbose         list everything it did");
     return command === void 0 || command === "--help" || command === "-h" ? 0 : 1;
   }
+  if (process.platform !== "darwin") {
+    say("Inspeck runs on macOS for now, so nothing was changed here.");
+    return 1;
+  }
   const plugin = flags.skipPlugin ? "present" : installPlugin();
   if (!flags.skipPlugin && (plugin === "new" || plugin === "present") && flags.autoUpdate) turnOnAutoUpdate();
   if (verbose && !flags.skipPlugin) say("");
-  await wireApp(flags);
-  wireStorybook(flags.cwd);
+  try {
+    await wireApp(flags);
+    wireStorybook(flags.cwd);
+  } catch (err) {
+    warn(`couldn't add Inspeck to your app: ${err.message}. Fix that and run this again.`);
+  }
   cspHint(flags.cwd);
   if (problems || verbose) say("");
   if (!plugin) {

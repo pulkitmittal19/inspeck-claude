@@ -20,6 +20,8 @@ import { actionOf } from './router'
 import { cancelFrame, nextFrame } from './native'
 
 const POLL_MS = 4000
+/* Inspeck away (every chat closed): each try is a red line in the page's console, so they space out to this. */
+const POLL_AWAY_MS = 30_000
 /** How far a marker steps aside from another on the same spot: its width and a hair. */
 const MARKER_STEP = 24
 
@@ -63,8 +65,8 @@ export interface Notes {
   refresh(): Promise<void>
   /** How many notes have markers on this page. */
   readonly count: number
-  /** Withdraw every note on this page. */
-  clear(): Promise<void>
+  /** Withdraw every note on this page; whether they all went. */
+  clear(): Promise<boolean>
   /** An area note's elements still on the page, and where the area is now. */
   membersOf(note: Note): Element[]
   areaOf(note: Note): Box | null
@@ -280,12 +282,14 @@ export function createNotes(ui: HTMLElement, onOpen: (note: Note, el: Element | 
 
   /* ---------- syncing with the server ---------- */
 
+  let failed = 0
   async function refresh() {
     try {
       const all = await api.list(pageNow())
       notes = all.filter(open).sort((a, b) => a.n - b.n)
+      failed = 0
       render()
-    } catch { /* server away for a moment; keep what we have */ }
+    } catch { failed++ /* server away for a moment; keep what we have */ }
   }
 
   const poll = () => {
@@ -293,7 +297,7 @@ export function createNotes(ui: HTMLElement, onOpen: (note: Note, el: Element | 
     timer = window.setTimeout(async () => {
       if (document.visibilityState === 'visible') await refresh()
       poll()
-    }, POLL_MS)
+    }, Math.min(POLL_AWAY_MS, POLL_MS * 2 ** Math.max(0, failed - 1)))
   }
 
   /* Single-page apps change route without reloading: follow along. */
@@ -324,6 +328,8 @@ export function createNotes(ui: HTMLElement, onOpen: (note: Note, el: Element | 
       const ids = notes.map(n => n.id)
       await Promise.allSettled(ids.map(id => api.remove(id)))
       await refresh()
+      /* By what's left, not by each answer: one already gone (from another tab, say) is no failure. */
+      return !notes.length
     },
     handle(e) {
       const a = actionOf(e)

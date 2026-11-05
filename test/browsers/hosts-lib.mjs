@@ -18,6 +18,19 @@ const PAGE = (name, tag) => `<!doctype html><html><head><meta charset="utf-8"><t
 <div class="card"><h2 id="card-title">${name} plan</h2><p id="card-price">$24 a month</p><button id="buy">Buy ${name}</button></div>
 ${tag ? `<script src="http://127.0.0.1:${PORT}/inspeck.js"></script>` : ''}</body></html>`
 
+/** This build's server and widget, laid out in `dir` as a plugin folder holds them; `version` makes them say they're
+    that version (a newer or older one). */
+function inspeckIn(dir, version) {
+  copyFileSync(join(ROOT, 'server/dist/inspeck.mjs'), join(dir, 'inspeck.mjs'))
+  mkdirSync(join(dir, 'widget'))
+  copyFileSync(join(ROOT, 'server/dist/widget/inspeck.js'), join(dir, 'widget/inspeck.js'))
+  if (version) {
+    const ours = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')).version
+    for (const f of ['inspeck.mjs', 'widget/inspeck.js']) writeFileSync(join(dir, f), readFileSync(join(dir, f), 'utf8').split(`"${ours}"`).join(`"${version}"`))
+  }
+  return dir
+}
+
 export function world() {
   const base = mkdtempSync(join(tmpdir(), 'inspeck-hosts-'))
   const home = join(base, 'home')
@@ -26,9 +39,11 @@ export function world() {
   return {
     /** This world's Inspeck folder (notes, settings), as ~/.inspeck is for a person. */
     home,
-    /** An app on its own localhost port, from its own project folder; `tag: false` doesn't load Inspeck itself. */
-    app(name, port, { tag = true } = {}) {
-      const dir = join(base, name)
+    /** The folder this world's apps and chats live under. */
+    base,
+    /** An app on its own localhost port, from its own project folder (or `dir`); `tag: false` doesn't load Inspeck itself. */
+    app(name, port, { tag = true, dir: at } = {}) {
+      const dir = at ?? join(base, name)
       mkdirSync(dir, { recursive: true })
       writeFileSync(join(dir, 'index.html'), PAGE(name, tag))
       writeFileSync(join(dir, 'second.html'), PAGE(`${name} second`, tag))
@@ -40,14 +55,7 @@ export function world() {
     async chat(name, cwd, { version, env: extra = {} } = {}) {
       const stand = spawn('sleep', ['900'], { stdio: 'ignore' })
       kids.push(stand)
-      const dir = mkdtempSync(join(base, `chat-${name}-`))
-      copyFileSync(join(ROOT, 'server/dist/inspeck.mjs'), join(dir, 'inspeck.mjs'))
-      mkdirSync(join(dir, 'widget'))
-      copyFileSync(join(ROOT, 'server/dist/widget/inspeck.js'), join(dir, 'widget/inspeck.js'))
-      if (version) {
-        const ours = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')).version
-        for (const f of ['inspeck.mjs', 'widget/inspeck.js']) writeFileSync(join(dir, f), readFileSync(join(dir, f), 'utf8').split(`"${ours}"`).join(`"${version}"`))
-      }
+      const dir = inspeckIn(mkdtempSync(join(base, `chat-${name}-`)), version)
       const env = { ...process.env, INSPECK_HOME: home, INSPECK_PORT: String(PORT), INSPECK_SESSION_PID: String(stand.pid), INSPECK_LATEST_URL: 'off', INSPECK_AUTO_UPDATE: 'off', CLAUDE_PLUGIN_ROOT: '', ...extra }
       const client = new Client({ name: `claude-${name}`, version: '0' })
       await client.connect(new StdioClientTransport({ command: process.execPath, args: [join(dir, 'inspeck.mjs')], cwd, env, stderr: 'ignore' }))
@@ -60,6 +68,17 @@ export function world() {
       }
       chats.push(c)
       return c
+    },
+    /** An update landing while chats are open: the newer Inspeck it installed, started in the background to answer
+        pages (`inspeck.mjs serve`, as the update starts it). It takes the port from an older one; `version` as for chat. */
+    serve(version, extra = {}) {
+      const dir = inspeckIn(mkdtempSync(join(base, `serve-${version ?? 'this'}-`)), version)
+      const env = { ...process.env, INSPECK_HOME: home, INSPECK_PORT: String(PORT), INSPECK_LATEST_URL: 'off', INSPECK_AUTO_UPDATE: 'off', CLAUDE_PLUGIN_ROOT: '', ...extra }
+      kids.push(spawn(process.execPath, [join(dir, 'inspeck.mjs'), 'serve'], { env, stdio: 'ignore' }))
+    },
+    /** The version of the Inspeck answering on the port, or null. */
+    async answering() {
+      try { return (await (await fetch(`http://127.0.0.1:${PORT}/health`)).json()).version } catch { return null }
     },
     /** Inspeck's server answers. */
     async up() {

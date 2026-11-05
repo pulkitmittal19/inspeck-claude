@@ -613,3 +613,16 @@ test('a note with no place in the code tells Claude how to find it, without gues
   const read = await s.client.callTool({ name: 'get', arguments: { id: json.comment.id } })
   assert.match(allText(read), /code\s+not given by the page: search the project for where InvoiceComponent is declared, then the classes in the selector, then the words shown/)
 })
+
+test('a note Claude has already read: a change on the page is refused in plain words, and the note stays as Claude read it', async () => {
+  const s = await start()
+  try {
+    const id = (await page(s.port, 'POST', '/comments', { body: fix })).json.comment.id
+    assert.equal((await page(s.port, 'PATCH', `/comments/${id}`, { body: { note: 'changed before it was read' } })).status, 200, 'unread: fine')
+    assert.match(allText(await s.client.callTool({ name: 'pending', arguments: {} })), /changed before it was read/)
+    const late = await page(s.port, 'PATCH', `/comments/${id}`, { body: { note: 'changed after it was read' } })
+    assert.equal(late.status, 409)
+    assert.match(late.json.error, /already read/)
+    assert.match(allText(await s.client.callTool({ name: 'get', arguments: { id } })), /changed before it was read/)
+  } finally { await s.stop() }
+})

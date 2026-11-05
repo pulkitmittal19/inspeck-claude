@@ -36,6 +36,8 @@ const LATEST_URL = process.env.INSPECK_LATEST_URL ?? `https://raw.githubusercont
 const CHECK_EVERY_MS = 3.5 * 24 * 3600 * 1000
 /** How often a running chat sees whether a look is due, or a newer version is waiting to answer pages. */
 const TICK_MS = 10 * 60 * 1000
+/** After a look or an install that failed (offline, say): not half a week until the next. */
+const RETRY_MS = 60 * 60 * 1000
 const LATEST = () => join(HOME, 'latest.json')
 const LOCK = () => join(HOME, 'updating.lock')
 const SERVING = () => join(HOME, 'serving.json')
@@ -104,7 +106,8 @@ function busy(): boolean {
 /** A look on GitHub, if one is due, and an install if there's a newer version than the one installed. */
 export async function checkNow(current: string, claude: string): Promise<'skipped' | 'current' | 'updated' | 'failed'> {
   const kept = readJson(LATEST())
-  if (kept?.checkedAt && Date.now() - Date.parse(kept.checkedAt) < checkEvery()) return 'skipped'
+  const due = kept?.failed ? Math.min(RETRY_MS, checkEvery()) : checkEvery()
+  if (kept?.checkedAt && Date.now() - Date.parse(kept.checkedAt) < due) return 'skipped'
   if (busy()) return 'skipped'
   let latest: string | undefined
   try {
@@ -112,7 +115,7 @@ export async function checkNow(current: string, claude: string): Promise<'skippe
     const v = r.ok ? (await r.json() as { version?: unknown }).version : undefined
     if (typeof v === 'string' && /^\d+\.\d+\.\d+$/.test(v)) latest = v
   } catch { /* offline: at the next look */ }
-  if (!latest) { writeJson(LATEST(), { checkedAt: new Date().toISOString() }); return 'failed' }
+  if (!latest) { writeJson(LATEST(), { checkedAt: new Date().toISOString(), failed: true }); return 'failed' }
   /* Already installed (by Claude Code, or another chat): nothing to install, only to serve. */
   const have = installed()?.version ?? current
   if (!newer(latest, have)) { writeJson(LATEST(), { checkedAt: new Date().toISOString(), version: latest }); return 'current' }
@@ -123,7 +126,7 @@ export async function checkNow(current: string, claude: string): Promise<'skippe
     writeJson(LATEST(), { checkedAt: new Date().toISOString(), version: latest, installed: latest })
     return 'updated'
   } catch {
-    writeJson(LATEST(), { checkedAt: new Date().toISOString(), version: latest })
+    writeJson(LATEST(), { checkedAt: new Date().toISOString(), version: latest, failed: true })
     return 'failed'
   } finally {
     try { rmSync(LOCK(), { force: true }) } catch { /* gone */ }
@@ -145,6 +148,7 @@ export async function serveNewer(port: number, log: (msg: string) => void): Prom
   const serving = readJson(SERVING())
   if (serving && alive(serving.pid) && !newer(ready.version, String(serving.version))) return null
   const kid = spawn(process.execPath, [join(ready.path, 'server', 'dist', 'inspeck.mjs'), 'serve'], { detached: true, stdio: 'ignore', env: { ...process.env, CLAUDE_PLUGIN_ROOT: ready.path } })
+  kid.on('error', () => { /* it couldn't start: the next tick tries again */ })
   kid.unref()
   writeJson(SERVING(), { pid: kid.pid, version: ready.version, at: new Date().toISOString() })
   log(`Inspeck ${ready.version} is installed: started it to answer pages.`)

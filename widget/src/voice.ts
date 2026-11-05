@@ -25,7 +25,8 @@ let asking: Promise<boolean> | null = null
 /** Whether voice works on this machine. Asked once; until the answer comes, no. */
 export function voiceReady(): boolean { return known === true }
 export function checkVoice(): Promise<boolean> {
-  asking ??= api.voice().then(v => (known = v.available), () => (known = false))
+  /* Couldn't ask (Inspeck away): ask again next time. */
+  asking ??= api.voice().then(v => (known = v.available), () => { asking = null; return (known = false) })
   return asking
 }
 
@@ -47,7 +48,8 @@ export function listen(on: (e: VoiceEvent) => void): Listening {
       const reader = res.body.pipeThrough(new TextDecoderStream()).getReader()
       let rest = ''
       for (;;) {
-        const { value, done } = await reader.read()
+        /* Cut off midway: some browsers say so by failing the read, others by just ending. The same to the person. */
+        const { value, done } = await reader.read().catch(() => ({ done: true as const, value: undefined }))
         if (done) break
         rest += value
         let i: number

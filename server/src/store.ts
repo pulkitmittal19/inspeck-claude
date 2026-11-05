@@ -119,11 +119,15 @@ function prune(inbox: Inbox): void {
 
 const newId = () => randomBytes(4).toString('hex')
 
-/* Numbers restart per page. The highest in use plus one, not the count, so
+/** A note belongs with notes on its page from the same project: the same port may serve another project later.
+    A note from before notes knew their project (or with none known) goes with any. */
+export const sameApp = (c: Comment, project?: string | null) => !project || !c.project || c.project === project
+
+/* Numbers restart per page (and per project on it). The highest in use plus one, not the count, so
    deleting comment 2 of three can't hand the next one a second number 3. */
-function nextNumber(inbox: Inbox, page: string): number {
+function nextNumber(inbox: Inbox, page: string, project?: string | null): number {
   const key = pageKey(page)
-  const used = inbox.comments.filter(c => pageKey(c.page) === key).map(c => c.n)
+  const used = inbox.comments.filter(c => pageKey(c.page) === key && sameApp(c, project)).map(c => c.n)
   return used.length ? Math.max(...used) + 1 : 1
 }
 
@@ -141,12 +145,12 @@ function saveShot(id: string, dataUrl: string): string | undefined {
   return path
 }
 
-export function add(input: NewComment, to?: Comment['to']): Comment {
+export function add(input: NewComment, to?: Comment['to'], project?: string | null): Comment {
   return change(inbox => {
     const id = newId()
     const comment: Comment = {
       id,
-      n: nextNumber(inbox, input.page),
+      n: nextNumber(inbox, input.page, project),
       kind: input.kind ?? kindFor(input.page),
       status: 'new',
       note: input.note.trim(),
@@ -162,6 +166,7 @@ export function add(input: NewComment, to?: Comment['to']): Comment {
       ...(input.client ? { client: input.client } : {}),
       ...(input.tabId ? { tabId: input.tabId } : {}),
       ...(to ? { to } : {}),
+      ...(project ? { project } : {}),
       ...(input.held ? { held: true as const } : {}),
       thread: [],
     }
@@ -186,10 +191,10 @@ export function open(page?: string): Comment[] {
     .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
 }
 
-/** Everything on one page, closed ones included — what a page needs to draw its badges. */
-export function forPage(page: string): Comment[] {
+/** Everything on one page from the project serving it now, closed ones included — what a page needs to draw its badges. */
+export function forPage(page: string, project?: string | null): Comment[] {
   const key = pageKey(page)
-  return read().comments.filter(c => pageKey(c.page) === key).sort((a, b) => a.n - b.n)
+  return read().comments.filter(c => pageKey(c.page) === key && sameApp(c, project)).sort((a, b) => a.n - b.n)
 }
 
 /**
@@ -232,6 +237,7 @@ export function markAllSeen(ids: string[], by?: number | null): void {
 
 /** Send held notes: from now on the watcher hands them to Claude. Returns those sent. */
 export function release(which: (c: Comment) => boolean): Comment[] {
+  /* `which` includes the project: a site's waiting notes from another project stay waiting for their own. */
   const wanted = (c: Comment) => c.status === 'new' && !!c.held && which(c)
   if (!read().comments.some(wanted)) return []
   return change(inbox => {
@@ -270,10 +276,12 @@ export function say(id: string, from: Message['from'], text: string): Comment | 
   })
 }
 
-export function editNote(id: string, note: string): Comment | undefined {
+/** Claude reads a note once, so a change after that would never reach it: 'read', and the note stays as it was. */
+export function editNote(id: string, note: string): Comment | 'read' | undefined {
   return change(inbox => {
     const c = inbox.comments.find(x => x.id === id)
     if (!c) return undefined
+    if (c.status !== 'new') return 'read'
     c.note = note.trim()
     return { ...c }
   })
@@ -297,6 +305,6 @@ export function remove(id: string): boolean {
 function closeGap(inbox: Inbox, gone: Comment): void {
   if (!gone.held || gone.status !== 'new') return
   const key = pageKey(gone.page)
-  const after = inbox.comments.filter(c => pageKey(c.page) === key && c.n > gone.n)
+  const after = inbox.comments.filter(c => pageKey(c.page) === key && c.n > gone.n && sameApp(c, gone.project))
   if (after.every(c => c.held && c.status === 'new')) for (const c of after) c.n -= 1
 }

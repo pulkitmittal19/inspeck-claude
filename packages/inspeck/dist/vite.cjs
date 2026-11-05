@@ -27,6 +27,7 @@ __export(vite_exports, {
   withTag: () => withTag
 });
 module.exports = __toCommonJS(vite_exports);
+var import_node_net = require("net");
 var import_node_os = require("os");
 var PREFIX = "/__inspeck";
 var SRC = `${PREFIX}/inspeck.js`;
@@ -71,6 +72,23 @@ var guard = (req, res, next) => {
     req.headers.origin = `${secure ? "https" : "http"}://${req.headers.host}`;
   }
   next();
+};
+var whenAway = (port) => (req, res, next) => {
+  if (!req.url?.startsWith(`${PREFIX}/`) && req.url !== PREFIX) return next();
+  const probe = (0, import_node_net.connect)(port, "127.0.0.1");
+  probe.once("connect", () => {
+    probe.destroy();
+    next();
+  });
+  probe.once("error", () => {
+    const script = req.url?.split("?")[0] === SRC;
+    res.statusCode = script ? 200 : 503;
+    if (script) {
+      res.setHeader("content-type", "text/javascript");
+      res.setHeader("cache-control", "no-store");
+    }
+    res.end();
+  });
 };
 var isHtml = (res) => /text\/html/i.test(String(res.getHeader("content-type") ?? ""));
 var injectHtml = (req, res, next) => {
@@ -129,6 +147,7 @@ function inspeck(options = {}) {
     configureServer: (server) => {
       if (enabled) {
         server.middlewares.use(guard);
+        server.middlewares.use(whenAway(port));
         server.middlewares.use(injectHtml);
       }
     },

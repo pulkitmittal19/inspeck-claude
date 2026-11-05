@@ -23,8 +23,8 @@
  */
 import { execFileSync } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
-import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs'
-import { basename, join, relative, isAbsolute } from 'node:path'
+import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { basename, dirname, join, relative, isAbsolute } from 'node:path'
 import { HOME } from './store.js'
 import { originKey } from './format.js'
 
@@ -159,7 +159,9 @@ export function sessionOf(pid: number): Session | null {
 
 /* ---------------- tab bindings ---------------- */
 
-type Bindings = Record<string, { pid: number; at: string }>
+/* A site link also remembers the project its app ran from: a port is often reused by another project later
+   (every Vite app starts on 5173), and the link is that app's, not the port's. */
+type Bindings = Record<string, { pid: number; at: string; project?: string }>
 
 export function bindTab(tabId: string, token: string): Session | null {
   const s = liveSessions().find(x => x.token === token)
@@ -174,15 +176,15 @@ export function siteKey(page: string): string | null {
   return origin ? `site:${origin}` : null
 }
 
-/** Send every later note from this page's site to session `pid`, in any browser. */
+/** Send every later note from this page's site to session `pid`, in any browser, while it serves the same project. */
 export function bindSite(page: string, pid: number): void {
   const key = siteKey(page)
-  if (key) saveBinding(key, pid)
+  if (key) saveBinding(key, pid, projectOf(page) ?? undefined)
 }
 
-function saveBinding(key: string, pid: number): void {
+function saveBinding(key: string, pid: number, project?: string): void {
   const all = readJson<Bindings>(BINDINGS) ?? {}
-  all[key] = { pid, at: new Date().toISOString() }
+  all[key] = { pid, at: new Date().toISOString(), ...(project ? { project } : {}) }
   /* Keep the newest 200; old tabs are long gone. */
   const kept = Object.fromEntries(Object.entries(all).sort((a, b) => b[1].at.localeCompare(a[1].at)).slice(0, 200))
   mkdirSync(HOME, { recursive: true })
@@ -196,7 +198,22 @@ function boundPid(tabId: string): number | null {
   return b && alive(b.pid) ? b.pid : null
 }
 
+/** The chat a site is linked to, unless the site now serves another project than when it was linked. */
+function siteChat(page: string, now: string | null): number | null {
+  const key = siteKey(page)
+  const b = key ? (readJson<Bindings>(BINDINGS) ?? {})[key] : undefined
+  if (!b || !alive(b.pid)) return null
+  return !b.project || !now || sameProject(b.project, now) ? b.pid : null
+}
+
 /* ---------------- which project serves a page ---------------- */
+
+/* Pages ask for their notes every few seconds. Which process listens on a port is looked up at most every two
+   seconds, and its folder only when that process changes: so a port taken over by another project's dev
+   server is noticed within two seconds, without a pair of lsof calls on every request. */
+const LISTENER_TTL_MS = 2000
+const listeners = new Map<number, { at: number; pid: string | null }>()
+const folders = new Map<string, string>()
 
 /** The folder of the process listening on a local port (the dev server), via lsof. */
 export function projectOf(page: string): string | null {
@@ -206,13 +223,24 @@ export function projectOf(page: string): string | null {
     port = Number(u.port || (u.protocol === 'https:' ? 443 : 80))
   } catch { return null }
   if (!Number.isInteger(port) || port <= 0 || port > 65535) return null
-  try {
-    const pid = execFileSync('lsof', ['-nP', `-iTCP:${port}`, '-sTCP:LISTEN', '-t'], { encoding: 'utf8', timeout: 2000 }).trim().split('\n')[0]
-    if (!/^\d+$/.test(pid)) return null
-    const out = execFileSync('lsof', ['-a', '-p', pid, '-d', 'cwd', '-Fn'], { encoding: 'utf8', timeout: 2000 })
-    const line = out.split('\n').find(l => l.startsWith('n'))
-    return line ? real(line.slice(1)) : null
-  } catch { return null }
+  let pid: string | null = null
+  const kept = listeners.get(port)
+  if (kept && Date.now() - kept.at < LISTENER_TTL_MS) pid = kept.pid
+  else {
+    try {
+      const first = execFileSync('lsof', ['-nP', `-iTCP:${port}`, '-sTCP:LISTEN', '-t'], { encoding: 'utf8', timeout: 2000 }).trim().split('\n')[0]
+      pid = /^\d+$/.test(first) ? first : null
+    } catch { /* nobody there */ }
+    listeners.set(port, { at: Date.now(), pid })
+  }
+  if (!pid) return null
+  if (!folders.has(pid)) {
+    try {
+      const line = execFileSync('lsof', ['-a', '-p', pid, '-d', 'cwd', '-Fn'], { encoding: 'utf8', timeout: 2000 }).split('\n').find(l => l.startsWith('n'))
+      if (line) folders.set(pid, real(line.slice(1)))
+    } catch { /* gone, or lsof can't tell for now: asked again next time */ }
+  }
+  return folders.get(pid) ?? null
 }
 
 /** A folder with symlinks resolved (/var → /private/var on macOS), so paths from lsof and process.cwd() compare. */
@@ -220,14 +248,40 @@ export function real(path: string): string {
   try { return realpathSync(path) } catch { return path }
 }
 
-/** True when one folder is inside the other (a monorepo package and its root). */
+const worktrees = new Map<string, string | null>()
+
+/**
+ * The git worktree a folder is in, or null in a main checkout (or no git). A worktree is its own copy of the code
+ * (Claude's sit inside the project, at .claude/worktrees/<name>): its root has a .git file pointing into the main
+ * repository's worktrees folder. A submodule's .git file points elsewhere, and belongs with the repository around it.
+ */
+export function worktreeOf(path: string): string | null {
+  const start = real(path)
+  if (worktrees.has(start)) return worktrees.get(start)!
+  let found: string | null = null
+  for (let d = start; ; d = dirname(d)) {
+    const git = join(d, '.git')
+    let isDir = false, isFile = false
+    try { const st = statSync(git); isDir = st.isDirectory(); isFile = st.isFile() } catch { /* none here */ }
+    if (isDir) break
+    if (isFile) {
+      try { if (/^gitdir:.*[\\/]worktrees[\\/]/m.test(readFileSync(git, 'utf8'))) { found = d; break } } catch { /* unreadable */ }
+    }
+    if (dirname(d) === d) break
+  }
+  worktrees.set(start, found)
+  return found
+}
+
+/** True when one folder is inside the other (a monorepo package and its root), in the same copy of the code:
+    a worktree and the main checkout around it are two projects, as are two worktrees. */
 export function sameProject(a: string, b: string): boolean {
   const inside = (child: string, parent: string) => {
     const r = relative(parent, child)
     return r === '' || (!r.startsWith('..') && !isAbsolute(r))
   }
   a = real(a); b = real(b)
-  return inside(a, b) || inside(b, a)
+  return (inside(a, b) || inside(b, a)) && worktreeOf(a) === worktreeOf(b)
 }
 
 export function route(page: string, tabId?: string): Route {
@@ -235,12 +289,11 @@ export function route(page: string, tabId?: string): Route {
     const pid = boundPid(tabId)
     if (pid) return { pid, cwd: sessionOf(pid)?.cwd, how: 'bound' }
   }
-  const site = siteKey(page)
-  const sitePid = site ? boundPid(site) : null
+  const cwd = projectOf(page)
+  const sitePid = siteChat(page, cwd)
   if (sitePid) return { pid: sitePid, cwd: sessionOf(sitePid)?.cwd, how: 'site' }
   const live = liveSessions()
   if (live.length === 1) return { pid: live[0].pid, cwd: live[0].cwd, how: 'only' }
-  const cwd = projectOf(page)
   if (cwd) {
     const matches = live.filter(s => sameProject(s.cwd, cwd)).sort((a, b) => b.startedAt.localeCompare(a.startedAt))
     if (matches.length) return { pid: matches[0].pid, cwd, how: 'project' }
@@ -266,13 +319,14 @@ export function unclaimed(to: Route | undefined, live: Session[] = liveSessions(
  * for a chat opened there. A page whose project can't be told belongs to no one yet: whoever asks may take it.
  * Each site is looked up once.
  */
-export function fromOtherProjects(notes: Array<{ id: string; page: string; to?: Route }>, myCwd: string): Map<string, string> {
-  const projects = new Map<string, string | null>()
+export function fromOtherProjects(notes: Array<{ id: string; page: string; to?: Route; project?: string }>, myCwd: string): Map<string, string> {
+  const serving = new Map<string, string | null>()
   const theirs = new Map<string, string>()
   for (const c of notes) {
     const site = originKey(c.page) ?? c.page
-    if (!projects.has(site)) projects.set(site, projectOf(c.page))
-    const project = projects.get(site) ?? c.to?.cwd
+    if (!serving.has(site)) serving.set(site, projectOf(c.page))
+    /* Where it was placed, when known: the port may serve another project by now. */
+    const project = c.project ?? serving.get(site) ?? c.to?.cwd
     if (project && !sameProject(myCwd, project)) theirs.set(c.id, project)
   }
   return theirs

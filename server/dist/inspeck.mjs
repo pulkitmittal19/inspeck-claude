@@ -36752,9 +36752,10 @@ function prune(inbox) {
   });
 }
 var newId = () => randomBytes(4).toString("hex");
-function nextNumber(inbox, page) {
+var sameApp = (c, project) => !project || !c.project || c.project === project;
+function nextNumber(inbox, page, project) {
   const key = pageKey(page);
-  const used = inbox.comments.filter((c) => pageKey(c.page) === key).map((c) => c.n);
+  const used = inbox.comments.filter((c) => pageKey(c.page) === key && sameApp(c, project)).map((c) => c.n);
   return used.length ? Math.max(...used) + 1 : 1;
 }
 function saveShot(id, dataUrl) {
@@ -36770,12 +36771,12 @@ function saveShot(id, dataUrl) {
   writeFileSync(path, bytes);
   return path;
 }
-function add(input2, to) {
+function add(input2, to, project) {
   return change((inbox) => {
     const id = newId();
     const comment = {
       id,
-      n: nextNumber(inbox, input2.page),
+      n: nextNumber(inbox, input2.page, project),
       kind: input2.kind ?? kindFor(input2.page),
       status: "new",
       note: input2.note.trim(),
@@ -36791,6 +36792,7 @@ function add(input2, to) {
       ...input2.client ? { client: input2.client } : {},
       ...input2.tabId ? { tabId: input2.tabId } : {},
       ...to ? { to } : {},
+      ...project ? { project } : {},
       ...input2.held ? { held: true } : {},
       thread: []
     };
@@ -36809,9 +36811,9 @@ function open2(page) {
   const key = page ? pageKey(page) : void 0;
   return read().comments.filter((c) => (c.status === "new" || c.status === "seen") && (!key || pageKey(c.page) === key)).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
 }
-function forPage(page) {
+function forPage(page, project) {
   const key = pageKey(page);
-  return read().comments.filter((c) => pageKey(c.page) === key).sort((a, b) => a.n - b.n);
+  return read().comments.filter((c) => pageKey(c.page) === key && sameApp(c, project)).sort((a, b) => a.n - b.n);
 }
 var readBy = (c, by) => {
   if (by) c.to = { how: "claimed", ...c.to, pid: by };
@@ -36889,6 +36891,7 @@ function editNote(id, note) {
   return change((inbox) => {
     const c = inbox.comments.find((x) => x.id === id);
     if (!c) return void 0;
+    if (c.status !== "new") return "read";
     c.note = note.trim();
     return { ...c };
   });
@@ -36906,26 +36909,26 @@ function remove(id) {
 function closeGap(inbox, gone) {
   if (!gone.held || gone.status !== "new") return;
   const key = pageKey(gone.page);
-  const after = inbox.comments.filter((c) => pageKey(c.page) === key && c.n > gone.n);
+  const after = inbox.comments.filter((c) => pageKey(c.page) === key && c.n > gone.n && sameApp(c, gone.project));
   if (after.every((c) => c.held && c.status === "new")) for (const c of after) c.n -= 1;
 }
 
 // server/src/http.ts
-import { existsSync as existsSync5, mkdirSync as mkdirSync4, readFileSync as readFileSync5, statSync as statSync4, writeFileSync as writeFileSync4 } from "fs";
+import { existsSync as existsSync5, mkdirSync as mkdirSync4, readFileSync as readFileSync5, statSync as statSync5, writeFileSync as writeFileSync4 } from "fs";
 import { randomBytes as randomBytes3, timingSafeEqual } from "crypto";
 import { lookup } from "dns/promises";
 import { isIP } from "net";
 import { createServer } from "http";
 import { homedir as homedir3, hostname as hostname3, networkInterfaces } from "os";
 import { execFileSync as execFileSync2 } from "child_process";
-import { dirname as dirname3, isAbsolute as isAbsolute3, join as join6, normalize, relative as relative2 } from "path";
+import { dirname as dirname4, isAbsolute as isAbsolute3, join as join6, normalize, relative as relative2 } from "path";
 import { fileURLToPath as fileURLToPath3 } from "url";
 
 // server/src/sessions.ts
 import { execFileSync } from "child_process";
 import { randomBytes as randomBytes2 } from "crypto";
-import { existsSync as existsSync2, mkdirSync as mkdirSync2, readdirSync, readFileSync as readFileSync2, realpathSync, renameSync as renameSync2, rmSync as rmSync2, writeFileSync as writeFileSync2 } from "fs";
-import { basename, join as join2, relative, isAbsolute } from "path";
+import { existsSync as existsSync2, mkdirSync as mkdirSync2, readdirSync, readFileSync as readFileSync2, realpathSync, renameSync as renameSync2, rmSync as rmSync2, statSync as statSync2, writeFileSync as writeFileSync2 } from "fs";
+import { basename, dirname, join as join2, relative, isAbsolute } from "path";
 var DIR = join2(HOME, "sessions");
 var HEARD = join2(HOME, "listening");
 var HEARD_MS = 75e3;
@@ -37045,11 +37048,11 @@ function siteKey(page) {
 }
 function bindSite(page, pid) {
   const key = siteKey(page);
-  if (key) saveBinding(key, pid);
+  if (key) saveBinding(key, pid, projectOf(page) ?? void 0);
 }
-function saveBinding(key, pid) {
+function saveBinding(key, pid, project) {
   const all = readJson(BINDINGS) ?? {};
-  all[key] = { pid, at: (/* @__PURE__ */ new Date()).toISOString() };
+  all[key] = { pid, at: (/* @__PURE__ */ new Date()).toISOString(), ...project ? { project } : {} };
   const kept = Object.fromEntries(Object.entries(all).sort((a, b) => b[1].at.localeCompare(a[1].at)).slice(0, 200));
   mkdirSync2(HOME, { recursive: true });
   const tmp = `${BINDINGS}.${process.pid}.tmp`;
@@ -37060,6 +37063,15 @@ function boundPid(tabId) {
   const b = (readJson(BINDINGS) ?? {})[tabId];
   return b && alive(b.pid) ? b.pid : null;
 }
+function siteChat(page, now) {
+  const key = siteKey(page);
+  const b = key ? (readJson(BINDINGS) ?? {})[key] : void 0;
+  if (!b || !alive(b.pid)) return null;
+  return !b.project || !now || sameProject(b.project, now) ? b.pid : null;
+}
+var LISTENER_TTL_MS = 2e3;
+var listeners = /* @__PURE__ */ new Map();
+var folders = /* @__PURE__ */ new Map();
 function projectOf(page) {
   let port;
   try {
@@ -37069,15 +37081,26 @@ function projectOf(page) {
     return null;
   }
   if (!Number.isInteger(port) || port <= 0 || port > 65535) return null;
-  try {
-    const pid = execFileSync("lsof", ["-nP", `-iTCP:${port}`, "-sTCP:LISTEN", "-t"], { encoding: "utf8", timeout: 2e3 }).trim().split("\n")[0];
-    if (!/^\d+$/.test(pid)) return null;
-    const out = execFileSync("lsof", ["-a", "-p", pid, "-d", "cwd", "-Fn"], { encoding: "utf8", timeout: 2e3 });
-    const line = out.split("\n").find((l) => l.startsWith("n"));
-    return line ? real(line.slice(1)) : null;
-  } catch {
-    return null;
+  let pid = null;
+  const kept = listeners.get(port);
+  if (kept && Date.now() - kept.at < LISTENER_TTL_MS) pid = kept.pid;
+  else {
+    try {
+      const first = execFileSync("lsof", ["-nP", `-iTCP:${port}`, "-sTCP:LISTEN", "-t"], { encoding: "utf8", timeout: 2e3 }).trim().split("\n")[0];
+      pid = /^\d+$/.test(first) ? first : null;
+    } catch {
+    }
+    listeners.set(port, { at: Date.now(), pid });
   }
+  if (!pid) return null;
+  if (!folders.has(pid)) {
+    try {
+      const line = execFileSync("lsof", ["-a", "-p", pid, "-d", "cwd", "-Fn"], { encoding: "utf8", timeout: 2e3 }).split("\n").find((l) => l.startsWith("n"));
+      if (line) folders.set(pid, real(line.slice(1)));
+    } catch {
+    }
+  }
+  return folders.get(pid) ?? null;
 }
 function real(path) {
   try {
@@ -37086,6 +37109,35 @@ function real(path) {
     return path;
   }
 }
+var worktrees = /* @__PURE__ */ new Map();
+function worktreeOf(path) {
+  const start = real(path);
+  if (worktrees.has(start)) return worktrees.get(start);
+  let found2 = null;
+  for (let d = start; ; d = dirname(d)) {
+    const git = join2(d, ".git");
+    let isDir = false, isFile = false;
+    try {
+      const st = statSync2(git);
+      isDir = st.isDirectory();
+      isFile = st.isFile();
+    } catch {
+    }
+    if (isDir) break;
+    if (isFile) {
+      try {
+        if (/^gitdir:.*[\\/]worktrees[\\/]/m.test(readFileSync2(git, "utf8"))) {
+          found2 = d;
+          break;
+        }
+      } catch {
+      }
+    }
+    if (dirname(d) === d) break;
+  }
+  worktrees.set(start, found2);
+  return found2;
+}
 function sameProject(a, b) {
   const inside = (child, parent) => {
     const r = relative(parent, child);
@@ -37093,19 +37145,18 @@ function sameProject(a, b) {
   };
   a = real(a);
   b = real(b);
-  return inside(a, b) || inside(b, a);
+  return (inside(a, b) || inside(b, a)) && worktreeOf(a) === worktreeOf(b);
 }
 function route(page, tabId) {
   if (tabId) {
     const pid = boundPid(tabId);
     if (pid) return { pid, cwd: sessionOf(pid)?.cwd, how: "bound" };
   }
-  const site = siteKey(page);
-  const sitePid = site ? boundPid(site) : null;
+  const cwd = projectOf(page);
+  const sitePid = siteChat(page, cwd);
   if (sitePid) return { pid: sitePid, cwd: sessionOf(sitePid)?.cwd, how: "site" };
   const live = liveSessions();
   if (live.length === 1) return { pid: live[0].pid, cwd: live[0].cwd, how: "only" };
-  const cwd = projectOf(page);
   if (cwd) {
     const matches = live.filter((s) => sameProject(s.cwd, cwd)).sort((a, b) => b.startedAt.localeCompare(a.startedAt));
     if (matches.length) return { pid: matches[0].pid, cwd, how: "project" };
@@ -37119,12 +37170,12 @@ function unclaimed(to, live = liveSessions()) {
   return !to.cwd || !live.some((s) => sameProject(s.cwd, to.cwd));
 }
 function fromOtherProjects(notes, myCwd) {
-  const projects = /* @__PURE__ */ new Map();
+  const serving = /* @__PURE__ */ new Map();
   const theirs = /* @__PURE__ */ new Map();
   for (const c of notes) {
     const site = originKey(c.page) ?? c.page;
-    if (!projects.has(site)) projects.set(site, projectOf(c.page));
-    const project = projects.get(site) ?? c.to?.cwd;
+    if (!serving.has(site)) serving.set(site, projectOf(c.page));
+    const project = c.project ?? serving.get(site) ?? c.to?.cwd;
     if (project && !sameProject(myCwd, project)) theirs.set(c.id, project);
   }
   return theirs;
@@ -37141,7 +37192,7 @@ function belongsTo(to, me, myCwd) {
 
 // server/src/updates.ts
 import { execFile, spawn } from "child_process";
-import { mkdirSync as mkdirSync3, readFileSync as readFileSync3, rmSync as rmSync3, statSync as statSync2, writeFileSync as writeFileSync3 } from "fs";
+import { mkdirSync as mkdirSync3, readFileSync as readFileSync3, rmSync as rmSync3, statSync as statSync3, writeFileSync as writeFileSync3 } from "fs";
 import { homedir as homedir2 } from "os";
 import { join as join3 } from "path";
 import { promisify } from "util";
@@ -37151,6 +37202,7 @@ var MARKETPLACE = "inspeck";
 var LATEST_URL = process.env.INSPECK_LATEST_URL ?? `https://raw.githubusercontent.com/${REPO}/main/.claude-plugin/plugin.json`;
 var CHECK_EVERY_MS = 3.5 * 24 * 3600 * 1e3;
 var TICK_MS = 10 * 60 * 1e3;
+var RETRY_MS = 60 * 60 * 1e3;
 var LATEST = () => join3(HOME, "latest.json");
 var LOCK2 = () => join3(HOME, "updating.lock");
 var SERVING = () => join3(HOME, "serving.json");
@@ -37199,7 +37251,7 @@ function installed(config2 = configDir()) {
   for (const e of entries) {
     if (typeof e?.version !== "string" || typeof e?.installPath !== "string") continue;
     try {
-      statSync2(join3(e.installPath, "server", "dist", "inspeck.mjs"));
+      statSync3(join3(e.installPath, "server", "dist", "inspeck.mjs"));
     } catch {
       continue;
     }
@@ -37217,14 +37269,15 @@ function checkEvery() {
 }
 function busy() {
   try {
-    return Date.now() - statSync2(LOCK2()).mtimeMs < 10 * 6e4;
+    return Date.now() - statSync3(LOCK2()).mtimeMs < 10 * 6e4;
   } catch {
     return false;
   }
 }
 async function checkNow(current2, claude) {
   const kept = readJson2(LATEST());
-  if (kept?.checkedAt && Date.now() - Date.parse(kept.checkedAt) < checkEvery()) return "skipped";
+  const due = kept?.failed ? Math.min(RETRY_MS, checkEvery()) : checkEvery();
+  if (kept?.checkedAt && Date.now() - Date.parse(kept.checkedAt) < due) return "skipped";
   if (busy()) return "skipped";
   let latest;
   try {
@@ -37234,7 +37287,7 @@ async function checkNow(current2, claude) {
   } catch {
   }
   if (!latest) {
-    writeJson2(LATEST(), { checkedAt: (/* @__PURE__ */ new Date()).toISOString() });
+    writeJson2(LATEST(), { checkedAt: (/* @__PURE__ */ new Date()).toISOString(), failed: true });
     return "failed";
   }
   const have = installed()?.version ?? current2;
@@ -37249,7 +37302,7 @@ async function checkNow(current2, claude) {
     writeJson2(LATEST(), { checkedAt: (/* @__PURE__ */ new Date()).toISOString(), version: latest, installed: latest });
     return "updated";
   } catch {
-    writeJson2(LATEST(), { checkedAt: (/* @__PURE__ */ new Date()).toISOString(), version: latest });
+    writeJson2(LATEST(), { checkedAt: (/* @__PURE__ */ new Date()).toISOString(), version: latest, failed: true });
     return "failed";
   } finally {
     try {
@@ -37278,6 +37331,8 @@ async function serveNewer(port, log2) {
   const serving = readJson2(SERVING());
   if (serving && alive2(serving.pid) && !newer(ready.version, String(serving.version))) return null;
   const kid = spawn(process.execPath, [join3(ready.path, "server", "dist", "inspeck.mjs"), "serve"], { detached: true, stdio: "ignore", env: { ...process.env, CLAUDE_PLUGIN_ROOT: ready.path } });
+  kid.on("error", () => {
+  });
   kid.unref();
   writeJson2(SERVING(), { pid: kid.pid, version: ready.version, at: (/* @__PURE__ */ new Date()).toISOString() });
   log2(`Inspeck ${ready.version} is installed: started it to answer pages.`);
@@ -37307,8 +37362,8 @@ function keepCurrent(current2, claude, port, log2) {
 }
 
 // server/src/sourcemap.ts
-import { existsSync as existsSync3, readFileSync as readFileSync4, statSync as statSync3 } from "fs";
-import { dirname, isAbsolute as isAbsolute2, join as join4, resolve as resolvePath } from "path";
+import { existsSync as existsSync3, readFileSync as readFileSync4, statSync as statSync4 } from "fs";
+import { dirname as dirname2, isAbsolute as isAbsolute2, join as join4, resolve as resolvePath } from "path";
 import { fileURLToPath } from "url";
 var B64 = new Map([..."ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"].map((c, i) => [c, i]));
 function lineSegments(mappings, line) {
@@ -37349,7 +37404,7 @@ function sourcePath(name, map2, mapFile) {
   const project = /^(?:turbopack|webpack|webpack-internal):\/\/\/(?:\[project\]\/|\(\w[\w-]*\)\/)?\.?\/?(.*)$/.exec(name);
   if (project) return project[1].replace(/\s*\[[^\]]*\]\s*\(.*\)$/, "");
   if (isAbsolute2(name)) return name;
-  return resolvePath(dirname(mapFile), map2.sourceRoot ?? "", name);
+  return resolvePath(dirname2(mapFile), map2.sourceRoot ?? "", name);
 }
 function readMap(chunk) {
   const code = readFileSync4(chunk, "utf8");
@@ -37358,13 +37413,13 @@ function readMap(chunk) {
   if (ref?.startsWith("data:")) {
     return { map: JSON.parse(Buffer.from(ref.slice(ref.indexOf(",") + 1), "base64").toString("utf8")), file: chunk };
   }
-  const file2 = ref ? join4(dirname(chunk), decodeURIComponent(ref)) : `${chunk}.map`;
+  const file2 = ref ? join4(dirname2(chunk), decodeURIComponent(ref)) : `${chunk}.map`;
   return existsSync3(file2) ? { map: JSON.parse(readFileSync4(file2, "utf8")), file: file2 } : null;
 }
 function resolveSource(at, may = () => true) {
   try {
     const chunk = at.file.startsWith("file://") ? fileURLToPath(at.file.split("?")[0]) : at.file;
-    if (!isAbsolute2(chunk) || !/\.(c|m)?js$/.test(chunk) || !may(chunk) || !existsSync3(chunk) || !statSync3(chunk).isFile() || !at.line) {
+    if (!isAbsolute2(chunk) || !/\.(c|m)?js$/.test(chunk) || !may(chunk) || !existsSync3(chunk) || !statSync4(chunk).isFile() || !at.line) {
       return at.file.startsWith("file://") ? { ...at, file: chunk } : at;
     }
     const read2 = readMap(chunk);
@@ -37423,7 +37478,7 @@ function findLines(sources, clue, may = () => true) {
     if (at.line || !isAbsolute2(at.file) || !/\.(vue|svelte|html?|astro|[jt]sx?)$/.test(at.file) || !may(at.file)) return at;
     let src;
     try {
-      if (!statSync3(at.file).isFile() || statSync3(at.file).size > 2e6) return at;
+      if (!statSync4(at.file).isFile() || statSync4(at.file).size > 2e6) return at;
       src = readFileSync4(at.file, "utf8");
     } catch {
       return at;
@@ -37443,9 +37498,9 @@ function findLines(sources, clue, may = () => true) {
 import { spawn as spawn2 } from "child_process";
 import { existsSync as existsSync4 } from "fs";
 import { release as release2 } from "os";
-import { dirname as dirname2, join as join5 } from "path";
+import { dirname as dirname3, join as join5 } from "path";
 import { fileURLToPath as fileURLToPath2 } from "url";
-var HELPER = process.env.INSPECK_LISTEN || join5(dirname2(fileURLToPath2(import.meta.url)), "..", "bin", "inspeck-listen");
+var HELPER = process.env.INSPECK_LISTEN || join5(dirname3(fileURLToPath2(import.meta.url)), "..", "bin", "inspeck-listen");
 var WARM_SECONDS = 90;
 function voiceAvailable() {
   if (process.platform !== "darwin") return { available: false, reason: "Voice needs a Mac for now." };
@@ -37483,6 +37538,8 @@ var Listener = class {
       }
     });
     this.child.on("error", () => {
+    });
+    this.child.stdin?.on("error", () => {
     });
   }
   onReady = null;
@@ -37547,6 +37604,7 @@ function listenStream(req, res) {
   l.child.on("error", (err) => {
     out({ type: "error", code: "failed", message: `Couldn't start the voice listener: ${err.message}` });
     ended = true;
+    res.end();
   });
   res.on("close", () => l.kill());
   req.on("aborted", () => l.kill());
@@ -37642,12 +37700,12 @@ function body(req) {
     req.on("error", reject);
   });
 }
-var HERE = dirname3(fileURLToPath3(import.meta.url));
+var HERE = dirname4(fileURLToPath3(import.meta.url));
 var WIDGET = process.env.INSPECK_WIDGET || join6(HERE, "widget", "inspeck.js");
 function sendFile(req, res, path, type) {
   let stat;
   try {
-    stat = statSync4(path);
+    stat = statSync5(path);
   } catch {
     res.writeHead(404, { "content-type": "text/plain" }).end("Not built. Run npm run build.");
     return;
@@ -37785,12 +37843,13 @@ async function route2(req, res, version2, onNew) {
     const b = await body(req);
     const siteOf = originKey;
     let which = null;
+    const here = projectOf(String(b.page ?? b.site));
     if (typeof b.page === "string") {
       const key = pageKey(b.page);
-      which = (c) => pageKey(c.page) === key;
+      which = (c) => pageKey(c.page) === key && sameApp(c, here);
     } else if (typeof b.site === "string" && siteOf(b.site)) {
       const o = siteOf(b.site);
-      which = (c) => siteOf(c.page) === o;
+      which = (c) => siteOf(c.page) === o && sameApp(c, here);
     }
     if (!which) return send(res, 400, { error: "Send { page } or { site }" });
     if (!ownSite(origin, String(b.page ?? b.site))) return send(res, 403, { error: "A page can only send its own site's notes" });
@@ -37800,7 +37859,7 @@ async function route2(req, res, version2, onNew) {
   }
   if (!id && req.method === "GET") {
     const page = url2.searchParams.get("page");
-    const list = (page ? forPage(page) : open2()).filter((c) => ownSite(origin, c.page));
+    const list = (page ? forPage(page, projectOf(page)) : open2()).filter((c) => ownSite(origin, c.page));
     return send(res, 200, { comments: list.map(forPage2) });
   }
   if (!id && req.method === "POST") {
@@ -37814,7 +37873,7 @@ async function route2(req, res, version2, onNew) {
     const clue = { text: note.element.text, tag: note.element.tag, selector: note.element.selector };
     if (note.source) note.source = inProjectFiles(note.page, note.source.map((at) => resolveSource(at, may)), (list) => findLines(list, clue, may));
     for (const m of note.group ?? []) if (m.source) m.source = resolveSource(m.source, may);
-    const created = add(note, route(note.page, note.tabId));
+    const created = add(note, route(note.page, note.tabId), projectOf(note.page));
     onNew(created);
     return send(res, 201, { comment: forPage2(created) });
   }
@@ -37824,6 +37883,7 @@ async function route2(req, res, version2, onNew) {
     if (b.note.length > NOTE_MAX) return send(res, 400, { error: `A note holds up to ${NOTE_MAX.toLocaleString("en")} characters` });
     if (!b.note.trim()) return send(res, 400, { error: "A note needs some words (delete it instead)" });
     const c = editNote(id, b.note);
+    if (c === "read") return send(res, 409, { error: "Claude has already read this note, so this change wouldn\u2019t reach it. Add it as a new note." });
     return c ? send(res, 200, { comment: forPage2(c) }) : send(res, 404, { error: "No such comment" });
   }
   if (id && parts[2] === "replies" && req.method === "POST") {
@@ -37896,7 +37956,7 @@ function stylesheet(href) {
   entry.text.catch(() => fetchedCss.delete(href));
   return entry.text;
 }
-var RETRY_MS = 5e3;
+var RETRY_MS2 = 5e3;
 var QUICK_MS = 20;
 var CLAIM = () => join6(HOME, "port-claim.json");
 var alive3 = (pid) => {
@@ -37983,7 +38043,7 @@ function listen(version2, log2, onNew = () => {
         portState.owner = "inspeck";
         server2.close();
         server2.closeIdleConnections();
-        setTimeout(attempt, RETRY_MS).unref();
+        setTimeout(attempt, RETRY_MS2).unref();
       });
       return send(res, 200, { stepping: true });
     }
@@ -38007,7 +38067,7 @@ function listen(version2, log2, onNew = () => {
   return new Promise((resolve) => {
     let warned = "";
     let quickUntil = 0;
-    const again = () => setTimeout(attempt, Date.now() < quickUntil ? QUICK_MS : RETRY_MS).unref();
+    const again = () => setTimeout(attempt, Date.now() < quickUntil ? QUICK_MS : RETRY_MS2).unref();
     attempt = () => {
       if (claimedByNewer(version2)) {
         resolve(false);
@@ -38058,8 +38118,8 @@ function listen(version2, log2, onNew = () => {
 
 // server/src/outdated.ts
 import { existsSync as existsSync6, mkdirSync as mkdirSync5, readFileSync as readFileSync6, readdirSync as readdirSync2, writeFileSync as writeFileSync5 } from "fs";
-import { dirname as dirname4, join as join7 } from "path";
-var NEEDED = "0.13.1";
+import { dirname as dirname5, join as join7 } from "path";
+var NEEDED = "0.13.4";
 var OFFERED = () => join7(HOME, "package-update-offered.json");
 var offerKey = (dir) => `${dir} ${NEEDED}`;
 var older = (a, b) => {
@@ -38099,12 +38159,12 @@ function versionIn(dir, spec) {
   return /(\d+\.\d+\.\d+)/.exec(spec)?.[1] ?? null;
 }
 function updateCommand(dir) {
-  for (let d = dir, i = 0; i < 5; i++, d = dirname4(d)) {
+  for (let d = dir, i = 0; i < 5; i++, d = dirname5(d)) {
     if (existsSync6(join7(d, "pnpm-lock.yaml"))) return `pnpm add -D inspeck@latest`;
     if (existsSync6(join7(d, "yarn.lock"))) return `yarn add -D inspeck@latest`;
     if (existsSync6(join7(d, "bun.lockb")) || existsSync6(join7(d, "bun.lock"))) return `bun add -d inspeck@latest`;
     if (existsSync6(join7(d, "package-lock.json"))) break;
-    if (dirname4(d) === d) break;
+    if (dirname5(d) === d) break;
   }
   return `npm install -D inspeck@latest`;
 }
@@ -38183,7 +38243,7 @@ if (process.argv[2] === "wait") {
   await runWait(process.argv.slice(3));
   process.exit(0);
 }
-var VERSION = "0.20.2";
+var VERSION = "0.20.3";
 var log = (msg) => process.stderr.write(`inspeck: ${msg}
 `);
 if (process.argv[2] === "serve") {
@@ -38401,4 +38461,5 @@ function push(c) {
 server.server.oninitialized = noteClient;
 await listen(VERSION, log, push);
 await server.connect(new StdioServerTransport());
+process.stdin.on("close", () => process.exit(0));
 log(`Ready. Inbox: ${inboxPath()}`);

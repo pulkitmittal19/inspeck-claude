@@ -34,6 +34,14 @@ const listeners = new Set<() => void>()
 const remember = (p: Prefs) => { try { localStorage.setItem(KEY, JSON.stringify(p)) } catch { /* private window */ } }
 const same = (a: Prefs, b: Prefs) => a.sizes === b.sizes && a.colors === b.colors && a.send === b.send
 
+/* Changed while Inspeck couldn't be reached: sent the next time, before its older copy could replace the change. */
+let unsaved = false
+const save = () => {
+  unsaved = true
+  /* An older plugin without settings: this site's copy still holds. */
+  void api.saveSettings({ ...current }).then(() => { unsaved = false }, () => {})
+}
+
 function apply(next: Prefs): void {
   if (same(next, current)) return
   current = next
@@ -46,11 +54,11 @@ export const prefs = {
   set(patch: Partial<Prefs>): void {
     const next = clean({ ...current, ...patch })
     apply(next)
-    /* An older plugin without settings: this site's copy still holds. */
-    void api.saveSettings({ ...next }).catch(() => {})
+    save()
   },
   /** Catch up with what the plugin has, which another app may have changed. */
   sync(): void {
+    if (unsaved) { save(); return }
     void api.settings().then(s => { if (Object.keys(s).length) apply(clean(s)) }, () => {})
   },
   onChange(fn: () => void): () => void {

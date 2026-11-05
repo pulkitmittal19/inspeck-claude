@@ -26,6 +26,7 @@
  * this package installs with nothing else.
  */
 import type { IncomingMessage, ServerResponse } from 'node:http'
+import { connect } from 'node:net'
 import { hostname, networkInterfaces } from 'node:os'
 
 export interface InspeckOptions {
@@ -111,6 +112,22 @@ const guard: Middleware = (req, res, next) => {
   next()
 }
 
+/** With no Claude chat open nothing answers on Inspeck's port, and Vite prints a stack trace in the terminal for
+    every call it can't pass on: each page load, and every few seconds from a page left open. So look first and
+    answer here: the script tag gets an empty script, so a teammate without Claude sees no error at all, and
+    anything else a bare 503, which the widget knows means Inspeck's away. */
+const whenAway = (port: number): Middleware => (req, res, next) => {
+  if (!req.url?.startsWith(`${PREFIX}/`) && req.url !== PREFIX) return next()
+  const probe = connect(port, '127.0.0.1')
+  probe.once('connect', () => { probe.destroy(); next() })
+  probe.once('error', () => {
+    const script = req.url?.split('?')[0] === SRC
+    res.statusCode = script ? 200 : 503
+    if (script) { res.setHeader('content-type', 'text/javascript'); res.setHeader('cache-control', 'no-store') }
+    res.end()
+  })
+}
+
 const isHtml = (res: ServerResponse) => /text\/html/i.test(String(res.getHeader('content-type') ?? ''))
 
 /**
@@ -175,7 +192,7 @@ export default function inspeck(options: InspeckOptions = {}): InspeckVitePlugin
       },
     }),
     /* Before Vite's own middleware, so every page passes through it, server-rendered ones included. */
-    configureServer: server => { if (enabled) { server.middlewares.use(guard); server.middlewares.use(injectHtml) } },
+    configureServer: server => { if (enabled) { server.middlewares.use(guard); server.middlewares.use(whenAway(port)); server.middlewares.use(injectHtml) } },
     /* An index.html app gets the tag here too (the middleware then sees it and leaves the page alone). */
     transformIndexHtml: () => enabled ? [{ tag: 'script', attrs: { src: SRC, async: true }, injectTo: 'body' }] : [],
   }
