@@ -5,12 +5,15 @@
   "author": {
     "name": "Pulkit Mittal"
   },
-  "homepage": "https://github.com/pulkitmittal19/inspeck-claude",
+  "homepage": "https://www.inspeck.in",
   "keywords": [
     "design-system",
     "ui-review",
     "annotation",
     "design-tokens",
     "inspeck"
-  ]
+  ],
+  "repository": "https://github.com/pulkitmittal19/inspeck-claude",
+  "documentationUrl": "https://github.com/pulkitmittal19/inspeck-claude#readme",
+  "supportUrl": "https://github.com/pulkitmittal19/inspeck-claude/issues"
 }
