@@ -9,7 +9,7 @@
       "name": "inspeck",
       "description": "Hover any element of your app to see its CSS as your code writes it; click to leave a note, and Claude picks it up and fixes it.",
       "category": "development",
-      "source": "./"
+      "source": "./plugin"
     }
   ]
 }

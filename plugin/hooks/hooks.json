@@ -1,0 +1,20 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/bin/sh",
+            "args": [
+              "${CLAUDE_PLUGIN_ROOT}/server/bin/inspeck",
+              "--check"
+            ],
+            "timeout": 15
+          }
+        ]
+      }
+    ]
+  }
+}
